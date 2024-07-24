@@ -1,0 +1,19 @@
+sample_rate: 16000
+num_examples: 300_000
+min_mic_speaker_distance: 0.5
+min_wall_distance: 0.5
+librispeech_path: /dsi/gannot-lab1/datasets/LibriSpeech/LibriSpeech
+mode: Train
+save_dir: /dsi/gannot-lab1/datasets/reverb_data/audio
+audio_len: 3 # in sec
+
+rt60_min: 0.2
+rt60_max: 0.6
+
+# room parameters
+min_w: 4.5
+max_w: 6.5
+min_l: 4.5
+max_l: 6.5
+min_h: 2.5
+max_h: 3

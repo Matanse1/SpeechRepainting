@@ -17,7 +17,7 @@ def get_all_filenames(data_path):
     """
     Load all .wav files in data_path
     """
-    files = glob(os.path.join(data_path, '**/*.wav'), recursive=True)
+    files = glob(os.path.join(data_path, '*.wav'), recursive=True)
     return files
 
 def load_wav_to_torch(full_path):
@@ -61,6 +61,8 @@ def main(cfg):
     
     max_val = 0
     min_val = 0
+    Path(cfg.dataset["save_mel_dir"]).mkdir(parents=True, exist_ok=True)
+    Path(cfg.dataset["save_mel_image_dir"]).mkdir(parents=True, exist_ok=True)
     for filepath in tqdm(filepaths):
         audio, sr = load_wav_to_torch(filepath)
         audio = audio / 1.1 / audio.abs().max()     # normalise max amplitude to be ~0.9
@@ -69,10 +71,21 @@ def main(cfg):
             max_val = melspectrogram.max()
         if melspectrogram.min() < min_val:
             min_val = melspectrogram.min()
+        
+        import matplotlib.pyplot as plt
 
-        new_filepath = filepath + '.spec'
-        os.makedirs(Path(new_filepath).parent, exist_ok=True)
+        # Convert the spectrogram to an image
+        plt.imshow(melspectrogram.numpy(), cmap='jet', origin='lower')
+        plt.axis('off')
+        plt.colorbar()
+        # Save the image
+        stem = Path(filepath).stem
+        image_path = Path(cfg.dataset["save_mel_image_dir"]) / Path(f"{stem}.png")
+        plt.savefig(image_path)
+        plt.close()
+        new_filepath = Path(cfg.dataset["save_mel_dir"]) / Path(f"{stem}.npz")       
         torch.save(melspectrogram, new_filepath)
+        
     print(f"max_val={max_val},\n min_val={min_val}")
 
 

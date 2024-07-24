@@ -21,9 +21,14 @@ diffusion:
 dataset:
   videos_dir: datasets/LRS3/videos
   mouthrois_dir: datasets/LRS3/mouth_crops
-  audio_dir: datasets/LRS3/audios
+  audio_dir: /dsi/gannot-lab1/datasets/reverb_data/audio #datasets/LRS3/audios
+  save_mel_dir: /dsi/gannot-lab1/datasets/reverb_data/mel
+  save_mel_image_dir: /dsi/gannot-lab1/datasets/reverb_data/mel_image
   sampling_rate: ${audio.sampling_rate}
-  videos_window_size: 25
+  #videos_window_size: 25
+  min_block_size: 35 
+  max_block_size: 65 
+  min_spacing: 30
   audio_stft_hop: ${audio.hop_length}
 
 audio:

@@ -19,6 +19,41 @@ import torchaudio
 import torchvision.transforms as transforms
 from .stft import normalise_mel
 
+import torch
+import matplotlib.pyplot as plt
+
+
+def create_mask(shape, min_block_size=35, max_block_size=65, min_spacing=30):
+        # Initialize the mask with ones
+        mask = torch.ones((shape[0], shape[1]))
+        
+        # Determine the number of blocks
+        num_blocks = torch.randint(2, (shape[1] - min_block_size) // (max_block_size + min_spacing) + 1, (1,)).item()
+        # Keep track of the end position of the last block to ensure spacing
+        edge = int(0.5*16000/160) #0.5sec of edge
+        last_block_end = -min_spacing + edge
+        
+        for i in range(num_blocks):
+            #print(i)
+            # Random block size
+            block_size = torch.randint(min_block_size, max_block_size + 1, (1,)).item()
+            
+            # Ensure valid start_pos to avoid overlapping
+            if last_block_end + min_spacing + block_size >= shape[1]-edge:
+                print("break")
+                break
+            if i == num_blocks-1:
+                start_pos = torch.randint(last_block_end + min_spacing, last_block_end + min_spacing + shape[1]//num_blocks - block_size - edge + 1, (1,)).item()
+            else:
+                start_pos = torch.randint(last_block_end + min_spacing, last_block_end + min_spacing + shape[1]//num_blocks - block_size + 1, (1,)).item()
+            print(f"start is {start_pos}")
+            # Set the mask to 0 for the current block
+            mask[:, start_pos:start_pos + block_size] = 0
+            
+            # Update the end position of the last block
+            last_block_end = start_pos + block_size
+        
+        return mask
 
 def files_to_list(data_path, suffix):
     """
@@ -40,7 +75,11 @@ class LipVoicerDataset(torch.utils.data.Dataset):
     This is the main class that calculates the spectrogram and returns the
     spectrogram, audio pair.
     """
-    def __init__(self, split, videos_dir, mouthrois_dir, audios_dir, sampling_rate, videos_window_size, audio_stft_hop):
+    def __init__(self, split, videos_dir, mouthrois_dir, audios_dir, sampling_rate, min_block_size, max_block_size, 
+                 min_spacing, audio_stft_hop):
+        self.min_block_size = min_block_size
+        self.max_block_size = max_block_size
+        self.min_spacing = min_spacing
         self.mouthrois_dir = mouthrois_dir
         if "LRS3" in videos_dir:
             self.ds_name = "LRS3"
@@ -91,6 +130,7 @@ class LipVoicerDataset(torch.utils.data.Dataset):
         self.face_image_transform = self.get_face_image_transform()
 
     def __getitem__(self, index):
+        
         while True:
             # Get paths
             mouthroi_filename = self.moutroi_files[index]
@@ -137,10 +177,45 @@ class LipVoicerDataset(torch.utils.data.Dataset):
             face_image = self.face_image_transform(face_image)
             mouthroi = torch.FloatTensor(self.mouthroi_transform(mouthroi)).unsqueeze(0)   # add channel dim
             melspec = normalise_mel(melspec)
-            return (melspec, mouthroi, face_image)
+            mask = self.create_mask(melspec.shape)
+            masked_melspec = melspec * mask
+            return (melspec, masked_melspec)
 
     def __len__(self):
         return len(self.moutroi_files)
+
+    def create_mask(self, shape):
+        # Initialize the mask with ones
+        mask = torch.ones((shape[0], shape[1]))
+        
+        # Determine the number of blocks
+        num_blocks = torch.randint(2, (shape[1] - self.min_block_size) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
+        # Keep track of the end position of the last block to ensure spacing
+        edge = int(0.5*16000/160) #0.5sec of edge
+        last_block_end = -self.min_spacing + edge
+        
+        for i in range(num_blocks):
+            #print(i)
+            # Random block size
+            block_size = torch.randint(self.min_block_size, self.max_block_size + 1, (1,)).item()
+            
+            # Ensure valid start_pos to avoid overlapping
+            if last_block_end + self.min_spacing + block_size >= shape[1]-edge:
+                print("break")
+                break
+            if i == num_blocks-1:
+                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + shape[1]//num_blocks - block_size - edge + 1, (1,)).item()
+            else:
+                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + shape[1]//num_blocks - block_size + 1, (1,)).item()
+            print(f"start is {start_pos}")
+            # Set the mask to 0 for the current block
+            mask[:, start_pos:start_pos + block_size] = 0
+            
+            # Update the end position of the last block
+            last_block_end = start_pos + block_size
+        
+        return mask
+    
 
     def extract_window(self, mouthroi, mel, info):
         hop = self.audio_stft_hop
@@ -277,53 +352,7 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
         self.face_image_transform = self.get_face_image_transform()
 
     def __getitem__(self, index):
-        while True:
-            # Get paths
-            mouthroi_filename = self.moutroi_files[index]
-            pfilename = Path(mouthroi_filename)
-            if self.ds_name in ["LRS3", "LRS2"]:
-                video_id = '/'.join([pfilename.parts[-2], pfilename.stem])
-                video_filename = mouthroi_filename.replace(self.mouthrois_dir, self.videos_dir).replace('.npz','.mp4')
-                melspec_filename = mouthroi_filename.replace(self.mouthrois_dir, self.audios_dir).replace('.npz','.wav.spec')
-            
-            # Get mouthroi
-            mouthroi = np.load(mouthroi_filename)['data']
-            if mouthroi.shape[0] >= self.videos_window_size or self.test:
-                break
-            else:
-                index = random.randrange(len(self.moutroi_files))
-        melspec = torch.load(melspec_filename)
-        face_image = self.load_frame(video_filename)
         
-        video = cv2.VideoCapture(video_filename)
-        info = {'audio_fps': self.sampling_rate, 'video_fps': video.get(cv2.CAP_PROP_FPS)}
-
-        if self.test:
-            audio, fs = torchaudio.load(melspec_filename.replace('.spec', ''))
-            text_filename = video_filename.replace(".mp4", ".txt")
-            text = self.preprocess_text(text_filename)
-
-            # Normalisations & transforms
-            audio = audio / 1.1 / audio.abs().max()
-            face_image = self.face_image_transform(face_image)
-            mouthroi = torch.FloatTensor(self.mouthroi_transform(mouthroi)).unsqueeze(0)
-            melspec = normalise_mel(melspec)
-            return (melspec, audio, mouthroi, face_image, text, video_id)
-        else:
-
-            # Get corresponding crops
-            mouthroi, melspec = self.extract_window(mouthroi, melspec, info)
-            if mouthroi.shape[0] < self.videos_window_size:
-                return self.__getitem__(random.randrange(len(self)))
-            
-            # Augmentations
-            face_image = self.augment_image(face_image)
-
-            # Noramlisations & Transforms
-            face_image = self.face_image_transform(face_image)
-            mouthroi = torch.FloatTensor(self.mouthroi_transform(mouthroi)).unsqueeze(0)   # add channel dim
-            melspec = normalise_mel(melspec)
-            return (melspec, mouthroi, face_image)
 
     def __len__(self):
         return len(self.moutroi_files)
