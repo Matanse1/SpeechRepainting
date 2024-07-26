@@ -18,35 +18,34 @@ class AudioVisualModel(torch.nn.Module):
         super(AudioVisualModel, self).__init__()
 
         # initialize model
-        self.net_lipreading, self.net_facial, self.net_diffwave = nets
+        # self.net_lipreading, self.net_facial, self.net_diffwave = nets
+        self.net_diffwave = nets
 
         # classifier guidance null conditioners
         torch.manual_seed(0)        # so we have the same null tokens on all nodes
-        self.register_buffer("mouthroi_null", torch.randn(1, 1, 1, 88, 88))  # lips regions frames are 88x88 each
-        self.register_buffer("face_null", torch.randn(1, 3, 224, 224))  # face image size is 224x224
 
-    def forward(self, melspec, mouthroi, face_image, diffusion_steps, cond_drop_prob):
+    def forward(self, melspec, masked_melspec, diffusion_steps, cond_drop_prob):
         # classifier guidance
-        batch = melspec.shape[0]
+        batch, C, L = melspec.shape
+        masked_melspec_null = torch.randn(1, C, L, device=melspec.device)
         if cond_drop_prob > 0:
-            prob_keep_mask = self.prob_mask_like((batch, 1, 1, 1, 1), 1.0 - cond_drop_prob, melspec.device)
-            _mouthroi = torch.where(prob_keep_mask, mouthroi, self.mouthroi_null)
-            _face_image = torch.where(prob_keep_mask.squeeze(1), face_image, self.face_null)
+            prob_keep_mask = self.prob_mask_like((batch, 1, 1), 1.0 - cond_drop_prob, melspec.device)
+            _masked_melspec = torch.where(prob_keep_mask, masked_melspec, masked_melspec_null)
         else:
-            _mouthroi = mouthroi
-            _face_image = face_image
+            _masked_melspec = masked_melspec
 
         # pass through visual stream and extract lipreading features
-        lipreading_feature = self.net_lipreading(_mouthroi)
+        # lipreading_feature = self.net_lipreading(_mouthroi)
         
-        # pass through visual stream and extract identity features
-        identity_feature = self.net_facial(_face_image)
+        # # pass through visual stream and extract identity features
+        # identity_feature = self.net_facial(_face_image)
 
         # what type of visual feature to use
-        identity_feature = identity_feature.repeat(1, 1, 1, lipreading_feature.shape[-1])
-        visual_feature = torch.cat((identity_feature, lipreading_feature), dim=1)
-        visual_feature = visual_feature.squeeze(2)  # so dimensions are B, C, num_frames
-
+        # identity_feature = identity_feature.repeat(1, 1, 1, lipreading_feature.shape[-1])
+        # visual_feature = torch.cat((identity_feature, lipreading_feature), dim=1)
+        # visual_feature = visual_feature.squeeze(2)  # so dimensions are B, C, num_frames
+        
+        visual_feature = _masked_melspec
         output = self.net_diffwave((melspec, diffusion_steps), cond=visual_feature)
         return output
 

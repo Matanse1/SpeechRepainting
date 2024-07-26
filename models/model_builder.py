@@ -45,8 +45,9 @@ class ModelBuilder():
         return net
 
     def build_diffwave_model(self, model_cfg):
-        cond_feat_size = 640        # size of feature dimension for the conditioner
+        # cond_feat_size = 640        # size of feature dimension for the conditioner
         name = model_cfg.pop("_name_")
-        model = WaveNet(cond_feat_size, **model_cfg)
+        # model = WaveNet(cond_feat_size, **model_cfg)
+        model = WaveNet(**model_cfg)
         model_cfg["_name_"] = name # restore
         return model

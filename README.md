@@ -1,4 +1,4 @@
-# LipVoicer: Generating Speech from Silent Videos Guided by Lip Reading
+# Speech Repainting
 
 <div align="center">
 

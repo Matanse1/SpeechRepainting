@@ -2,7 +2,7 @@
 # under https://github.com/albertfgu/diffwave-sashimi/blob/master/LICENSE
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -78,10 +78,11 @@ def train(
 
     # predefine model
     builder = ModelBuilder()
-    net_lipreading = builder.build_lipreadingnet()
-    net_facial = builder.build_facial(fc_out=128, with_fc=True)
+    #net_lipreading = builder.build_lipreadingnet()
+    #net_facial = builder.build_facial(fc_out=128, with_fc=True)
     net_diffwave = builder.build_diffwave_model(model_cfg)
-    net = AudioVisualModel((net_lipreading, net_facial, net_diffwave)).cuda()
+    #net = AudioVisualModel((net_lipreading, net_facial, net_diffwave)).cuda()
+    net = AudioVisualModel(net_diffwave).cuda()
     print_size(net, verbose=False)
 
     criterion = nn.L1Loss()
@@ -123,12 +124,12 @@ def train(
         epoch_loss = 0.
         for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}') if rank==0 else trainloader:
         # for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}'):
-            melspec, mouthroi, face_image = data
-            melspec, mouthroi, face_image = melspec.cuda(), mouthroi.cuda(), face_image.cuda()
+            melspec, masked_melspec = data
+            melspec, masked_melspec = melspec.cuda(), masked_melspec.cuda()
 
             # back-propagation
             optimizer.zero_grad()
-            loss = training_loss(net, criterion, melspec, mouthroi, face_image, diffusion_hyperparams)
+            loss = training_loss(net, criterion, melspec, masked_melspec, diffusion_hyperparams)
             if num_gpus > 1:
                 reduced_loss = reduce_tensor(loss.data, num_gpus).item()
             else:
@@ -177,7 +178,7 @@ def train(
     if rank == 0:
         writer.close()
 
-def training_loss(net, loss_fn, melspec, mouthroi, face_image, diffusion_hyperparams):
+def training_loss(net, loss_fn, melspec, masked_melspec, diffusion_hyperparams):
     """
     Compute the training loss of epsilon and epsilon_theta
 
@@ -198,9 +199,9 @@ def training_loss(net, loss_fn, melspec, mouthroi, face_image, diffusion_hyperpa
     B, C, L = melspec.shape  # B is batchsize, C=80, L is number of melspec frames
     diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
     z = torch.normal(0, 1, size=melspec.shape).cuda()
-    transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # compute x_t from q(x_t|x_0)
+    transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
     cond_drop_prob = 0.2
-    epsilon_theta = net(transformed_X, mouthroi, face_image, diffusion_steps.view(B,1), cond_drop_prob)
+    epsilon_theta = net(transformed_X, masked_melspec, diffusion_steps.view(B,1), cond_drop_prob)
     return loss_fn(epsilon_theta, z)
 
 

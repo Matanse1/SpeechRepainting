@@ -110,6 +110,7 @@ def local_directory(name, model_cfg, diffusion_cfg, save_dir, output_directory):
     else:
         output_directory = os.path.join(save_dir, 'exp', local_path, output_directory)
     if not os.path.isdir(output_directory):
+        print(f"Creating output directory {output_directory}")
         os.makedirs(output_directory, exist_ok=True)
         os.chmod(output_directory, 0o775)
     print("output directory", output_directory, flush=True)

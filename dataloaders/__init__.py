@@ -4,11 +4,11 @@
 
 import torch
 from torch.utils.data.distributed import DistributedSampler
-from .dataset_lipvoicer import LipVoicerDataset
+from .dataset_lipvoicer import SpeechRepaingingDataset
 
 def dataloader(dataset_cfg, batch_size, num_gpus):
 
-    dataset = LipVoicerDataset(split='train', **dataset_cfg)
+    dataset = SpeechRepaingingDataset(split='train', **dataset_cfg) #LipVoicerDataset(split='train', **dataset_cfg)
 
     # distributed sampler
     train_sampler = DistributedSampler(dataset) if num_gpus > 1 else None
