@@ -99,14 +99,14 @@ class Residual_block(nn.Module):
         if mel_spec is not None:
             assert not self.unconditional
             # Upsample spectrogram to size of audio
-            mel_spec = torch.unsqueeze(mel_spec, dim=1)
-            mel_spec = F.leaky_relu(self.upsample_conv2d[0](mel_spec), 0.4)
-            mel_spec = F.leaky_relu(self.upsample_conv2d[1](mel_spec), 0.4)
-            mel_spec = torch.squeeze(mel_spec, dim=1)
+            # mel_spec = torch.unsqueeze(mel_spec, dim=1)
+            # mel_spec = F.leaky_relu(self.upsample_conv2d[0](mel_spec), 0.4)
+            # mel_spec = F.leaky_relu(self.upsample_conv2d[1](mel_spec), 0.4)
+            # mel_spec = torch.squeeze(mel_spec, dim=1)
 
-            assert(mel_spec.size(2) >= L)
-            if mel_spec.size(2) > L:
-                mel_spec = mel_spec[:, :, :L]
+            # assert(mel_spec.size(2) >= L)
+            # if mel_spec.size(2) > L:
+            #     mel_spec = mel_spec[:, :, :L]
 
             mel_spec = self.mel_conv(mel_spec)
             h = h + mel_spec

@@ -2,7 +2,7 @@
 # under https://github.com/albertfgu/diffwave-sashimi/blob/master/LICENSE
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -19,7 +19,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from dataloaders import dataloader
-from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, plot_melspec
+from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, plot_melspec, match_and_concatenate
 
 from distributed_util import init_distributed, apply_gradient_allreduce, reduce_tensor
 from inference_melgen import generate
@@ -63,11 +63,16 @@ def train(
     batch_size_per_gpu (int):       batchsize per gpu, default is 2 so total batchsize is 16 with 8 gpus
     name (str):                     prefix in front of experiment name
     """
-
-    if rank == 0:
-        writer = SummaryWriter(log_dir='logs')
-
     local_path, checkpoint_directory = local_directory(name, model_cfg, diffusion_cfg, save_dir, 'checkpoint')
+    
+    if rank == 0:
+        if not (name is None or name == ""):
+            path_log = os.path.join(save_dir, 'exp', name, local_path, "logs")
+        else:
+            path_log = os.path.join(save_dir, 'exp', local_path, "logs")
+        writer = SummaryWriter(log_dir=path_log)
+
+    
 
     # map diffusion hyperparameters to gpu
     diffusion_hyperparams = calc_diffusion_hyperparams(**diffusion_cfg, fast=False)  # dictionary of all diffusion hyperparameters
@@ -161,13 +166,14 @@ def train(
                     save_dir=save_dir,
                     ckpt_iter="max",
                     n_samples=generate_cfg.n_samples,
-                    w_video=generate_cfg.w_video,
+                    w_mel_cond=generate_cfg.w_mel_cond,
                 )
                 
                 # send images to log
-                for i, (mel, mel_gt) in enumerate(zip(*samples)):
-                    writer.add_figure(f'spec/{i+1}', plot_melspec(mel[0].cpu().numpy()), n_iter)
+                for i, (mel, mel_gt, masked_melspec) in enumerate(zip(*samples)):
+                    writer.add_figure(f'spec/{i+1}_gen', plot_melspec(mel[0].cpu().numpy()), n_iter)
                     writer.add_figure(f'spec/{i+1}_gt', plot_melspec(mel_gt[0].cpu().numpy()), n_iter)
+                    writer.add_figure(f'spec/{i+1}_masked_melspec', plot_melspec(masked_melspec[0].cpu().numpy()), n_iter)
 
             n_iter += 1
         if rank == 0:
@@ -202,7 +208,7 @@ def training_loss(net, loss_fn, melspec, masked_melspec, diffusion_hyperparams):
     transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
     cond_drop_prob = 0.2
     epsilon_theta = net(transformed_X, masked_melspec, diffusion_steps.view(B,1), cond_drop_prob)
-    return loss_fn(epsilon_theta, z)
+    return loss_fn(epsilon_theta, z) #TODO add mask weighting
 
 
 

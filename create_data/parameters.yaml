@@ -1,11 +1,13 @@
 sample_rate: 16000
+highpass_cutoff: 50
 num_examples: 300_000
 min_mic_speaker_distance: 0.5
+max_mic_speaker_distance: 4
 min_wall_distance: 0.5
 librispeech_path: /dsi/gannot-lab1/datasets/LibriSpeech/LibriSpeech
 mode: Train
-save_dir: /dsi/gannot-lab1/datasets/reverb_data/audio
-audio_len: 3 # in sec
+save_dir: /dsi/gannot-lab1/datasets/reverb_data/audio_final2
+audio_len: 5 # in sec
 
 rt60_min: 0.2
 rt60_max: 0.6

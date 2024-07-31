@@ -33,7 +33,7 @@ from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_
 
 
 def sampling(net, diffusion_hyperparams,
-            w_video, condition=None, 
+            w_mel_cond, condition=None, 
             asr_guidance_net=None,
             w_asr=None,
             asr_start=None,
@@ -71,7 +71,7 @@ def sampling(net, diffusion_hyperparams,
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
             epsilon_theta = net(x, mouthroi, face_image, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
             epsilon_theta_uncond = net(x, mouthroi, face_image, diffusion_steps, cond_drop_prob=1)
-            epsilon_theta = (1+w_video) * epsilon_theta - w_video * epsilon_theta_uncond
+            epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
             
             if asr_guidance_net is not None and t <= asr_start:
                 with torch.enable_grad():
@@ -107,7 +107,7 @@ def generate(
         model_cfg,
         dataset_cfg,
         ckpt_path,
-        w_video=0,
+        w_mel_cond=0,
         w_asr=1.1,
         asr_start=250,
         save_dir=None,
@@ -172,7 +172,7 @@ def generate(
 
     dataset = LipVoicerDataset('test', **dataset_cfg)
     
-    guidance_dir_name = f'w1={w_video}'
+    guidance_dir_name = f'w1={w_mel_cond}'
     guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}'
     _output_directory = os.path.join(output_directory, ds_name, guidance_dir_name)
     os.makedirs(_output_directory, exist_ok=True)
@@ -194,7 +194,7 @@ def generate(
 
         melspec = sampling(net, 
                         diffusion_hyperparams,
-                        w_video,
+                        w_mel_cond,
                         condition=(mouthroi.cuda(), face_image.cuda()),
                         asr_guidance_net=asr_guidance_net,
                         w_asr=w_asr,

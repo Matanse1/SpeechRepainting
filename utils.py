@@ -186,3 +186,26 @@ def plot_melspec(melspec):
     fig = plt.figure()
     plt.imshow(melspec[::-1])
     return fig
+
+
+def match_and_concatenate(H, Y):
+    """
+    Duplicate the pre-trained representation H to match the time dimension of Y and concatenate them.
+    
+    Parameters:
+    H (torch.Tensor): Pre-trained representation of shape (B, T/2, F_pretrained).
+    Y (torch.Tensor): STFT representation of shape (B, T, F_stft).
+    
+    Returns:
+    torch.Tensor: Concatenated representation of shape (B, T, F_stft + F_pretrained).
+    """
+    B, T_half, F_pretrained = H.size()
+    B, T, F_stft = Y.size()
+    
+    # Duplicate each element of H to match the time dimension of Y
+    H_expanded = H.repeat_interleave(2, dim=1)[:, :T, :]
+    
+    # Concatenate along the feature dimension
+    concatenated_representation = torch.cat((Y, H_expanded), dim=2)
+    
+    return concatenated_representation

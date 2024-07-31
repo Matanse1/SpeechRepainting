@@ -24,7 +24,7 @@ from dataloaders.stft import denormalise_mel
 
 from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory
 
-def sampling(net, diffusion_hyperparams, w_video, condition=None):
+def sampling(net, diffusion_hyperparams, w_mel_cond, condition=None):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
 
@@ -52,7 +52,7 @@ def sampling(net, diffusion_hyperparams, w_video, condition=None):
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
             epsilon_theta = net(x, masked_melspec, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
             epsilon_theta_uncond = net(x, masked_melspec, diffusion_steps, cond_drop_prob=1)
-            epsilon_theta = (1+w_video) * epsilon_theta - w_video * epsilon_theta_uncond
+            epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
 
             x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
             if t > 0:
@@ -70,7 +70,7 @@ def generate(
         ckpt_iter="max",
         name=None,
         n_samples=None,
-        w_video=0,
+        w_mel_cond=0,
     ):
     """
     Generate melspectrograms based on lips movement
@@ -109,7 +109,7 @@ def generate(
         raise Exception('No valid model found')
 
     dataset = SpeechRepaingingDataset('test', **dataset_cfg)
-    dataset_indices = torch.arange(n_samples)
+    dataset_indices = torch.arange(n_samples) + 100000
     groundtruth_melspec, masked_melspec = [], []
     for i in dataset_indices:
         _gt_melspec, _masked_melspec = dataset[i]
@@ -131,7 +131,7 @@ def generate(
         _melspec = sampling(
             net,
             diffusion_hyperparams,
-            w_video,
+            w_mel_cond,
             condition=masked_melspec[i].cuda(),
         )
         generated_melspec.append(denormalise_mel(_melspec))
@@ -142,7 +142,7 @@ def generate(
         ckpt_iter,
         int(start.elapsed_time(end)/1000)))
 
-    return generated_melspec, groundtruth_melspec
+    return generated_melspec, groundtruth_melspec, masked_melspec
 
 
 @hydra.main(version_base=None, config_path="configs/", config_name="config")

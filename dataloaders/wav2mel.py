@@ -64,10 +64,10 @@ def main(cfg):
     Path(cfg.dataset["mel_dir"]).mkdir(parents=True, exist_ok=True)
     Path(cfg.dataset["mel_image_dir"]).mkdir(parents=True, exist_ok=True)
     # for filepath in tqdm(filepaths):
-    for i in tqdm(range(200)):
+    for i in tqdm(range(100_000)):
         filepath = Path(cfg.dataset["audio_dir"], f"example_{i}.wav")
         audio, sr = load_wav_to_torch(filepath)
-        audio = audio / 1.1 / audio.abs().max()     # normalise max amplitude to be ~0.9
+        # audio = audio / 1.1 / audio.abs().max()     # normalise max amplitude to be ~0.9
         melspectrogram = stft.get_mel(audio)
         if melspectrogram.max() > max_val:
             max_val = melspectrogram.max()

@@ -20,7 +20,7 @@ diffusion:
   beta: null
 
 dataset:
-  audio_dir: /dsi/gannot-lab1/datasets/reverb_data/audio #datasets/LRS3/audios
+  audio_dir: /dsi/gannot-lab1/datasets/reverb_data/audio_final #datasets/LRS3/audios
   mel_dir: /dsi/gannot-lab1/datasets/reverb_data/mel
   mel_image_dir: /dsi/gannot-lab1/datasets/reverb_data/mel_image
   sampling_rate: ${audio.sampling_rate}
@@ -28,6 +28,7 @@ dataset:
   max_block_size: 65 
   min_spacing: 30
   audio_stft_hop: ${audio.hop_length}
+  num4empty_str: -12 #or 0, min
 
 audio:
   sampling_rate: 16000
@@ -38,21 +39,26 @@ audio:
   mel_fmax: 8000.0
 
 train: # Not used in generate.py
-  name: LibSp        # Name of experiment (prefix of experiment name)
+  name: LibSp_only-conv1d-condition_fixed-mask      # Name of experiment (prefix of experiment name)
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting    # where checkpoints will be saved
   ckpt_iter: max    # continue training from a specific iteration
-  iters_per_ckpt: 20 #10000
-  iters_per_logging: 1 #100
-  n_iters: 3 #1000001
+  # for testing the training phase
+  # iters_per_ckpt: 20 #20 #10000
+  # iters_per_logging: 1 #1 #100
+  # n_iters: 200 #200 #1000001
+  #for complete training
+  iters_per_ckpt: 10000 #20 #10000
+  iters_per_logging: 100 #1 #100
+  n_iters: 2000001 #200 #1000001
   learning_rate: 2e-4
-  batch_size_per_gpu: 8
+  batch_size_per_gpu: 128
 
 generate:
-  name: LRS3
+  name: LibSp_only-conv1d-condition
   ckpt_path: exp/LRS3/wnet_h512_d12_T400_betaT0.02/checkpoint/1000000.pkl           
   n_samples: 3          # Number of utterances from test dataset to be generated 
   video_path: null      # generate audio for a given silent video file
-  w_video: 2            # w1 in the paper
+  w_mel_cond: 2            # w1 in the paper
   w_asr: 1.5            # w2 in the paper
   asr_start: 270        # t_asr
   save_dir: null        # where to save the generated audio
