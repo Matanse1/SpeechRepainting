@@ -179,7 +179,7 @@ def generate(
         gt_melspec, masked_melspec, _ = dataset[i]
         gt_melspec = denormalise_mel(gt_melspec)
         gt_melspec = gt_melspec.unsqueeze(0)
-        masked_melspec = masked_melspec.unsqueeze(0)        # add batch dimension
+        masked_melspec = masked_melspec.unsqueeze(0)      # add batch dimension
 
 
         # inference
@@ -207,28 +207,37 @@ def generate(
         
         # generate audio from generated melspec
         masked_melspec = denormalise_mel(masked_melspec)
-        masked_audio = vocoder(masked_melspec)
+        masked_audio = vocoder(masked_melspec.cuda())
         masked_audio = masked_audio.squeeze()
         masked_audio = masked_audio / 1.1 / masked_audio.abs().max()
         masked_audio = masked_audio.cpu().numpy()
-        sf.write(os.path.join(_output_directory, f'sample_{i}' + 'masked_audio.wav'), masked_audio, 16000)
+        sf.write(os.path.join(_output_directory, f'sample_{i}', 'masked_audio.wav'), masked_audio, 16000)
 
         # generate audio from masked melspec
         audio = vocoder(melspec)
         audio = audio.squeeze()
         audio = audio / 1.1 / audio.abs().max()
         audio = audio.cpu().numpy()
-        sf.write(os.path.join(_output_directory, f'sample_{i}' + 'generated_audio.wav'), audio, 16000)
+        sf.write(os.path.join(_output_directory, f'sample_{i}', 'generated_audio.wav'), audio, 16000)
+        
+    # generate audio from gt melspec
+        audio = vocoder(gt_melspec.cude())
+        audio = audio.squeeze()
+        audio = audio / 1.1 / audio.abs().max()
+        audio = audio.cpu().numpy()
+        sf.write(os.path.join(_output_directory, f'sample_{i}', 'vocoder_gt_audio.wav'), audio, 16000)
         
         # save as file
         melspec = melspec.squeeze(0).cpu()
-        torch.save(melspec, os.path.join(_output_directory, f'sample_{i}', + 'generated_spec.npz'))
+        torch.save(melspec, os.path.join(_output_directory, f'sample_{i}', 'generated_spec.npz'))
         
         # save as image
         melspec = melspec.numpy()
+        masked_melspec = masked_melspec.squeeze(0).numpy()
         gt_melspec = gt_melspec.squeeze(0).numpy()
-        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}' +'generated_spec_image.png'), melspec[::-1])
-        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}'+'gt_spec_image.png'), gt_melspec[::-1])
+        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'generated_spec_image.png'), melspec[::-1])
+        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'gt_spec_image.png'), gt_melspec[::-1])
+        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'masked_spec_image.png'), masked_melspec[::-1])
         
         
         # # save text
