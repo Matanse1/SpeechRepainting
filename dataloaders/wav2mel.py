@@ -8,7 +8,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from glob import glob
 from pathlib import Path
-
+import matplotlib.pyplot as plt
 # We're using the audio processing from TacoTron2 to make sure it matches
 from stft import TacotronSTFT, normalise_mel
 
@@ -55,17 +55,21 @@ class STFT():
 def main(cfg):
 
     stft = STFT(**cfg.audio)
-
-    #filepaths = get_all_filenames(cfg.dataset["audio_dir"])
+    mode = 'Test'
+    filepaths = get_all_filenames(Path(cfg.dataset["base_data_dir"], mode, "audio_final"))
+    num_of_files =  len(filepaths)
     #filepaths = sorted(filepaths)
     
     max_val = 0
     min_val = 0
-    Path(cfg.dataset["mel_dir"]).mkdir(parents=True, exist_ok=True)
-    Path(cfg.dataset["mel_image_dir"]).mkdir(parents=True, exist_ok=True)
+    
+    mel_dir  = Path(cfg.dataset["base_data_dir"], mode, "mel")
+    mel_image_dir  = Path(cfg.dataset["base_data_dir"], mode, "mel_image")
+    mel_dir.mkdir(parents=True, exist_ok=True)
+    mel_image_dir.mkdir(parents=True, exist_ok=True)
     # for filepath in tqdm(filepaths):
-    for i in tqdm(range(100_000)):
-        filepath = Path(cfg.dataset["audio_dir"], f"example_{i}.wav")
+    for i in tqdm(range(num_of_files)):
+        filepath = Path(cfg.dataset["base_data_dir"], mode, "audio_final", f"example_{i}.wav")
         audio, sr = load_wav_to_torch(filepath)
         # audio = audio / 1.1 / audio.abs().max()     # normalise max amplitude to be ~0.9
         melspectrogram = stft.get_mel(audio)
@@ -74,7 +78,7 @@ def main(cfg):
         if melspectrogram.min() < min_val:
             min_val = melspectrogram.min()
         
-        import matplotlib.pyplot as plt
+
 
         # Convert the spectrogram to an image
         plt.imshow(melspectrogram.numpy(), cmap='jet', origin='lower')
@@ -82,11 +86,11 @@ def main(cfg):
         plt.colorbar()
         # Save the image
         stem = Path(filepath).stem
-        image_path = Path(cfg.dataset["mel_image_dir"]) / Path(f"{stem}.png")
-        plt.savefig(image_path)
+        image_path = mel_image_dir / Path(f"{stem}.png")
+        plt.savefig(str(image_path))
         plt.close()
-        new_filepath = Path(cfg.dataset["mel_dir"]) / Path(f"{stem}.npz")       
-        torch.save(melspectrogram, new_filepath)
+        mel_filepath = mel_dir / Path(f"{stem}.npz")       
+        torch.save(melspectrogram, mel_filepath)
         
     print(f"max_val={max_val},\n min_val={min_val}")
 

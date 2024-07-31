@@ -85,7 +85,10 @@ for i in tqdm(range(cfg.num_examples)):
         if len(audio_signal) / fs >= cfg.audio_len:
             # Truncate  the audio signal to the desired length
             if len(audio_signal) / fs > cfg.audio_len:
-                start_idx = np.random.randint(0, len(audio_signal) - int(cfg.audio_len * fs))
+                if cfg.model == 'Test':
+                    start_idx = 0
+                else:
+                    start_idx = np.random.randint(0, len(audio_signal) - int(cfg.audio_len * fs))
                 end_idx = start_idx + int(cfg.audio_len * fs)
                 audio_signal = audio_signal[start_idx:end_idx]
                 break
@@ -106,7 +109,7 @@ for i in tqdm(range(cfg.num_examples)):
     # Save the parameters
     param = [i, amplitude_value, spk2mic_distance, np.round(room_dim, 2).tolist(), np.round(rt60, 2), np.round(absorption_coefficient, 2), np.round(speaker_position, 2).tolist(), np.round(mic_position, 2).tolist(), wav_filename, librispeech_wav_path]
     params.append(param)
-    if i % num_save_iter == 0:
+    if i % num_save_iter == 0 or i == cfg.num_examples - 1:
         with open(csv_filename, mode='a', newline='') as file:
             writer = csv.writer(file, delimiter='|')
             for param in params:

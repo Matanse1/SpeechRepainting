@@ -1,7 +1,7 @@
 # this file is an adapated version https://github.com/albertfgu/diffwave-sashimi, licensed
 # under https://github.com/albertfgu/diffwave-sashimi/blob/master/LICENSE
 
-
+# this is the full test without asr: mel condition, free-classifier and vocoder(mel2audio)
 import json
 import os
 import subprocess
@@ -9,8 +9,8 @@ import time
 import warnings
 warnings.filterwarnings("ignore")
 
-from functools import partial
-import multiprocessing as mp
+# from functools import partial
+# import multiprocessing as mp
 
 import soundfile as sf
 import matplotlib.image
@@ -22,7 +22,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 from models.model_builder import ModelBuilder
 from models.audiovisual_model import AudioVisualModel
-import ASR.asr_models as asr_models
+# import ASR.asr_models as asr_models
 from dataloaders.dataset_lipvoicer import SpeechRepaingingDataset
 from dataloaders.stft import denormalise_mel
 from hifi_gan.generator import Generator as Vocoder
@@ -64,13 +64,13 @@ def sampling(net, diffusion_hyperparams,
         text_tokens = torch.LongTensor(tokenizer.encode(guidance_text))
         text_tokens = text_tokens.unsqueeze(0).cuda()
 
-    mouthroi, face_image = condition
-    x = torch.normal(0, 1, size=(mouthroi.shape[0], 80, mouthroi.shape[2]*4)).cuda()
+    masked_melspec = condition
+    x = torch.normal(0, 1, size=masked_melspec.shape).cuda()
     with torch.no_grad():
         for t in range(T-1, -1, -1):
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
-            epsilon_theta = net(x, mouthroi, face_image, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
-            epsilon_theta_uncond = net(x, mouthroi, face_image, diffusion_steps, cond_drop_prob=1)
+            epsilon_theta = net(x, masked_melspec, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
+            epsilon_theta_uncond = net(x, masked_melspec, diffusion_steps, cond_drop_prob=1)
             epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
             
             if asr_guidance_net is not None and t <= asr_start:
@@ -111,6 +111,7 @@ def generate(
         w_asr=1.1,
         asr_start=250,
         save_dir=None,
+        n_samples_test = 20,
         lipread_text_dir=None,
         **kwargs
     ):
@@ -146,15 +147,12 @@ def generate(
             os.chmod(output_directory, 0o775)
         print("saving to output directory", output_directory)
 
-    if 'LRS2' in dataset_cfg.videos_dir or 'lrs2' in dataset_cfg.videos_dir:
-        ds_name = 'LRS2'
-    else:
-        ds_name = 'LRS3'
-    
-    print('Loading ASR, tokenizer and decoder')
-    asr_guidance_net, tokenizer, decoder = asr_models.get_models(ds_name)
-
+    # print('Loading ASR, tokenizer and decoder')
+    #asr_guidance_net, tokenizer, decoder = asr_models.get_models(ds_name)
+    asr_guidance_net, tokenizer, decoder = None, None, None
+    text = None
     # HiFi-GAN
+    
     print('Load HiFi-GAN')
     config_file = 'hifi_gan/config.json'
     with open(config_file) as f:
@@ -167,23 +165,22 @@ def generate(
     vocoder.load_state_dict(state_dict_g['generator'])
     vocoder.eval()
     vocoder.remove_weight_norm()
-
+    print('Finish Loading HiFi-GAN')
+    
     dataset = SpeechRepaingingDataset('test', **dataset_cfg)
     
     guidance_dir_name = f'w1={w_mel_cond}'
     guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}'
-    _output_directory = os.path.join(output_directory, ds_name, guidance_dir_name)
+    _output_directory = os.path.join(output_directory, guidance_dir_name)
     os.makedirs(_output_directory, exist_ok=True)
     print("saving to output directory", _output_directory)
 
-    for i in tqdm(range(len(dataset))):
-        gt_melspec, _, mouthroi, face_image, gt_text, video_id = dataset[i]
-        with open(os.path.join(lipread_text_dir, video_id+".txt"), 'r') as f:
-            text = f.readline()
+    for i in tqdm(range(n_samples_test)):
+        gt_melspec, masked_melspec, _ = dataset[i]
         gt_melspec = denormalise_mel(gt_melspec)
         gt_melspec = gt_melspec.unsqueeze(0)
-        mouthroi = mouthroi.unsqueeze(0)        # add batch dimension
-        face_image = face_image.unsqueeze(0)
+        masked_melspec = masked_melspec.unsqueeze(0)        # add batch dimension
+
 
         # inference
         start = torch.cuda.Event(enable_timing=True)
@@ -193,7 +190,7 @@ def generate(
         melspec = sampling(net, 
                         diffusion_hyperparams,
                         w_mel_cond,
-                        condition=(mouthroi.cuda(), face_image.cuda()),
+                        condition=masked_melspec.cuda(),
                         asr_guidance_net=asr_guidance_net,
                         w_asr=w_asr,
                         asr_start=asr_start,
@@ -204,41 +201,41 @@ def generate(
         melspec = denormalise_mel(melspec)
         end.record()
         torch.cuda.synchronize()
-        print('generated {} in {} seconds'.format(video_id, int(start.elapsed_time(end)/1000)))
+        print('generated sample_{} in {} seconds'.format(i, int(start.elapsed_time(end)/1000)))
 
-        video_dir = video_id.split('/')[0]
-        os.makedirs(os.path.join(_output_directory, video_dir), exist_ok=True)
+        os.makedirs(os.path.join(_output_directory, f'sample_{i}'), exist_ok=True)
         
-        # generate audio from melspec
+        # generate audio from generated melspec
+        masked_melspec = denormalise_mel(masked_melspec)
+        masked_audio = vocoder(masked_melspec)
+        masked_audio = masked_audio.squeeze()
+        masked_audio = masked_audio / 1.1 / masked_audio.abs().max()
+        masked_audio = masked_audio.cpu().numpy()
+        sf.write(os.path.join(_output_directory, f'sample_{i}' + 'masked_audio.wav'), masked_audio, 16000)
+
+        # generate audio from masked melspec
         audio = vocoder(melspec)
         audio = audio.squeeze()
         audio = audio / 1.1 / audio.abs().max()
         audio = audio.cpu().numpy()
-        sf.write(os.path.join(_output_directory, video_id + '.wav'), audio, 16000)
-
-        # attach audio to video
-        in_video_filename = os.path.join(dataset_cfg.dataset_root, 'test', video_id+".mp4")
-        subprocess.call(f"ffmpeg -y -i {in_video_filename} \
-                    -i {os.path.join(_output_directory, video_id + '.wav')} \
-                    -c:v copy -map 0:v:0 -map 1:a:0 \
-                    {os.path.join(_output_directory, video_id + '.mp4')}", shell=True)
-
+        sf.write(os.path.join(_output_directory, f'sample_{i}' + 'generated_audio.wav'), audio, 16000)
+        
         # save as file
         melspec = melspec.squeeze(0).cpu()
-        torch.save(melspec, os.path.join(_output_directory, video_id + '.wav.spec'))
+        torch.save(melspec, os.path.join(_output_directory, f'sample_{i}', + 'generated_spec.npz'))
         
         # save as image
         melspec = melspec.numpy()
         gt_melspec = gt_melspec.squeeze(0).numpy()
-        matplotlib.image.imsave(os.path.join(_output_directory, video_id+'.png'), melspec[::-1])
-        matplotlib.image.imsave(os.path.join(_output_directory, video_id+'_gt.png'), gt_melspec[::-1])
+        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}' +'generated_spec_image.png'), melspec[::-1])
+        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}'+'gt_spec_image.png'), gt_melspec[::-1])
         
         
-        # save text
-        text_filename = os.path.join(_output_directory, video_id+'.txt')
-        with open(text_filename, 'w') as f:
-            f.write("gt       :  " + gt_text+"\n")
-            f.write("lipreader:  " + text)
+        # # save text
+        # text_filename = os.path.join(_output_directory, video_id+'.txt')
+        # with open(text_filename, 'w') as f:
+        #     f.write("gt       :  " + gt_text+"\n")
+        #     f.write("lipreader:  " + text)
         
     return
 

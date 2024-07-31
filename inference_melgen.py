@@ -109,10 +109,10 @@ def generate(
         raise Exception('No valid model found')
 
     dataset = SpeechRepaingingDataset('test', **dataset_cfg)
-    dataset_indices = torch.arange(n_samples) + 100000
+    dataset_indices = torch.arange(n_samples)
     groundtruth_melspec, masked_melspec = [], []
     for i in dataset_indices:
-        _gt_melspec, _masked_melspec = dataset[i]
+        _gt_melspec, _masked_melspec, _ = dataset[i]
         _gt_melspec = denormalise_mel(_gt_melspec)
         groundtruth_melspec.append(_gt_melspec.unsqueeze(0))
         masked_melspec.append(_masked_melspec.unsqueeze(0))

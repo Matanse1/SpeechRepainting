@@ -47,7 +47,7 @@ def train(
     rank, num_gpus, save_dir,
     diffusion_cfg, model_cfg, dataset_cfg, generate_cfg, # dist_cfg, wandb_cfg, # train_cfg,
     ckpt_iter, n_iters, iters_per_ckpt, iters_per_logging,
-    learning_rate, batch_size_per_gpu,
+    learning_rate, batch_size_per_gpu, w_masked_pix,
     name=None,
 ):
     
@@ -90,7 +90,7 @@ def train(
     net = AudioVisualModel(net_diffwave).cuda()
     print_size(net, verbose=False)
 
-    criterion = nn.L1Loss()
+    criterion = nn.L1Loss(reduction=None)
 
     # apply gradient all reduce
     if num_gpus > 1:
@@ -129,12 +129,12 @@ def train(
         epoch_loss = 0.
         for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}') if rank==0 else trainloader:
         # for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}'):
-            melspec, masked_melspec = data
-            melspec, masked_melspec = melspec.cuda(), masked_melspec.cuda()
+            melspec, masked_melspec, mask = data
+            melspec, masked_melspec, mask = melspec.cuda(), masked_melspec.cuda(), mask.cuda()
 
             # back-propagation
             optimizer.zero_grad()
-            loss = training_loss(net, criterion, melspec, masked_melspec, diffusion_hyperparams)
+            loss = training_loss(net, criterion, melspec, masked_melspec, mask, diffusion_hyperparams, w_masked_pix)
             if num_gpus > 1:
                 reduced_loss = reduce_tensor(loss.data, num_gpus).item()
             else:
@@ -184,7 +184,7 @@ def train(
     if rank == 0:
         writer.close()
 
-def training_loss(net, loss_fn, melspec, masked_melspec, diffusion_hyperparams):
+def training_loss(net, loss_fn, melspec, masked_melspec, mask, diffusion_hyperparams, w_masked_pix=0.7):
     """
     Compute the training loss of epsilon and epsilon_theta
 
@@ -208,7 +208,11 @@ def training_loss(net, loss_fn, melspec, masked_melspec, diffusion_hyperparams):
     transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
     cond_drop_prob = 0.2
     epsilon_theta = net(transformed_X, masked_melspec, diffusion_steps.view(B,1), cond_drop_prob)
-    return loss_fn(epsilon_theta, z) #TODO add mask weighting
+    loss = loss_fn(epsilon_theta, z) #[B, F, T]
+    unmaksed_loss = torch.sum(mask * loss) / torch.sum(mask)
+    masked_loss = torch.sum((1-mask) * loss) / torch.sum(1-mask)
+    weighted_loss = (1 - w_masked_pix) * unmaksed_loss + w_masked_pix * masked_loss
+    return weighted_loss
 
 
 

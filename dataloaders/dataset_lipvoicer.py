@@ -270,9 +270,10 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
     spectrogram, audio pair.
     """
     def __init__(self, split, sampling_rate, min_block_size, max_block_size, min_spacing,
-                 audio_stft_hop, audio_dir, mel_dir, mel_image_dir, num4empty_str):
-        self.mel_dir = mel_dir
-        self.audio_dir = audio_dir
+                 audio_stft_hop, base_data_dir, num4empty_str):
+        split = split.capitalize()
+        self.mel_dir = Path(base_data_dir, split, "mel")
+        self.audio_dir = Path(base_data_dir, split, "audio_final")
         self.min_block_size = min_block_size
         self.max_block_size = max_block_size
         self.min_spacing = min_spacing
@@ -284,21 +285,21 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
         self.audio_stft_hop = audio_stft_hop
         random.seed(1234)
         self.sampling_rate = sampling_rate
-        #self.audio_csv = pd.read_csv(Path(audio_dir, "room_parameters.csv"))
+        self.audio_csv = pd.read_csv(Path(self.audio_dir, "room_parameters.csv"))
     
     def __len__(self):
-        return 100000
-        #return len(self.audio_csv)
+        #return 100000
+        return len(self.audio_csv)
     
     def __getitem__(self, index):
         
         melspec_filename = Path(self.mel_dir, f"example_{index}.npz")
         melspec = torch.load(melspec_filename)
         melspec = normalise_mel(melspec)
-        masked_melspec = self.create_masked_melspec(melspec)
+        masked_melspec, mask = self.create_masked_melspec(melspec)
 
 
-        return (melspec, masked_melspec)
+        return (melspec, masked_melspec, mask)
 
     
 
@@ -337,6 +338,7 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
     def create_masked_melspec(self, melspec, min_block_size=35, max_block_size=65, min_spacing=30):
         
         melspec = melspec.clone()
+        mask = torch.ones(melspec.shape)
         if self.num4empty_str == 'min':
             min_melspec = torch.min(melspec)
             min_melspec -= 1
@@ -366,9 +368,10 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
             # Set the mask to 0 for the current block
             # mask[:, start_pos:start_pos + block_size] = 0
             melspec[:, start_pos:start_pos + block_size] = self.num4empty
+            mask[:, start_pos:start_pos + block_size] = 0
             # Update the end position of the last block
             last_block_end = start_pos + block_size
         
-        return melspec
+        return melspec, mask
         
     
