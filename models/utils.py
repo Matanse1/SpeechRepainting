@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import json
-
+import torch.nn as nn
 
 def load_json( json_fp ):
     with open( json_fp, 'r' ) as f:
@@ -35,3 +35,26 @@ def calc_diffusion_step_embedding(diffusion_steps, diffusion_step_embed_dim_in):
                                       torch.cos(_embed)), 1)
 
     return diffusion_step_embed
+
+
+class WeightedSum(nn.Module):
+    def __init__(self, num_tensors):
+        super(WeightedSum, self).__init__()
+        # Initialize the learnable weights
+        self.weights = nn.Parameter(torch.ones(num_tensors))
+
+    def forward(self, tensor_tuple):
+        # Ensure the input is a tuple of tensors
+        if not isinstance(tensor_tuple, tuple):
+            raise ValueError("Input must be a tuple of tensors")
+        
+        # Stack tensors to shape [num_tensors, B, T, F]
+        stacked_tensors = torch.stack(tensor_tuple)
+        
+        # Reshape weights to be broadcastable: [num_tensors, 1, 1, 1]
+        weights = self.weights.view(-1, 1, 1, 1)
+        
+        # Apply weights and sum along the first dimension
+        weighted_sum = torch.sum(weights * stacked_tensors, dim=0)
+        
+        return weighted_sum

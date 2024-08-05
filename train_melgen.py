@@ -2,7 +2,7 @@
 # under https://github.com/albertfgu/diffwave-sashimi/blob/master/LICENSE
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -90,7 +90,7 @@ def train(
     net = AudioVisualModel(net_diffwave).cuda()
     print_size(net, verbose=False)
 
-    criterion = nn.L1Loss(reduction=None)
+    criterion = nn.L1Loss(reduction='none')
 
     # apply gradient all reduce
     if num_gpus > 1:

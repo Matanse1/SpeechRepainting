@@ -3,9 +3,8 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from models.utils import calc_diffusion_step_embedding
-
+from models.utils import calc_diffusion_step_embedding, WeightedSum
+from transformers import AutoModel, WavLMModel
 
 def swish(x):
     return x * torch.sigmoid(x)
@@ -48,7 +47,8 @@ class Residual_block(nn.Module):
             diffusion_step_embed_dim_out=512,
             unconditional=True,
             mel_upsample=[16,16],
-            cond_feat_size=640
+            cond_feat_size=640,
+            **kwargs
         ):
         super(Residual_block, self).__init__()
         self.res_channels = res_channels
@@ -79,6 +79,20 @@ class Residual_block(nn.Module):
         self.skip_conv = nn.Conv1d(res_channels, skip_channels, kernel_size=1)
         self.skip_conv = nn.utils.weight_norm(self.skip_conv)
         nn.init.kaiming_normal_(self.skip_conv.weight)
+        self.wavlm_prop = kwargs.get("wavlm") #properties of wavlm
+        self.use_wavlm_rep = self.wavlm_prop["use_wavlm_rep"] # representation
+        self.use_weighted_sum_wavlm = self.wavlm_prop["use_weighted_sum_wavlm"]
+        self.use_all_hidden_states = self.wavlm_prop["use_all_hidden_states"]
+        if self.use_wavlm_rep:
+            print("Loading WavLM model")
+            self.wavlm_model = AutoModel.from_pretrained("microsoft/wavlm-large")
+            self.wavlm_model.eval()
+            print("WavLM model loaded")
+            print("Freeze WavLM model's parameters")
+            for param in self.wavlm_model.parameters():
+                param.requires_grad = False
+            if self.use_weighted_sum_wavlm:
+                self.weighted_sum = WeightedSum(13)
 
     def forward(self, input_data, mel_spec=None):
         x, diffusion_step_embed = input_data
@@ -107,7 +121,10 @@ class Residual_block(nn.Module):
             # assert(mel_spec.size(2) >= L)
             # if mel_spec.size(2) > L:
             #     mel_spec = mel_spec[:, :, :L]
-
+            if self.use_wavlm_rep:
+                with torch.no_grad():
+                    self.wavlm_model(
+                        condition_time, )
             mel_spec = self.mel_conv(mel_spec)
             h = h + mel_spec
 
@@ -130,6 +147,7 @@ class Residual_group(nn.Module):
                  unconditional=False,
                  mel_upsample=[16,16],
                  cond_feat_size=640,
+                 **kwargs
                  ):
         super(Residual_group, self).__init__()
         self.num_res_layers = num_res_layers
@@ -147,7 +165,8 @@ class Residual_group(nn.Module):
                                                        diffusion_step_embed_dim_out=diffusion_step_embed_dim_out,
                                                        unconditional=unconditional,
                                                        mel_upsample=mel_upsample,
-                                                       cond_feat_size=cond_feat_size))
+                                                       cond_feat_size=cond_feat_size,
+                                                       **kwargs))
 
     def forward(self, input_data, mel_spec=None):
         x, diffusion_steps = input_data
@@ -196,7 +215,8 @@ class WaveNet(nn.Module):
                                              diffusion_step_embed_dim_out=diffusion_step_embed_dim_out,
                                              mel_upsample=mel_upsample,
                                              unconditional=unconditional,
-                                             cond_feat_size=cond_feat_size)
+                                             cond_feat_size=cond_feat_size,
+                                             **kwargs)
 
         # final conv1x1 -> relu -> zeroconv1x1
         self.final_conv = nn.Sequential(Conv(skip_channels, skip_channels, kernel_size=1),
@@ -204,7 +224,7 @@ class WaveNet(nn.Module):
                                         ZeroConv1d(skip_channels, out_channels))
 
     def forward(self, input_data, cond=None):
-        audio, diffusion_steps = input_data
+        audio, diffusion_steps, audio_time_cond = input_data
 
         x = audio
         x = self.init_conv(x)

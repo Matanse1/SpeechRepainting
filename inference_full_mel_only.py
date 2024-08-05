@@ -30,6 +30,41 @@ from hifi_gan import utils as vocoder_utils
 from hifi_gan.env import AttrDict
 
 from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory
+import csv
+
+
+def training_loss(net, loss_fn, melspec, masked_melspec, mask, diffusion_hyperparams, w_masked_pix=0.8):
+    """
+    Compute the training loss of epsilon and epsilon_theta
+
+    Parameters:
+    net (torch network):            the wavenet model
+    loss_fn (torch loss function):  the loss function, default is nn.MSELoss()
+    X (torch.tensor):               training data, shape=(batchsize, 1, length of audio)
+    diffusion_hyperparams (dict):   dictionary of diffusion hyperparameters returned by calc_diffusion_hyperparams
+                                    note, the tensors need to be cuda tensors
+
+    Returns:
+    training loss
+    """
+    # Predict melspectrogram from visual features using diffusion model
+    _dh = diffusion_hyperparams
+    T, Alpha_bar = _dh["T"], _dh["Alpha_bar"]
+    # This is Algorithm 1 in the paper of classifier-free
+    B, C, L = melspec.shape  # B is batchsize, C=80, L is number of melspec frames
+    diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
+    z = torch.normal(0, 1, size=melspec.shape).cuda()
+    transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
+    cond_drop_prob = 0.2
+    epsilon_theta = net(transformed_X, masked_melspec, diffusion_steps.view(B,1), cond_drop_prob)
+    loss = loss_fn(epsilon_theta, z) #[B, F, T]
+    mean_loss = round(torch.mean(loss).item(), 2)
+    unmaksed_loss = torch.sum(mask * loss) / torch.sum(mask)
+    masked_loss = torch.sum((1-mask) * loss) / torch.sum(1-mask)
+    weighted_loss = (1 - w_masked_pix) * unmaksed_loss + w_masked_pix * masked_loss
+    est_X = (transformed_X - torch.sqrt(1-Alpha_bar[diffusion_steps]) * epsilon_theta) / torch.sqrt(Alpha_bar[diffusion_steps])
+    return weighted_loss, est_X, transformed_X, diffusion_steps, mean_loss
+
 
 
 def sampling(net, diffusion_hyperparams,
@@ -112,6 +147,7 @@ def generate(
         asr_start=250,
         save_dir=None,
         n_samples_test = 20,
+        inference_mel_only_name_dir='generated_mels',
         lipread_text_dir=None,
         **kwargs
     ):
@@ -140,7 +176,7 @@ def generate(
 
     if save_dir is None:
         save_dir = os.getcwd()
-    output_directory = os.path.join(save_dir, 'generated_mels')
+    output_directory = os.path.join(save_dir, inference_mel_only_name_dir)
     if rank == 0:
         if not os.path.isdir(output_directory):
             os.makedirs(output_directory)
@@ -168,20 +204,56 @@ def generate(
     print('Finish Loading HiFi-GAN')
     
     dataset = SpeechRepaingingDataset('test', **dataset_cfg)
-    
+    criterion = nn.L1Loss(reduction='none')
     guidance_dir_name = f'w1={w_mel_cond}'
     guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}'
     _output_directory = os.path.join(output_directory, guidance_dir_name)
     os.makedirs(_output_directory, exist_ok=True)
     print("saving to output directory", _output_directory)
 
+    # Create a CSV file
+    csv_file = open(os.path.join(_output_directory, 'results.csv'), 'w', newline='')
+    csv_writer = csv.writer(csv_file, delimiter='|')
+
+    # Write the header row
+    csv_writer.writerow(['Sample', 'block_size_list', 'num_blocks'])
+
+
+    
     for i in tqdm(range(n_samples_test)):
-        gt_melspec, masked_melspec, _ = dataset[i]
-        gt_melspec = denormalise_mel(gt_melspec)
+        os.makedirs(os.path.join(_output_directory, f'sample_{i}'), exist_ok=True)
+        gt_melspec, masked_melspec, mask, masked_audio_time, block_size_list, num_blocks = dataset[i]
+        csv_writer.writerow([i, block_size_list, num_blocks])
         gt_melspec = gt_melspec.unsqueeze(0)
         masked_melspec = masked_melspec.unsqueeze(0)      # add batch dimension
 
 
+        ## save the masked audio in time domain
+        sf.write(os.path.join(_output_directory, f'sample_{i}', 'time_masking_audio.wav'), masked_audio_time, 16000)
+        ## get the the clean version of the noisy melspec and the noisy melspec
+        weighted_loss, est_X, transformed_X, diffusion_steps, mean_loss = training_loss(net, criterion, gt_melspec.cuda(), masked_melspec.cuda(), mask.cuda(), diffusion_hyperparams, w_masked_pix=0.8)
+        # save the est audio
+        est_X = denormalise_mel(est_X)
+        est_audio = vocoder(est_X)
+        est_audio = est_audio.squeeze()
+        est_audio = est_audio / 1.1 / est_audio.abs().max()
+        est_audio = est_audio.cpu().numpy()
+        sf.write(os.path.join(_output_directory, f'sample_{i}', f'est_audio_after_clean_loss={mean_loss}.wav'), est_audio, 16000)
+        
+        est_X = est_X.squeeze(0).cpu().numpy()
+        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'est_melspec_after_clean_image.png'), est_X[::-1])
+        
+        #save the noisy audio
+        transformed_X = denormalise_mel(transformed_X)
+        transformed_X_audio = vocoder(transformed_X)
+        transformed_X_audio = transformed_X_audio.squeeze()
+        transformed_X_audio = transformed_X_audio / 1.1 / transformed_X_audio.abs().max()
+        transformed_X_audio = transformed_X_audio.cpu().numpy()
+        sf.write(os.path.join(_output_directory, f'sample_{i}', f'noisy_audio={diffusion_steps.item()}.wav'), transformed_X_audio, 16000)
+        
+        transformed_X = transformed_X.squeeze(0).cpu().numpy()
+        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'noisy_melspec_image.png'), transformed_X[::-1])
+        
         # inference
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
@@ -203,17 +275,17 @@ def generate(
         torch.cuda.synchronize()
         print('generated sample_{} in {} seconds'.format(i, int(start.elapsed_time(end)/1000)))
 
-        os.makedirs(os.path.join(_output_directory, f'sample_{i}'), exist_ok=True)
         
-        # generate audio from generated melspec
+        
+        # generate audio from masked melspec
         masked_melspec = denormalise_mel(masked_melspec)
         masked_audio = vocoder(masked_melspec.cuda())
         masked_audio = masked_audio.squeeze()
         masked_audio = masked_audio / 1.1 / masked_audio.abs().max()
         masked_audio = masked_audio.cpu().numpy()
-        sf.write(os.path.join(_output_directory, f'sample_{i}', 'masked_audio.wav'), masked_audio, 16000)
+        sf.write(os.path.join(_output_directory, f'sample_{i}', 'spec_masking_audio.wav'), masked_audio, 16000)
 
-        # generate audio from masked melspec
+        # generate audio from generated melspec
         audio = vocoder(melspec)
         audio = audio.squeeze()
         audio = audio / 1.1 / audio.abs().max()
@@ -221,7 +293,8 @@ def generate(
         sf.write(os.path.join(_output_directory, f'sample_{i}', 'generated_audio.wav'), audio, 16000)
         
     # generate audio from gt melspec
-        audio = vocoder(gt_melspec.cude())
+        gt_melspec = denormalise_mel(gt_melspec)
+        audio = vocoder(gt_melspec.cuda())
         audio = audio.squeeze()
         audio = audio / 1.1 / audio.abs().max()
         audio = audio.cpu().numpy()
@@ -245,6 +318,9 @@ def generate(
         # with open(text_filename, 'w') as f:
         #     f.write("gt       :  " + gt_text+"\n")
         #     f.write("lipreader:  " + text)
+    
+    # Close the CSV file
+    csv_file.close()
         
     return
 

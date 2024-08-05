@@ -278,7 +278,7 @@ class WavLMPositionalConvEmbedding(nn.Module):
             groups=config.num_conv_pos_embedding_groups,
         )
 
-        weight_norm = nn.utils.weight_norm
+        weight_norm = nn.utils.weight_norm 
         if hasattr(nn.utils.parametrizations, "weight_norm"):
             weight_norm = nn.utils.parametrizations.weight_norm
 

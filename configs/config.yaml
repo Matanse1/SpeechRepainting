@@ -12,6 +12,11 @@ melgen:
   dilation_cycle: 1
   mel_upsample: [2, 2]
   cond_feat_size: 80
+  wavlm:
+    use_wavlm_rep: False
+    use_weighted_sum_wavlm: True
+    use_all_hidden_states: True
+
 
 diffusion:
   T: 400
@@ -22,11 +27,14 @@ diffusion:
 dataset:
   base_data_dir: /dsi/gannot-lab1/datasets/reverb_data/
   sampling_rate: ${audio.sampling_rate}
-  min_block_size: 35 
-  max_block_size: 65 
-  min_spacing: 30
+  min_block_size: 10 # 35 
+  max_block_size: 15 # 65 
+  min_spacing:  70 # 30
+  rand_num_blocks: False
+  num_blocks: 2 #used when rand_num_blocks=False
+  return_mask_properties: True
   audio_stft_hop: ${audio.hop_length}
-  num4empty_str: 0 #or -12, 0, min
+  num4empty_str: -12 #or -12, 0, min
 
 audio:
   sampling_rate: 16000
@@ -37,7 +45,7 @@ audio:
   mel_fmax: 8000.0
 
 train: # Not used in generate.py
-  name: LibSp_only-conv1d-condition_fixed-mask      # Name of experiment (prefix of experiment name)
+  name: LibSp_only-conv1d-condition_fixed-mask_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting    # where checkpoints will be saved
   ckpt_iter: max    # continue training from a specific iteration
   # for testing the training phase
@@ -50,18 +58,19 @@ train: # Not used in generate.py
   n_iters: 2000001 #200 #1000001
   learning_rate: 2e-4
   batch_size_per_gpu: 128
-  w_masked_pix: 0.7
+  w_masked_pix: 0.8
 
 generate:
-  name: LibSp_only-conv1d-condition
-  ckpt_path: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_only-conv1d-condition/wnet_h512_d12_T400_betaT0.02/checkpoint/80000.pkl          
+  name: LibSp_only-conv1d-condition_fixed-mask_w_masked_pix=0.8
+  ckpt_path: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_only-conv1d-condition_fixed-mask_w_masked_pix=0.8/wnet_h512_d12_T400_betaT0.02/checkpoint/200000.pkl       
   n_samples: 3          # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
   n_samples_test: 20 # used in full inference mel only
   video_path: null      # generate audio for a given silent video file
   w_mel_cond: 2            # w1 in the paper
   w_asr: 0 #1.5            # w2 in the paper
   asr_start: 270        # t_asr
-  save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_only-conv1d-condition/wnet_h512_d12_T400_betaT0.02        # where to save the generated audio
+  save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_only-conv1d-condition_fixed-mask_w_masked_pix=0.8/wnet_h512_d12_T400_betaT0.02     # where to save the generated audio
+  inference_mel_only_name_dir: very_small_gap_mask # generated_mels, small_gap_mask
   lipread_text_dir: null # directory with predicted text for generating test samples of benchmark dataset 
 
 distributed:
