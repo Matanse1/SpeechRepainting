@@ -41,7 +41,7 @@ class WeightedSum(nn.Module):
     def __init__(self, num_tensors):
         super(WeightedSum, self).__init__()
         # Initialize the learnable weights
-        self.weights = nn.Parameter(torch.ones(num_tensors))
+        self.weights = nn.Parameter(torch.ones(num_tensors), requires_grad=True)
 
     def forward(self, tensor_tuple):
         # Ensure the input is a tuple of tensors
@@ -58,3 +58,31 @@ class WeightedSum(nn.Module):
         weighted_sum = torch.sum(weights * stacked_tensors, dim=0)
         
         return weighted_sum
+
+def match_and_concatenate(H, Y):
+    """
+    Duplicate the pre-trained representation H to match the time dimension of Y and concatenate them.
+    
+    Parameters:
+    H (torch.Tensor): Pre-trained representation of shape (B, T/2, F_pretrained).
+    Y (torch.Tensor): STFT representation of shape (B, T, F_stft).
+    
+    Returns:
+    torch.Tensor: Concatenated representation of shape (B, T, F_stft + F_pretrained).
+    """
+    B, F_pretrained, T_half = H.size()
+    B, F_stft, T = Y.size()
+    
+    # Duplicate each element of H to match the time dimension of Y
+    H_expanded = H.repeat_interleave(2, dim=-1)[:, :, :T]
+    if H_expanded.shape[-1 < Y.shape[-1]]:
+        H_expanded = torch.nn.functional.pad(H_expanded, (0, Y.shape[-1] - H_expanded.shape[-1]), mode='replicate')
+    Y = Y[:, :, :H_expanded.shape[-1]]
+    # Concatenate along the feature dimension
+    concatenated_representation = torch.cat((Y, H_expanded), dim=-2)
+    
+    return concatenated_representation
+
+def print_modle_size(model, model_name):
+    params = sum([np.prod(p.size()) for n, p in model.named_parameters()])
+    print("The number of parameters of {} is: {:.6f}M".format(model_name, params/1e6))

@@ -21,10 +21,10 @@ from models.model_builder import ModelBuilder
 from models.audiovisual_model import AudioVisualModel
 from dataloaders.dataset_lipvoicer import SpeechRepaingingDataset
 from dataloaders.stft import denormalise_mel
-
+from tqdm import tqdm
 from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory
 
-def sampling(net, diffusion_hyperparams, w_mel_cond, condition=None):
+def sampling(net, diffusion_hyperparams, w_mel_cond, conditions=None):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
 
@@ -45,13 +45,13 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, condition=None):
 
     # print('begin sampling, total number of reverse steps = %s' % T)
     #This is Algorithm 2 in the paper of classifier-free but with the regular sampler(the one shown in the paper ddpm)
-    masked_melspec = condition
+    masked_melspec, masked_audio_time = conditions
     x = torch.normal(0, 1, size=masked_melspec.shape).cuda()
     with torch.no_grad():
-        for t in range(T-1, -1, -1):
+        for t in tqdm(range(T-1, -1, -1)):
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
-            epsilon_theta = net(x, masked_melspec, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
-            epsilon_theta_uncond = net(x, masked_melspec, diffusion_steps, cond_drop_prob=1)
+            epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
+            epsilon_theta_uncond = net(x, conditions, diffusion_steps, cond_drop_prob=1)
             epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
 
             x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
@@ -108,14 +108,17 @@ def generate(
     except:
         raise Exception('No valid model found')
 
-    dataset = SpeechRepaingingDataset('test', **dataset_cfg)
+    dataset = SpeechRepaingingDataset('test', **dataset_cfg, return_mask_properties=False)
     dataset_indices = torch.arange(n_samples)
-    groundtruth_melspec, masked_melspec = [], []
+    groundtruth_melspec, masked_cond = [], []
     for i in dataset_indices:
-        _gt_melspec, _masked_melspec, _ = dataset[i]
+        _gt_melspec, *_masked_cond, _ = dataset[i]
+        _masked_cond = [_masked_cond[i].unsqueeze(0).cuda() for i in range(len(_masked_cond))]
+        # for i in range(len(_masked_cond)):
+        #     _masked_cond[i] = _masked_cond[i].unsqueeze(0).cuda()
         _gt_melspec = denormalise_mel(_gt_melspec)
         groundtruth_melspec.append(_gt_melspec.unsqueeze(0))
-        masked_melspec.append(_masked_melspec.unsqueeze(0))
+        masked_cond.append(_masked_cond)
 
 
     print(f'begin generating melspectrograms | {n_samples} samples')
@@ -132,7 +135,7 @@ def generate(
             net,
             diffusion_hyperparams,
             w_mel_cond,
-            condition=masked_melspec[i].cuda(),
+            conditions=masked_cond[i],
         )
         generated_melspec.append(denormalise_mel(_melspec))
 
@@ -142,7 +145,7 @@ def generate(
         ckpt_iter,
         int(start.elapsed_time(end)/1000)))
 
-    return generated_melspec, groundtruth_melspec, masked_melspec
+    return generated_melspec, groundtruth_melspec, masked_cond
 
 
 @hydra.main(version_base=None, config_path="configs/", config_name="config")

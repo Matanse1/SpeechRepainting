@@ -99,13 +99,13 @@ def sampling(net, diffusion_hyperparams,
         text_tokens = torch.LongTensor(tokenizer.encode(guidance_text))
         text_tokens = text_tokens.unsqueeze(0).cuda()
 
-    masked_melspec = condition
+    masked_melspec, _ = condition
     x = torch.normal(0, 1, size=masked_melspec.shape).cuda()
     with torch.no_grad():
-        for t in range(T-1, -1, -1):
+        for t in tqdm(range(T-1, -1, -1)):
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
-            epsilon_theta = net(x, masked_melspec, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
-            epsilon_theta_uncond = net(x, masked_melspec, diffusion_steps, cond_drop_prob=1)
+            epsilon_theta = net(x, condition, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
+            epsilon_theta_uncond = net(x, condition, diffusion_steps, cond_drop_prob=1)
             epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
             
             if asr_guidance_net is not None and t <= asr_start:
@@ -171,8 +171,10 @@ def generate(
         checkpoint = torch.load(ckpt_path, map_location='cpu')
         net.load_state_dict(checkpoint['model_state_dict'])
         print('Successfully loaded MelGen checkpoint')
-    except:
+    except Exception as e:
+        print(e)
         raise Exception('No valid model found')
+        
 
     if save_dir is None:
         save_dir = os.getcwd()
@@ -203,7 +205,7 @@ def generate(
     vocoder.remove_weight_norm()
     print('Finish Loading HiFi-GAN')
     
-    dataset = SpeechRepaingingDataset('test', **dataset_cfg)
+    dataset = SpeechRepaingingDataset('test', **dataset_cfg, return_mask_properties=True)
     criterion = nn.L1Loss(reduction='none')
     guidance_dir_name = f'w1={w_mel_cond}'
     guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}'
@@ -222,16 +224,20 @@ def generate(
     
     for i in tqdm(range(n_samples_test)):
         os.makedirs(os.path.join(_output_directory, f'sample_{i}'), exist_ok=True)
-        gt_melspec, masked_melspec, mask, masked_audio_time, block_size_list, num_blocks = dataset[i]
+        gt_melspec, *masked_cond, mask, block_size_list, num_blocks = dataset[i]
+        masked_cond = [masked_cond[i].unsqueeze(0).cuda() for i in range(len(masked_cond))]
+        # for j in range(len(masked_cond)):
+        #     masked_cond[j] = masked_cond[j].unsqueeze(0).cuda()
         csv_writer.writerow([i, block_size_list, num_blocks])
         gt_melspec = gt_melspec.unsqueeze(0)
-        masked_melspec = masked_melspec.unsqueeze(0)      # add batch dimension
+        masked_melspec, masked_audio_time = masked_cond
 
 
         ## save the masked audio in time domain
-        sf.write(os.path.join(_output_directory, f'sample_{i}', 'time_masking_audio.wav'), masked_audio_time, 16000)
+        masked_audio_time4saveing = masked_audio_time.squeeze().cpu().numpy()
+        sf.write(os.path.join(_output_directory, f'sample_{i}', 'time_masking_audio.wav'), masked_audio_time4saveing, 16000)
         ## get the the clean version of the noisy melspec and the noisy melspec
-        weighted_loss, est_X, transformed_X, diffusion_steps, mean_loss = training_loss(net, criterion, gt_melspec.cuda(), masked_melspec.cuda(), mask.cuda(), diffusion_hyperparams, w_masked_pix=0.8)
+        weighted_loss, est_X, transformed_X, diffusion_steps, mean_loss = training_loss(net, criterion, gt_melspec.cuda(), masked_cond,  mask.cuda(), diffusion_hyperparams, w_masked_pix=0.8)
         # save the est audio
         est_X = denormalise_mel(est_X)
         est_audio = vocoder(est_X)
@@ -262,7 +268,7 @@ def generate(
         melspec = sampling(net, 
                         diffusion_hyperparams,
                         w_mel_cond,
-                        condition=masked_melspec.cuda(),
+                        condition=masked_cond,
                         asr_guidance_net=asr_guidance_net,
                         w_asr=w_asr,
                         asr_start=asr_start,
@@ -306,7 +312,7 @@ def generate(
         
         # save as image
         melspec = melspec.numpy()
-        masked_melspec = masked_melspec.squeeze(0).numpy()
+        masked_melspec = masked_melspec.squeeze(0).cpu().numpy()
         gt_melspec = gt_melspec.squeeze(0).numpy()
         matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'generated_spec_image.png'), melspec[::-1])
         matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'gt_spec_image.png'), gt_melspec[::-1])

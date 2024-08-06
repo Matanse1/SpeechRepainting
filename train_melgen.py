@@ -2,13 +2,13 @@
 # under https://github.com/albertfgu/diffwave-sashimi/blob/master/LICENSE
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import time
 import warnings
 warnings.filterwarnings("ignore")
 from functools import partial
 import multiprocessing as mp
-
+from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
@@ -18,8 +18,8 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
-from dataloaders import dataloader
-from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, plot_melspec, match_and_concatenate
+from dataloaders import dataloader, custom_collate_fn
+from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, plot_melspec
 
 from distributed_util import init_distributed, apply_gradient_allreduce, reduce_tensor
 from inference_melgen import generate
@@ -41,6 +41,7 @@ def distributed_train(rank, num_gpus, group_name, cfg):
         dataset_cfg=cfg.dataset,
         generate_cfg=cfg.generate,
         **cfg.train,
+        cfg=cfg
     )
 
 def train(
@@ -48,7 +49,7 @@ def train(
     diffusion_cfg, model_cfg, dataset_cfg, generate_cfg, # dist_cfg, wandb_cfg, # train_cfg,
     ckpt_iter, n_iters, iters_per_ckpt, iters_per_logging,
     learning_rate, batch_size_per_gpu, w_masked_pix,
-    name=None,
+    name=None, cfg=None
 ):
     
     """
@@ -68,10 +69,19 @@ def train(
     if rank == 0:
         if not (name is None or name == ""):
             path_log = os.path.join(save_dir, 'exp', name, local_path, "logs")
+            path_config = os.path.join(save_dir, 'exp', name, local_path, "config")
+            Path(path_config).mkdir(parents=True, exist_ok=True)
         else:
             path_log = os.path.join(save_dir, 'exp', local_path, "logs")
+            path_config = os.path.join(save_dir, 'exp', local_path, "config")
+            Path(path_config).mkdir(parents=True, exist_ok=True)
         writer = SummaryWriter(log_dir=path_log)
-
+    
+    if rank == 0:
+        config_path = os.path.join(path_config, 'config.yaml')
+        with open(config_path, 'w') as f:
+            OmegaConf.save(cfg, f)
+        print('Configuration saved')
     
 
     # map diffusion hyperparameters to gpu
@@ -129,12 +139,15 @@ def train(
         epoch_loss = 0.
         for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}') if rank==0 else trainloader:
         # for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}'):
-            melspec, masked_melspec, mask = data
-            melspec, masked_melspec, mask = melspec.cuda(), masked_melspec.cuda(), mask.cuda()
+            melspec, *masked_cond, mask = data
+            masked_cond = [masked_cond[i].cuda() for i in range(len(masked_cond))]
+            melspec, mask = melspec.cuda(), mask.cuda()
+            # for i in range(len(masked_cond)):
+            #     masked_cond[i] = masked_cond[i].cuda()
 
             # back-propagation
             optimizer.zero_grad()
-            loss = training_loss(net, criterion, melspec, masked_melspec, mask, diffusion_hyperparams, w_masked_pix)
+            loss = training_loss(net, criterion, melspec, masked_cond, mask, diffusion_hyperparams, w_masked_pix)
             if num_gpus > 1:
                 reduced_loss = reduce_tensor(loss.data, num_gpus).item()
             else:
@@ -170,10 +183,11 @@ def train(
                 )
                 
                 # send images to log
-                for i, (mel, mel_gt, masked_melspec) in enumerate(zip(*samples)):
+                for i, (mel, mel_gt, masked_cond) in enumerate(zip(*samples)):
                     writer.add_figure(f'spec/{i+1}_gen', plot_melspec(mel[0].cpu().numpy()), n_iter)
                     writer.add_figure(f'spec/{i+1}_gt', plot_melspec(mel_gt[0].cpu().numpy()), n_iter)
-                    writer.add_figure(f'spec/{i+1}_masked_melspec', plot_melspec(masked_melspec[0].cpu().numpy()), n_iter)
+                    writer.add_figure(f'spec/{i+1}_masked_melspec', plot_melspec(masked_cond[0][0].cpu().numpy()), n_iter) #this is the masked mel spectrogram
+                    writer.add_audio(f'audio/{i+1}_masked_audio_time', masked_cond[1][0].cpu().numpy(), n_iter, sample_rate=16000) # this is the masked audio in time domain
 
             n_iter += 1
         if rank == 0:
@@ -184,7 +198,7 @@ def train(
     if rank == 0:
         writer.close()
 
-def training_loss(net, loss_fn, melspec, masked_melspec, mask, diffusion_hyperparams, w_masked_pix=0.7):
+def training_loss(net, loss_fn, melspec, masked_cond, mask, diffusion_hyperparams, w_masked_pix=0.7):
     """
     Compute the training loss of epsilon and epsilon_theta
 
@@ -207,7 +221,7 @@ def training_loss(net, loss_fn, melspec, masked_melspec, mask, diffusion_hyperpa
     z = torch.normal(0, 1, size=melspec.shape).cuda()
     transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
     cond_drop_prob = 0.2
-    epsilon_theta = net(transformed_X, masked_melspec, diffusion_steps.view(B,1), cond_drop_prob)
+    epsilon_theta = net(transformed_X, masked_cond, diffusion_steps.view(B,1), cond_drop_prob)
     loss = loss_fn(epsilon_theta, z) #[B, F, T]
     unmaksed_loss = torch.sum(mask * loss) / torch.sum(mask)
     masked_loss = torch.sum((1-mask) * loss) / torch.sum(1-mask)

@@ -284,7 +284,7 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
         if self.num4empty_str != 'min':
             self.num4empty = int(num4empty_str)
         
-        self.test = True if split=='test' else False
+        self.test = True if split=='Test' else False
         self.audio_stft_hop = audio_stft_hop
         random.seed(1234)
         self.sampling_rate = sampling_rate
@@ -301,14 +301,14 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
         melspec = normalise_mel(melspec)
         
         audio_dir_filename = Path(self.audio_dir, f"example_{index}.wav")
-        audio_time = read(audio_dir_filename)
-        
+        _, audio_time = read(audio_dir_filename)
+        audio_time = torch.from_numpy(audio_time.astype(np.float32))
         if self.return_mask_properties:
             masked_melspec, mask, masked_audio_time, block_size_list, num_blocks = self.create_masked_melspec(melspec, audio_time)
-            return (melspec, masked_melspec, mask, masked_audio_time, block_size_list, num_blocks)
+            return (melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
         else:  
             masked_melspec, mask, masked_audio_time = self.create_masked_melspec(melspec, audio_time)
-            return (melspec, masked_melspec, mask, masked_audio_time)
+            return (melspec, masked_melspec, masked_audio_time, mask)
 
     
 

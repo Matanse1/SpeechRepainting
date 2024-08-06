@@ -8,7 +8,7 @@ from .dataset_lipvoicer import SpeechRepaingingDataset
 
 def dataloader(dataset_cfg, batch_size, num_gpus):
     # train
-    dataset = SpeechRepaingingDataset(split='Old_train', **dataset_cfg) #LipVoicerDataset(split='train', **dataset_cfg)
+    dataset = SpeechRepaingingDataset(split='Old_train', **dataset_cfg, return_mask_properties=False) #LipVoicerDataset(split='train', **dataset_cfg)
 
     # distributed sampler
     train_sampler = DistributedSampler(dataset) if num_gpus > 1 else None
@@ -20,5 +20,15 @@ def dataloader(dataset_cfg, batch_size, num_gpus):
         num_workers=4,
         pin_memory=False,
         drop_last=True,
+        # collate_fn=custom_collate_fn
     )
     return trainloader
+
+def custom_collate_fn(batch):
+    melspecs, masked_conds, masks = zip(*batch)
+    
+    # Process masked_melspecs and masked_audio_times separately
+    masked_melspecs = [cond[0] for cond in masked_conds]
+    masked_audio_times = [cond[1] for cond in masked_conds]
+    
+    return torch.stack(list(melspecs)), [torch.stack(masked_melspecs), torch.stack(masked_audio_times)], torch.stack(list(masks))

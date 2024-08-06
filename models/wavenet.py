@@ -3,9 +3,8 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from models.utils import calc_diffusion_step_embedding, WeightedSum
+from models.utils import calc_diffusion_step_embedding, WeightedSum, match_and_concatenate, print_modle_size
 from transformers import AutoModel, WavLMModel
-
 def swish(x):
     return x * torch.sigmoid(x)
 
@@ -48,6 +47,7 @@ class Residual_block(nn.Module):
             unconditional=True,
             mel_upsample=[16,16],
             cond_feat_size=640,
+            representation_models={},
             **kwargs
         ):
         super(Residual_block, self).__init__()
@@ -61,6 +61,23 @@ class Residual_block(nn.Module):
 
         self.unconditional = unconditional
         if not self.unconditional:
+            
+            self.wavlm_prop = kwargs.get("wavlm") #properties of wavlm
+            self.use_wavlm_rep = self.wavlm_prop["use_wavlm_rep"] # representation
+            self.use_weighted_sum_wavlm = self.wavlm_prop["use_weighted_sum_wavlm"]
+            self.use_all_hidden_states = self.wavlm_prop["use_all_hidden_states"]
+            version_model = self.wavlm_prop["version_model"]
+            if self.use_wavlm_rep:
+                self.wavlm_model = representation_models["wavlm"]
+                if self.use_weighted_sum_wavlm:
+                    if version_model == "microsoft/wavlm-large":
+                        num_hs = 25 #number of hidden states
+                        rep_dim_wavlm = 1024
+                    elif version_model == "microsoft/wavlm-base-plus":
+                        num_hs = 13
+                        rep_dim_wavlm = 768
+                    self.weighted_sum = WeightedSum(num_hs) # takes tuples and weights and returns the weighted sum of the tuples with learnable weights
+            
             # add mel spectrogram upsampler and conditioner conv1x1 layer
             self.upsample_conv2d = torch.nn.ModuleList()
             for s in mel_upsample:
@@ -68,7 +85,10 @@ class Residual_block(nn.Module):
                 conv_trans2d = torch.nn.utils.weight_norm(conv_trans2d)
                 torch.nn.init.kaiming_normal_(conv_trans2d.weight)
                 self.upsample_conv2d.append(conv_trans2d)
-            self.mel_conv = Conv(cond_feat_size, 2 * self.res_channels, kernel_size=1)  # 80 is mel bands
+            if self.use_wavlm_rep:
+                self.mel_conv = Conv(cond_feat_size + rep_dim_wavlm, 2 * self.res_channels, kernel_size=3)  # i chose the kernel in order to catch two consecutive frames of wavlm rep and melspec (the wamlm is half the size of the melspec)
+            else:
+                self.mel_conv = Conv(cond_feat_size, 2 * self.res_channels, kernel_size=1)  # 80 is mel bands
 
         # residual conv1x1 layer, connect to next residual layer
         self.res_conv = nn.Conv1d(res_channels, res_channels, kernel_size=1)
@@ -79,20 +99,7 @@ class Residual_block(nn.Module):
         self.skip_conv = nn.Conv1d(res_channels, skip_channels, kernel_size=1)
         self.skip_conv = nn.utils.weight_norm(self.skip_conv)
         nn.init.kaiming_normal_(self.skip_conv.weight)
-        self.wavlm_prop = kwargs.get("wavlm") #properties of wavlm
-        self.use_wavlm_rep = self.wavlm_prop["use_wavlm_rep"] # representation
-        self.use_weighted_sum_wavlm = self.wavlm_prop["use_weighted_sum_wavlm"]
-        self.use_all_hidden_states = self.wavlm_prop["use_all_hidden_states"]
-        if self.use_wavlm_rep:
-            print("Loading WavLM model")
-            self.wavlm_model = AutoModel.from_pretrained("microsoft/wavlm-large")
-            self.wavlm_model.eval()
-            print("WavLM model loaded")
-            print("Freeze WavLM model's parameters")
-            for param in self.wavlm_model.parameters():
-                param.requires_grad = False
-            if self.use_weighted_sum_wavlm:
-                self.weighted_sum = WeightedSum(13)
+        
 
     def forward(self, input_data, mel_spec=None):
         x, diffusion_step_embed = input_data
@@ -111,7 +118,9 @@ class Residual_block(nn.Module):
 
         # add mel spectrogram as (local) conditioner
         if mel_spec is not None:
+            masked_melspec, masked_audio_time = mel_spec
             assert not self.unconditional
+            
             # Upsample spectrogram to size of audio
             # mel_spec = torch.unsqueeze(mel_spec, dim=1)
             # mel_spec = F.leaky_relu(self.upsample_conv2d[0](mel_spec), 0.4)
@@ -123,9 +132,17 @@ class Residual_block(nn.Module):
             #     mel_spec = mel_spec[:, :, :L]
             if self.use_wavlm_rep:
                 with torch.no_grad():
-                    self.wavlm_model(
-                        condition_time, )
-            mel_spec = self.mel_conv(mel_spec)
+                    masked_audio_time_cond_wavlm = self.wavlm_model(masked_audio_time, output_hidden_states=self.use_all_hidden_states) #representation of the masked audio using wavlm
+                if self.use_weighted_sum_wavlm:
+                    hidden_states = masked_audio_time_cond_wavlm.hidden_states
+                    wavlm_output = self.weighted_sum(hidden_states) #[B, T/2, F]
+                else:
+                    wavlm_output = masked_audio_time_cond_wavlm.last_hidden_state
+                wavlm_output = wavlm_output.transpose(-1, -2) #[B, F, T/2]
+                cond = match_and_concatenate(wavlm_output, masked_melspec)
+            else:
+                cond = masked_melspec
+            mel_spec = self.mel_conv(cond)
             h = h + mel_spec
 
         # gated-tanh nonlinearity
@@ -147,6 +164,7 @@ class Residual_group(nn.Module):
                  unconditional=False,
                  mel_upsample=[16,16],
                  cond_feat_size=640,
+                 representation_models={},
                  **kwargs
                  ):
         super(Residual_group, self).__init__()
@@ -166,6 +184,7 @@ class Residual_group(nn.Module):
                                                        unconditional=unconditional,
                                                        mel_upsample=mel_upsample,
                                                        cond_feat_size=cond_feat_size,
+                                                       representation_models=representation_models,
                                                        **kwargs))
 
     def forward(self, input_data, mel_spec=None):
@@ -197,6 +216,24 @@ class WaveNet(nn.Module):
                  mel_upsample=[16,16],
                  **kwargs):
         super().__init__()
+        representation_models = {}
+        #### For WavLM representation model
+        self.wavlm_prop = kwargs.get("wavlm") #properties of wavlm
+        self.use_wavlm_rep = self.wavlm_prop["use_wavlm_rep"] # representation
+        self.use_weighted_sum_wavlm = self.wavlm_prop["use_weighted_sum_wavlm"]
+        self.use_all_hidden_states = self.wavlm_prop["use_all_hidden_states"]
+        version_model = self.wavlm_prop["version_model"]
+        if self.use_wavlm_rep:
+            print("Loading WavLM model")
+            wavlm_model = AutoModel.from_pretrained(version_model)
+            wavlm_model.eval()
+            print("WavLM model loaded")
+            print("Freeze WavLM model's parameters")
+            for param in wavlm_model.parameters():
+                param.requires_grad = False
+            print_modle_size(wavlm_model, version_model)
+            representation_models["wavlm"] = wavlm_model
+
         self.res_channels = res_channels
         self.skip_channels = skip_channels
         self.num_res_layers = num_res_layers
@@ -216,6 +253,7 @@ class WaveNet(nn.Module):
                                              mel_upsample=mel_upsample,
                                              unconditional=unconditional,
                                              cond_feat_size=cond_feat_size,
+                                             representation_models=representation_models,
                                              **kwargs)
 
         # final conv1x1 -> relu -> zeroconv1x1
@@ -224,7 +262,7 @@ class WaveNet(nn.Module):
                                         ZeroConv1d(skip_channels, out_channels))
 
     def forward(self, input_data, cond=None):
-        audio, diffusion_steps, audio_time_cond = input_data
+        audio, diffusion_steps = input_data
 
         x = audio
         x = self.init_conv(x)
