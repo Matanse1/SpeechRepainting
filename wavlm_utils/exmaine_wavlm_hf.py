@@ -12,7 +12,10 @@ from torch.nn import functional as F
 # processor = AutoProcessor.from_pretrained("patrickvonplaten/wavlm-libri-clean-100h-base-plus")
 # model = WavLMModel.from_pretrained("patrickvonplaten/wavlm-libri-clean-100h-base-plus")
 # model = AutoModel.from_pretrained("microsoft/wavlm-large")
-model = AutoModel.from_pretrained("microsoft/wavlm-large").cuda()
+model = AutoModel.from_pretrained("microsoft/wavlm-large")
+model.compile()
+model = model.cuda()
+print(f"The device is: {model.device}")
 # model = AutoModel.from_pretrained("microsoft/wavlm-base-plus").cuda()
 
 module_parameters = list(filter(lambda p: p[1].requires_grad, model.named_parameters()))

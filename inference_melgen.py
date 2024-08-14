@@ -91,6 +91,7 @@ def generate(
     # net_facial = builder.build_facial(fc_out=128, with_fc=True)
     net_diffwave = builder.build_diffwave_model(model_cfg)
     net = AudioVisualModel(net_diffwave).cuda()
+    # net = torch.compile(net)
     # print_size(net)
     net.eval()
 

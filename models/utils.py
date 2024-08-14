@@ -59,13 +59,14 @@ class WeightedSum(nn.Module):
         
         return weighted_sum
 
-def match_and_concatenate(H, Y):
+def match_and_concatenate(H, Y, concat_mel_with_rep=True):
     """
     Duplicate the pre-trained representation H to match the time dimension of Y and concatenate them.
     
     Parameters:
     H (torch.Tensor): Pre-trained representation of shape (B, T/2, F_pretrained).
     Y (torch.Tensor): STFT representation of shape (B, T, F_stft).
+    concat_mel_with_rep (bool): If True, concatenate the mel spectrogram with the repeated pre-trained representation.
     
     Returns:
     torch.Tensor: Concatenated representation of shape (B, T, F_stft + F_pretrained).
@@ -79,7 +80,10 @@ def match_and_concatenate(H, Y):
         H_expanded = torch.nn.functional.pad(H_expanded, (0, Y.shape[-1] - H_expanded.shape[-1]), mode='replicate')
     Y = Y[:, :, :H_expanded.shape[-1]]
     # Concatenate along the feature dimension
-    concatenated_representation = torch.cat((Y, H_expanded), dim=-2)
+    if concat_mel_with_rep:
+        concatenated_representation = torch.cat((Y, H_expanded), dim=-2)
+    else:
+        concatenated_representation = H_expanded
     
     return concatenated_representation
 

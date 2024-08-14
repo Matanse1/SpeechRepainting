@@ -2,7 +2,7 @@
 # under https://github.com/albertfgu/diffwave-sashimi/blob/master/LICENSE
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -98,6 +98,7 @@ def train(
     net_diffwave = builder.build_diffwave_model(model_cfg)
     #net = AudioVisualModel((net_lipreading, net_facial, net_diffwave)).cuda()
     net = AudioVisualModel(net_diffwave).cuda()
+    # net = torch.compile(net)
     print_size(net, verbose=False)
 
     criterion = nn.L1Loss(reduction='none')
@@ -152,6 +153,7 @@ def train(
                 reduced_loss = reduce_tensor(loss.data, num_gpus).item()
             else:
                 reduced_loss = loss.item()
+            # print("doing the backward nor")
             loss.backward()
             optimizer.step()
 

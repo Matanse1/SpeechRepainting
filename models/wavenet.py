@@ -67,6 +67,9 @@ class Residual_block(nn.Module):
             self.use_weighted_sum_wavlm = self.wavlm_prop["use_weighted_sum_wavlm"]
             self.use_all_hidden_states = self.wavlm_prop["use_all_hidden_states"]
             version_model = self.wavlm_prop["version_model"]
+            self.concat_mel_with_wavlm = self.wavlm_prop["concat_mel_with_wavlm"]
+            self.reduce_channels = self.wavlm_prop["reduce_channels"]
+            self.two_branch = self.wavlm_prop["two_branch"]
             if self.use_wavlm_rep:
                 self.wavlm_model = representation_models["wavlm"]
                 if self.use_weighted_sum_wavlm:
@@ -86,7 +89,18 @@ class Residual_block(nn.Module):
                 torch.nn.init.kaiming_normal_(conv_trans2d.weight)
                 self.upsample_conv2d.append(conv_trans2d)
             if self.use_wavlm_rep:
-                self.mel_conv = Conv(cond_feat_size + rep_dim_wavlm, 2 * self.res_channels, kernel_size=3)  # i chose the kernel in order to catch two consecutive frames of wavlm rep and melspec (the wamlm is half the size of the melspec)
+                if self.two_branch:
+                    self.mel_branch = Conv(cond_feat_size, cond_feat_size, kernel_size=3)
+                    self.wavlm_branch = Conv(rep_dim_wavlm, cond_feat_size, kernel_size=3)
+                    self.fusion_branch = Conv(2 * cond_feat_size, cond_feat_size, kernel_size=3)
+                input_channel_concat = cond_feat_size + rep_dim_wavlm
+                if self.reduce_channels:
+                    self.mel_conv_reduce = Conv(cond_feat_size + rep_dim_wavlm, cond_feat_size, kernel_size=3)
+                    input_channel_concat = cond_feat_size
+                if self.concat_mel_with_wavlm:
+                    self.mel_conv = Conv(input_channel_concat, 2 * self.res_channels, kernel_size=3)  # i chose the kernel in order to catch two consecutive frames of wavlm rep and melspec (the wamlm is half the size of the melspec)
+                else:
+                    self.mel_conv = Conv(rep_dim_wavlm, 2 * self.res_channels, kernel_size=3)
             else:
                 self.mel_conv = Conv(cond_feat_size, 2 * self.res_channels, kernel_size=1)  # 80 is mel bands
 
@@ -139,9 +153,12 @@ class Residual_block(nn.Module):
                 else:
                     wavlm_output = masked_audio_time_cond_wavlm.last_hidden_state
                 wavlm_output = wavlm_output.transpose(-1, -2) #[B, F, T/2]
-                cond = match_and_concatenate(wavlm_output, masked_melspec)
+                cond = match_and_concatenate(wavlm_output, masked_melspec, concat_mel_with_rep=self.concat_mel_with_wavlm)
+                if self.reduce_channels:
+                    cond = self.mel_conv_reduce(cond)
             else:
                 cond = masked_melspec
+            
             mel_spec = self.mel_conv(cond)
             h = h + mel_spec
 
