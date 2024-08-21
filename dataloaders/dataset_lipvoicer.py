@@ -270,10 +270,11 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
     spectrogram, audio pair.
     """
     def __init__(self, split, sampling_rate, min_block_size, max_block_size, min_spacing,
-                 audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties):
+                 audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties, return_target_time=False):
         split = split.capitalize()
         self.mel_dir = Path(base_data_dir, split, "mel")
         self.audio_dir = Path(base_data_dir, split, "audio_final")
+        self.return_target_time = return_target_time
         self.return_mask_properties = return_mask_properties
         self.num_blocks = num_blocks
         self.rand_num_blocks = rand_num_blocks
@@ -305,9 +306,13 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
         audio_time = torch.from_numpy(audio_time.astype(np.float32))
         if self.return_mask_properties:
             masked_melspec, mask, masked_audio_time, block_size_list, num_blocks = self.create_masked_melspec(melspec, audio_time)
+            if self.return_target_time:
+                return (audio_time, melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
             return (melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
         else:  
             masked_melspec, mask, masked_audio_time = self.create_masked_melspec(melspec, audio_time)
+            if self.return_target_time:
+                return (audio_time, melspec, masked_melspec, masked_audio_time, mask)
             return (melspec, masked_melspec, masked_audio_time, mask)
 
     

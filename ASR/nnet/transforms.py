@@ -20,18 +20,18 @@ import torchaudio
 # Other
 import numpy as np
 import collections
-import skimage.transform
-import sys
+    # import skimage.transform
+    # import sys
 
-# Face Detectors
-try:
-    from ibug.face_detection import RetinaFacePredictor
-except Exception as e:
-    print(e)
-try:
-    from ibug.face_alignment import FANPredictor
-except Exception as e:
-    print(e)
+    # # Face Detectors
+    # try:
+    #     from ibug.face_detection import RetinaFacePredictor
+    # except Exception as e:
+    #     print(e)
+    # try:
+    #     from ibug.face_alignment import FANPredictor
+    # except Exception as e:
+    #     print(e)
 
 ###############################################################################
 # Transforms

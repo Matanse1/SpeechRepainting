@@ -25,7 +25,7 @@ lr = 6e-5
 epochs = 10
 batch_size = 128
 accumulated_steps = 2
-tokenizer_path = "ASR/media/tokenizerbpe1024.model"
+tokenizer_path = "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/tokenizerbpe256.model"
 precision = torch.float16
 callback_path = "ASR/callbacks/LRS23/LM/GPT-Small"
 

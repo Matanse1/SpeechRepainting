@@ -1,0 +1,66 @@
+
+melgen:
+  _name_: melgen
+  in_channels: 80
+  out_channels: 80
+  diffusion_step_embed_dim_in: 128
+  diffusion_step_embed_dim_mid: 512
+  diffusion_step_embed_dim_out: 512
+  res_channels: 512 # 128 for wavlm, 512 without wavlm
+  skip_channels: 512
+  num_res_layers: 12
+  dilation_cycle: 1
+  mel_upsample: [2, 2]
+  cond_feat_size: 80
+  wavlm:
+    use_wavlm_rep: True
+    use_weighted_sum_wavlm: True # if False use the last hidden states
+    use_all_hidden_states: True
+    concat_mel_with_wavlm: True # fuse  and then process
+    version_model: 'microsoft/wavlm-base-plus' # microsoft/wavlm-large, microsoft/wavlm-base-plus
+    reduce_channels: False
+    two_branch: False # process each branch separately and them fuse them
+
+
+
+
+diffusion:
+  T: 400
+  beta_0: 0.0001
+  beta_T: 0.02
+  beta: null
+
+dataset:
+  base_data_dir: /dsi/gannot-lab1/datasets/reverb_data/
+  sampling_rate: ${audio.sampling_rate}
+  # for train - relatively large masking
+  # min_block_size: 30 # 35, 10 
+  # max_block_size: 65 # 65 , 15
+  # min_spacing:  30 # 30, 70
+  # relatively middle masking
+  min_block_size: 25 # 35, 10 
+  max_block_size: 40 # 65 , 15
+  min_spacing:  70 # 30, 70
+  # relatively small masking
+  # min_block_size: 10 # 35, 10 
+  # max_block_size: 15 # 65 , 15
+  # min_spacing:  70 # 30, 70
+  rand_num_blocks: True
+  num_blocks: 2 #used when rand_num_blocks=False
+  # return_mask_properties: False #for train set this to False, for inference set to True
+  audio_stft_hop: ${audio.hop_length}
+  num4empty_str: -12 #or -12, 0, min
+
+audio:
+  sampling_rate: 16000
+  filter_length: 640
+  hop_length: 160
+  win_length: 640
+  mel_fmin: 20.0
+  mel_fmax: 8000.0
+
+save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/asr_eval_recordings
+
+distributed:
+  dist_backend: nccl
+  dist_url: tcp://localhost:54321 #54321

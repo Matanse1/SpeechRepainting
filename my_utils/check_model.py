@@ -14,7 +14,9 @@ class SimpleModel(nn.Module):
     def forward(self, x):
         return self.fc(x)
 
+input_data = torch.randn(1, 10, 16000*3, dtype=torch.float32).to(device)
 model = SimpleModel().to(device)
-input_data = torch.randn(1, 10, 16000*3).to(device)
+model = torch.compile(model)
+
 output_data = model(input_data)
 print(output_data)

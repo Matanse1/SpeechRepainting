@@ -2,7 +2,7 @@
 # under https://github.com/albertfgu/diffwave-sashimi/blob/master/LICENSE
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '7'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -189,7 +189,7 @@ def train(
                     writer.add_figure(f'spec/{i+1}_gen', plot_melspec(mel[0].cpu().numpy()), n_iter)
                     writer.add_figure(f'spec/{i+1}_gt', plot_melspec(mel_gt[0].cpu().numpy()), n_iter)
                     writer.add_figure(f'spec/{i+1}_masked_melspec', plot_melspec(masked_cond[0][0].cpu().numpy()), n_iter) #this is the masked mel spectrogram
-                    writer.add_audio(f'audio/{i+1}_masked_audio_time', masked_cond[1][0].cpu().numpy(), n_iter, sample_rate=16000) # this is the masked audio in time domain
+                    writer.add_audio(f'audio/{i+1}_masked_audio_time', masked_cond[1].cpu().numpy(), n_iter, sample_rate=16000) # this is the masked audio in time domain
 
             n_iter += 1
         if rank == 0:
