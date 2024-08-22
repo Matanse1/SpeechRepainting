@@ -187,4 +187,12 @@ def plot_melspec(melspec):
     plt.imshow(melspec[::-1])
     return fig
 
+def preprocess_text(txt):
+    txt = txt.replace("{LG}", "")  # remove laughter
+    txt = txt.replace("{NS}", "")  # remove noise
+    txt = txt.replace("\n", "")
+    txt = txt.replace("  ", " ")
+    txt = txt.lower().strip()
+    return txt
+
 

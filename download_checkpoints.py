@@ -101,11 +101,16 @@ from zipfile import ZipFile
   
 # }
 repo_files = {
-   "Lip reading checkpoint": {
-        "gdrive_id": "1t8RHhzDTTvOQkLQhmK1LZGnXRRXOXGi6",
+   "ASR Audio-only LRS3 checkpoint": {
+        "gdrive_id": "1eIZifGTqpuubRaWiAfZKdf9eHoMsUvL4",
         "dir_path": "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
-        "filename": "LRS3_V_WER19.1.zip"
+        "filename": "LRS3_A_WER1.0.zip"
     },
+   "LM Audio-only LRS3 checkpoint": {
+        "gdrive_id": "1g31HGxJnnOwYl17b70ObFQZ1TSnPvRQv",
+        "dir_path": "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
+        "filename": "LRS3_LM.zip"
+    }
 }
 # Download pretrained models checkpoints
 for key, value in repo_files.items():

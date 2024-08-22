@@ -7,6 +7,8 @@ from omegaconf import DictConfig, OmegaConf
 import hydra
 from utils import calc_diffusion_hyperparams
 import soundfile as sf
+import numpy as np
+
 
 @hydra.main(version_base=None, config_path="../configs/", config_name="asr_checking_config")
 def main(cfg: DictConfig) -> None:
@@ -41,8 +43,14 @@ def main(cfg: DictConfig) -> None:
     # save the target audio in time domain
     audio_time_time4saveing = audio_time.squeeze().cpu().numpy()
     sf.write(os.path.join(save_dir, f'sample_{i}', 'audio_time.wav'), audio_time_time4saveing, 16000)
+    
     # x = gt_melspec.unsqueeze(0).cuda()
     x = masked_melspec.unsqueeze(0).cuda()
+    
+    # spec_generated = torch.load("/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/as-train-gap_asr-guidance/w1=2_w2=1.5_asr_start=270/sample_0/generated_spec.npz")
+    spec_generated = torch.load("/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/as-train-gap_2cp/w1=2_w2=0_asr_start=270/sample_1/generated_spec.npz")
+    
+    x = spec_generated.unsqueeze(0).cuda()
     inputs = x, torch.tensor([x.shape[-1]]).cuda() 
     outputs_ao = asr_guidance_net(inputs, diffusion_steps)["outputs"]
     preds_ao = decoder(outputs_ao)[0]

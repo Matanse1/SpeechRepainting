@@ -29,8 +29,14 @@ from hifi_gan.generator import Generator as Vocoder
 from hifi_gan import utils as vocoder_utils
 from hifi_gan.env import AttrDict
 
-from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory
+from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, preprocess_text
 import csv
+from mouthroi_processing.pipelines.pipeline import InferencePipeline
+from scipy.io.wavfile import write
+import tempfile
+import ASR.asr_models as asr_models
+
+
 
 
 def training_loss(net, loss_fn, melspec, masked_melspec, mask, diffusion_hyperparams, w_masked_pix=0.8):
@@ -74,7 +80,8 @@ def sampling(net, diffusion_hyperparams,
             asr_start=None,
             guidance_text=None,
             tokenizer=None,
-            decoder=None
+            decoder=None,
+            without_condtion=False
             ):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
@@ -104,9 +111,12 @@ def sampling(net, diffusion_hyperparams,
     with torch.no_grad():
         for t in tqdm(range(T-1, -1, -1)):
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
-            epsilon_theta = net(x, condition, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
-            epsilon_theta_uncond = net(x, condition, diffusion_steps, cond_drop_prob=1)
-            epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
+            if without_condtion:
+                epsilon_theta = net(x, condition, diffusion_steps, cond_drop_prob=1)
+            else:
+                epsilon_theta = net(x, condition, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
+                epsilon_theta_uncond = net(x, condition, diffusion_steps, cond_drop_prob=1)
+                epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
             
             if asr_guidance_net is not None and t <= asr_start:
                 with torch.enable_grad():
@@ -125,14 +135,14 @@ def sampling(net, diffusion_hyperparams,
                 x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
             # x = x.clip(-1, 1.5)
             
-            # if t % 10 == 0:
-            #     if asr_guidance_net is not None and t <= asr_start:
-            #         inputs = x, length_input
-            #         outputs_ao = asr_guidance_net(inputs, diffusion_steps)["outputs"]
-            #         preds_ao = decoder(outputs_ao)[0]
-            #         print(preds_ao)
+            if t % 10 == 0:
+                if asr_guidance_net is not None and t <= asr_start:
+                    inputs = x, length_input
+                    outputs_ao = asr_guidance_net(inputs, diffusion_steps)["outputs"]
+                    preds_ao = decoder(outputs_ao)[0]
+                    print(preds_ao)
 
-    return x
+    return x, preds_ao
 
 
 @torch.no_grad()
@@ -148,6 +158,9 @@ def generate(
         save_dir=None,
         n_samples_test = 20,
         inference_mel_only_name_dir='generated_mels',
+        without_condtion=False,
+        config_filename_asr_cond=None,
+        apply_asr_guidance=False,
         lipread_text_dir=None,
         **kwargs
     ):
@@ -186,9 +199,13 @@ def generate(
         print("saving to output directory", output_directory)
 
     # print('Loading ASR, tokenizer and decoder')
-    #asr_guidance_net, tokenizer, decoder = asr_models.get_models(ds_name)
-    asr_guidance_net, tokenizer, decoder = None, None, None
-    text = None
+    ds_name = 'LRS3' # 'LRS2'
+    if apply_asr_guidance:
+        asr_guidance_net, tokenizer, decoder = asr_models.get_models(ds_name)
+        print('ASR, tokenizer and decoder loaded')
+    else:
+        asr_guidance_net, tokenizer, decoder, text = None, None, None, None
+    
     # HiFi-GAN
     
     print('Load HiFi-GAN')
@@ -220,7 +237,8 @@ def generate(
     # Write the header row
     csv_writer.writerow(['Sample', 'block_size_list', 'num_blocks'])
 
-
+    # ASR based on audio-only model, this is used for getting transcription for guidance, so the input is the masked audio in time domain
+    pipeline_asr = InferencePipeline(config_filename_asr_cond, device='cuda')
     
     for i in tqdm(range(n_samples_test)):
         os.makedirs(os.path.join(_output_directory, f'sample_{i}'), exist_ok=True)
@@ -231,7 +249,20 @@ def generate(
         csv_writer.writerow([i, block_size_list, num_blocks])
         gt_melspec = gt_melspec.unsqueeze(0)
         masked_melspec, masked_audio_time = masked_cond
-
+        
+        if apply_asr_guidance:
+            # Create a temporary file
+            sample_rate = 16000  # Example value
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_wav:
+                # Save the masked audio array as a WAV file in the temporary file
+                write(temp_wav.name, sample_rate, masked_audio_time.squeeze().cpu().numpy().astype(np.float32))
+                # Send the temporary WAV file to the pipeline
+                transcript_from_condition = pipeline_asr(temp_wav.name)
+                text = transcript_from_condition
+                print(f"The transcript is: {text}")
+                text = preprocess_text(text)
+                print(f"The normalized transcript is: {text}")
+    
 
         ## save the masked audio in time domain
         masked_audio_time4saveing = masked_audio_time.squeeze().cpu().numpy()
@@ -265,7 +296,7 @@ def generate(
         end = torch.cuda.Event(enable_timing=True)
         start.record()
 
-        melspec = sampling(net, 
+        melspec, preds_ao = sampling(net, 
                         diffusion_hyperparams,
                         w_mel_cond,
                         condition=masked_cond,
@@ -274,14 +305,19 @@ def generate(
                         asr_start=asr_start,
                         guidance_text=text,
                         tokenizer=tokenizer,
-                        decoder=decoder
+                        decoder=decoder,
+                        without_condtion=without_condtion
                         )
         melspec = denormalise_mel(melspec)
         end.record()
         torch.cuda.synchronize()
         print('generated sample_{} in {} seconds'.format(i, int(start.elapsed_time(end)/1000)))
 
-        
+        # save text
+        text_filename = os.path.join(_output_directory, f'sample_{i}', 'asr_text.txt')
+        with open(text_filename, 'w') as f:
+            f.write("asr_condition       :  " +text+"\n")
+            f.write("asr_generated_signal:  " + preds_ao)
         
         # generate audio from masked melspec
         masked_melspec = denormalise_mel(masked_melspec)
@@ -319,11 +355,7 @@ def generate(
         matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'masked_spec_image.png'), masked_melspec[::-1])
         
         
-        # # save text
-        # text_filename = os.path.join(_output_directory, video_id+'.txt')
-        # with open(text_filename, 'w') as f:
-        #     f.write("gt       :  " + gt_text+"\n")
-        #     f.write("lipreader:  " + text)
+        
     
     # Close the CSV file
     csv_file.close()

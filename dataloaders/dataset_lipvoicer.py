@@ -23,6 +23,27 @@ import torch
 import matplotlib.pyplot as plt
 from scipy.io.wavfile import read
 
+
+
+def set_seed(seed):
+    # Set the seed for Python's built-in random module
+    random.seed(seed)
+    
+    # Set the seed for NumPy's random module
+    np.random.seed(seed)
+    
+    # Set the seed for PyTorch's random module
+    torch.manual_seed(seed)
+    
+    # If you are using CUDA
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # If you are using multi-GPU.
+    
+    # Ensure reproducibility in some other operations in PyTorch
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 def create_mask(shape, min_block_size=35, max_block_size=65, min_spacing=30):
         # Initialize the mask with ones
         mask = torch.ones((shape[0], shape[1]))
@@ -287,7 +308,7 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
         
         self.test = True if split=='Test' else False
         self.audio_stft_hop = audio_stft_hop
-        random.seed(1234)
+        set_seed(1234)
         self.sampling_rate = sampling_rate
         self.audio_csv = pd.read_csv(Path(self.audio_dir, "room_parameters.csv"))
     
