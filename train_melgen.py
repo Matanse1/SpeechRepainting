@@ -2,7 +2,7 @@
 # under https://github.com/albertfgu/diffwave-sashimi/blob/master/LICENSE
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '7'
+os.environ['CUDA_VISIBLE_DEVICES'] = '5'
 import time
 import warnings
 warnings.filterwarnings("ignore")

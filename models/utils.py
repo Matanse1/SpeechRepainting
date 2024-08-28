@@ -45,8 +45,8 @@ class WeightedSum(nn.Module):
 
     def forward(self, tensor_tuple):
         # Ensure the input is a tuple of tensors
-        if not isinstance(tensor_tuple, tuple):
-            raise ValueError("Input must be a tuple of tensors")
+        if not isinstance(tensor_tuple, tuple) and not isinstance(tensor_tuple, list):
+            raise ValueError("Input must be a tuple or array of tensors")
         
         # Stack tensors to shape [num_tensors, B, T, F]
         stacked_tensors = torch.stack(tensor_tuple)

@@ -14,11 +14,23 @@ melgen:
   cond_feat_size: 80
   wavlm:
     use_wavlm_rep: True
-    use_weighted_sum_wavlm: False # if False use the last hidden states
-    use_all_hidden_states: False
-    use_indices_hidden_states: True
-      indices_hidden_states: {'0': [0,1,2], '1': [0,1,2], '2': [0,1,2], '3': [0,1,2], '4': [0,1,2], '4': [0,1,2], '5': [0,1,2], '6': [0,1,2], '7': [0,1,2]
-      , '8': [0,1,2], '9': [0,1,2], '10': [0,1,2], '11': [0,1,2]} #the number of keys is the the same as num_res_layers
+    use_weighted_sum_wavlm: True # if False use the last hidden states
+    use_all_hidden_states: True
+    specific_indices:
+      use_indices_hidden_states: False
+      indices_hidden_states: #this indicate for each block which layers to take to the weighted sum
+          {0: [0, 1, 2],
+          1: [0, 1, 2],
+          2: [0, 1, 2],
+          3: [0, 1, 2],
+          4: [0, 1, 2],
+          5: [0, 1, 2],
+          6: [0, 1, 2],
+          7: [0, 1, 2],
+          8: [0, 1, 2],
+          9: [0, 1, 2],
+          10: [0, 1, 2],
+          11: [0, 1, 2]} #the number of keys is the the same as num_res_layers
     concat_mel_with_wavlm: False # fuse  and then process
     version_model: 'microsoft/wavlm-base-plus' # microsoft/wavlm-large, microsoft/wavlm-base-plus
     reduce_channels: False
@@ -63,7 +75,7 @@ audio:
   mel_fmax: 8000.0
 
 train: # Not used in generate.py
-  name:  LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}_last_hidden #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
+  name:  LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}_specific_hidden_states #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting    # where checkpoints will be saved
   ckpt_iter: max    # continue training from a specific iteration
 
@@ -73,24 +85,24 @@ train: # Not used in generate.py
   # n_iters: 200 #200 #1000001
   #for complete training
   iters_per_ckpt: 10000 #20 #10000
-  iters_per_logging: 100 #1 #100
+  iters_per_logging: 150 #1 #100
   n_iters: 20000001 #200 #1000001
 
   learning_rate: 2e-4
-  batch_size_per_gpu: 100 # 240
+  batch_size_per_gpu: 130 # 240
   w_masked_pix: 0.8
 
 generate:
-  name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_last_hidden
-  ckpt_path: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_last_hidden/wnet_h512_d12_T400_betaT0.02/checkpoint/50000.pkl
+  name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True
+  ckpt_path: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/checkpoint/90000.pkl
   n_samples: 2        # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
   n_samples_test: 10 # used in full inference mel only
   video_path: null      # generate audio for a given silent video file
   w_mel_cond: 2            # w1 in the paper
   w_asr: 1.5 #1.5            # w2 in the paper
   asr_start: 270 #270        # t_asr
-  save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_last_hidden/wnet_h512_d12_T400_betaT0.02    # where to save the generated audio
-  inference_mel_only_name_dir: as-train-gap_asr_guidance #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap
+  save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02    # where to save the generated audio
+  inference_mel_only_name_dir: as-train-gap_asr_guidance_9cp #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap
   without_condtion: False
   config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
   apply_asr_guidance: True

@@ -81,9 +81,9 @@ class Residual_block(nn.Module):
                     num_hs = 13
                     rep_dim_wavlm = 768
                 if self.use_weighted_sum_wavlm:
-                    if self.wavlm_prop["use_indices_hidden_states"]:
-                        self.indices_hidden_states = self.wavlm_prop["indices_hidden_states"][number]
-                        num_hs = len(self.wavlm_prop["indices_hidden_states"][number])
+                    if self.wavlm_prop["specific_indices"]["use_indices_hidden_states"]:
+                        self.indices_hidden_states = self.wavlm_prop["specific_indices"]["indices_hidden_states"][number]
+                        num_hs = len(self.indices_hidden_states)
                     self.weighted_sum = WeightedSum(num_hs) # takes tuples and weights and returns the weighted sum of the tuples with learnable weights
             
             # add mel spectrogram upsampler and conditioner conv1x1 layer
@@ -156,7 +156,8 @@ class Residual_block(nn.Module):
                     masked_audio_time_cond_wavlm = self.wavlm_model(masked_audio_time, output_hidden_states=self.use_all_hidden_states) #representation of the masked audio using wavlm
                 if self.use_weighted_sum_wavlm:
                     hidden_states = masked_audio_time_cond_wavlm.hidden_states
-                    extracted_elements = [hidden_states[i] for i in indices_hidden_states]
+                    if self.wavlm_prop["specific_indices"]["use_indices_hidden_states"]:
+                        hidden_states = [hidden_states[i] for i in self.indices_hidden_states]
                     wavlm_output = self.weighted_sum(hidden_states) #[B, T/2, F]
                 else:
                     wavlm_output = masked_audio_time_cond_wavlm.last_hidden_state
