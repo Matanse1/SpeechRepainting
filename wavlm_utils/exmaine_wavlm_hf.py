@@ -54,13 +54,13 @@ with torch.no_grad():
     reverb_audio1_pad = F.pad(reverb_audio1, ((240, 0)), "constant", 0)
     reverb_audio1_out = model(reverb_audio1_pad).last_hidden_state
     print(reverb_audio1_out.shape)
-    for i in range(16000):
-        reverb_audio1_pad = F.pad(reverb_audio1, ((i, i)), "constant", 0)
-        reverb_audio1_out = model(reverb_audio1_pad).last_hidden_state
-        out_shape = reverb_audio1_out.shape
-        if out_shape[1] == 250:
-            print(out_shape, 'INDEX:', i)
-            break
+    # for i in range(16000):
+    #     reverb_audio1_pad = F.pad(reverb_audio1, ((i, i)), "constant", 0)
+    #     reverb_audio1_out = model(reverb_audio1_pad).last_hidden_state
+    #     out_shape = reverb_audio1_out.shape
+    #     if out_shape[1] == 250:
+    #         print(out_shape, 'INDEX:', i)
+    #         break
             
     reverb_audio1_out = model(**reverb_audio1_dict).last_hidden_state
     outputs11 = model(**spk1_ut1_dict).last_hidden_state
