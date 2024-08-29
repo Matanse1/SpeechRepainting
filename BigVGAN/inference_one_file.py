@@ -41,39 +41,37 @@ def inference(a, h):
     state_dict_g = load_checkpoint(a.checkpoint_file, device)
     generator.load_state_dict(state_dict_g["generator"])
 
-    filelist = os.listdir(a.input_mels_dir)
 
     os.makedirs(a.output_dir, exist_ok=True)
 
     generator.eval()
     generator.remove_weight_norm()
     with torch.no_grad():
-        for i, filname in enumerate(filelist):
-            # Load the mel spectrogram in .npy format
-            x = torch.load(os.path.join(a.input_mels_dir, filname))
-            x = torch.FloatTensor(x).to(device)
-            if len(x.shape) == 2:
-                x = x.unsqueeze(0)
+        # Load the mel spectrogram in .npy format
+        x = torch.load(a.input_mel_path)
+        x = torch.FloatTensor(x).to(device)
+        if len(x.shape) == 2:
+            x = x.unsqueeze(0)
 
-            y_g_hat = generator(x)
+        y_g_hat = generator(x)
 
-            audio = y_g_hat.squeeze()
-            audio = audio * MAX_WAV_VALUE
-            audio = audio.cpu().numpy().astype("int16")
+        audio = y_g_hat.squeeze()
+        audio = audio * MAX_WAV_VALUE
+        audio = audio.cpu().numpy().astype("int16")
 
-            output_file = os.path.join(
-                a.output_dir, os.path.splitext(filname)[0] + "_generated_e2e_bigvgan.wav"
-            )
-            write(output_file, h.sampling_rate, audio)
-            print(output_file)
+        output_file = os.path.join(
+            os.path.splitext(a.input_mel_path)[0] + "_generated_bigvgan.wav"
+        )
+        write(output_file, h.sampling_rate, audio)
+        print(output_file)
 
 
 def main():
     print("Initializing Inference Process..")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_mels_dir", default="/dsi/gannot-lab1/datasets/reverb_data/Test/mel")
-    parser.add_argument("--output_dir", default="/dsi/gannot-lab1/users/mordehay/bigvgan/generated_files_from_mel")
+    parser.add_argument("--input_mel_path", default="/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/as-train-gap_asr_guidance_9cp/w1=2_w2=1.5_asr_start=270/sample_2/generated_spec.npz")
+    parser.add_argument("--output_dir", default="/dsi/gannot-lab1/users/mordehay/bigvgan/generated_file_from_mel_one-file")
     parser.add_argument("--checkpoint_file", required=False, default='/dsi/gannot-lab1/users/mordehay/bigvgan/g_00050000')
     parser.add_argument("--use_cuda_kernel", action="store_true", default=False)
 

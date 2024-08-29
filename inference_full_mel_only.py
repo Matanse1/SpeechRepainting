@@ -26,6 +26,8 @@ from models.audiovisual_model import AudioVisualModel
 from dataloaders.dataset_lipvoicer import SpeechRepaingingDataset
 from dataloaders.stft import denormalise_mel
 from hifi_gan.generator import Generator as Vocoder
+from BigVGAN.bigvgan import BigVGAN as Generator
+from BigVGAN.inference_e2e import load_checkpoint as load_checkpoint_vgan
 from hifi_gan import utils as vocoder_utils
 from hifi_gan.env import AttrDict
 
@@ -206,8 +208,8 @@ def generate(
     else:
         asr_guidance_net, tokenizer, decoder, text = None, None, None, None
     
+    vocoders = {}
     # HiFi-GAN
-    
     print('Load HiFi-GAN')
     config_file = 'hifi_gan/config.json'
     with open(config_file) as f:
@@ -221,6 +223,21 @@ def generate(
     vocoder.eval()
     vocoder.remove_weight_norm()
     print('Finish Loading HiFi-GAN')
+    vocoders['hifi_gan'] = vocoder
+    # BigVGAN
+    checkpoint_file = '/dsi/gannot-lab1/users/mordehay/bigvgan/g_00050000'
+    config_file = '/dsi/gannot-lab1/users/mordehay/bigvgan/config.json'
+    with open(config_file) as f:
+        data = f.read()
+
+    json_config = json.loads(data)
+    h = AttrDict(json_config)
+    generator = Generator(h, use_cuda_kernel=True).cuda()
+    state_dict_g = load_checkpoint_vgan(a.checkpoint_file, 'cuda')
+    generator.load_state_dict(state_dict_g["generator"])
+    generator.eval()
+    generator.remove_weight_norm()
+    vocoders['bigvgan'] = generator
     
     dataset = SpeechRepaingingDataset('test', **dataset_cfg, return_mask_properties=True)
     criterion = nn.L1Loss(reduction='none')
@@ -321,27 +338,31 @@ def generate(
         
         # generate audio from masked melspec
         masked_melspec = denormalise_mel(masked_melspec)
-        masked_audio = vocoder(masked_melspec.cuda())
-        masked_audio = masked_audio.squeeze()
-        masked_audio = masked_audio / 1.1 / masked_audio.abs().max()
-        masked_audio = masked_audio.cpu().numpy()
-        sf.write(os.path.join(_output_directory, f'sample_{i}', 'spec_masking_audio.wav'), masked_audio, 16000)
+        for vocoder_name, vocoder in vocoders.items():
+            masked_audio = vocoder(masked_melspec.cuda())
+            masked_audio = masked_audio.squeeze()
+            masked_audio = masked_audio / 1.1 / masked_audio.abs().max()
+            masked_audio = masked_audio.cpu().numpy()
+            sf.write(os.path.join(_output_directory, f'sample_{i}', f'spec_masking_audio_{vocoder_name}.wav'), masked_audio, 16000)
 
         # generate audio from generated melspec
-        audio = vocoder(melspec)
-        audio = audio.squeeze()
-        audio = audio / 1.1 / audio.abs().max()
-        audio = audio.cpu().numpy()
-        sf.write(os.path.join(_output_directory, f'sample_{i}', 'generated_audio.wav'), audio, 16000)
+        for vocoder_name, vocoder in vocoders.items():
+            audio = vocoder(melspec)
+            audio = audio.squeeze()
+            audio = audio / 1.1 / audio.abs().max()
+            audio = audio.cpu().numpy()
+            sf.write(os.path.join(_output_directory, f'sample_{i}', f'generated_audio_{vocoder_name}.wav'), audio, 16000)
+
         
     # generate audio from gt melspec
         gt_melspec = denormalise_mel(gt_melspec)
-        audio = vocoder(gt_melspec.cuda())
-        audio = audio.squeeze()
-        audio = audio / 1.1 / audio.abs().max()
-        audio = audio.cpu().numpy()
-        sf.write(os.path.join(_output_directory, f'sample_{i}', 'vocoder_gt_audio.wav'), audio, 16000)
-        
+        for vocoder_name, vocoder in vocoders.items():
+            gt_audio = vocoder(gt_melspec.cuda())
+            gt_audio = gt_audio.squeeze()
+            gt_audio = gt_audio / 1.1 / gt_audio.abs().max()
+            gt_audio = gt_audio.cpu().numpy()
+            sf.write(os.path.join(_output_directory, f'sample_{i}', f'gt_audio_{vocoder_name}.wav'), gt_audio, 16000)
+
         # save as file
         melspec = melspec.squeeze(0).cpu()
         torch.save(melspec, os.path.join(_output_directory, f'sample_{i}', 'generated_spec.npz'))
