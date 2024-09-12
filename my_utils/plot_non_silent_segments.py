@@ -148,12 +148,12 @@ def plot_nonsilent_segments_from_numpy(audio: np.ndarray, sample_rate: int, sile
     plt.ylabel('Amplitude')
     plt.legend(loc='upper right')
     plt.tight_layout()
-    plt.savefig('/home/dsi/moradim/SpeechRepainting/temp_dir/non_silent_segments.png')
+    plt.savefig(f'/home/dsi/moradim/SpeechRepainting/temp_dir/non_silent_segments_{silence_thresh}.png')
 
 # Example usage:
-silence_thresh = -20 #20*np.log10(0.1)
+silence_thresh = -25 #20*np.log10(0.1)
 print(f"Silence threshold: {silence_thresh:.2f} dB")
-explosion_path = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.dev_audio_16k/40971.wav'
+explosion_path = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.dev_audio_16k/266105.wav'
 rate1, explosion = wavfile.read(explosion_path)
 audio = explosion / max(abs(explosion))
 output_file = '/home/dsi/moradim/SpeechRepainting/temp_dir/example_silent_checking.wav'

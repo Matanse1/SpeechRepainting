@@ -13,6 +13,7 @@ from pathlib import Path
 
 np.random.seed(42)
 random.seed(42)
+rng = random.Random(42)
 
 def numpy_to_audiosegment(audio: np.ndarray, sample_rate: int = 16000) -> AudioSegment:
     """
@@ -35,11 +36,11 @@ def remove_leading_silence(audio: AudioSegment, silence_thresh: int = -50, min_s
     :param min_silence_len: Minimum length of silence (in ms) to detect.
     :return: AudioSegment with leading silence removed.
     """
-    rate1 = 16000
+
     # Convert NumPy array to AudioSegment
     audio = numpy_to_audiosegment(audio)
     # Detect the non-silent chunks of the audio
-    nonsilent_ranges_start = detect_nonsilent(audio, silence_thresh=-20, min_silence_len=50) #for start
+    nonsilent_ranges_start = detect_nonsilent(audio, silence_thresh=-25, min_silence_len=50) #for start
     nonsilent_ranges_end = detect_nonsilent(audio, silence_thresh=-40, min_silence_len=50) #for end
     
     if nonsilent_ranges_start:
@@ -49,17 +50,19 @@ def remove_leading_silence(audio: AudioSegment, silence_thresh: int = -50, min_s
             if start <= start_trim and end >= start_trim:
                 end_trim = end
         
-        start_trim = min(0, start_trim - 50)
+        start_trim = max(0, start_trim - 50)
         # Trim the leading silence
         trimmed_audio = audio[start_trim:]
     else:
         # If no non-silent part is found, return the original audio
         trimmed_audio = audio
-    explosion_length = min(int(1.5 * 1000), len(trimmed_audio), end_trim - start_trim)
+    explosion_length = min(int(1.5 * 1000), len(trimmed_audio), end_trim - start_trim) # in ms
+    explosion_length_samples = int(explosion_length * audio.frame_rate / 1000)
+    start_trim_samples = int(start_trim * audio.frame_rate / 1000)
     trimmed_audio = trimmed_audio[:explosion_length]
     # Convert the AudioSegment to a NumPy array
     audio_np = np.array(trimmed_audio.get_array_of_samples())
-    return audio_np, explosion_length
+    return audio_np, explosion_length_samples, start_trim_samples
     
 
 def apply_delay(audio, delay):
@@ -73,8 +76,8 @@ def add_delay(speech, explosion, total_interval=2, interval_num=1):
 
 
     # Calculate the range for random delay
-    min_delay = int(0.2 * len(speech)) / total_interval + (interval_num - 1) / total_interval * len(speech)
-    max_delay = int(0.7 * len(speech)) / total_interval + (interval_num - 1) / total_interval * len(speech)
+    min_delay = int(0.2 * len(speech) / total_interval) + (interval_num - 1) / total_interval * len(speech)
+    max_delay = int(0.7 * len(speech) / total_interval) + (interval_num - 1) / total_interval * len(speech)
 
     # Generate a random delay within the specified range
     delay = random.randint(min_delay, max_delay)
@@ -111,6 +114,8 @@ def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_
 
     delays = []
     explosions_length = []
+    explosions_path_list = []
+    start_trim_samples_list = []
     # Load the speech 
     speech_path = get_speech(df_speech)
     rate2, speech = wavfile.read(speech_path)
@@ -118,10 +123,12 @@ def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_
     explosions = np.zeros_like(speech)
     for n_e in range(1, num_explosions+1):
         explosion_path = get_explosion(df_explosion, wav_dir)
+        explosions_path_list.append(explosion_path)
         rate1, explosion = wavfile.read(explosion_path)
         explosion = explosion / max(abs(explosion))
-        explosion, explosion_length = remove_leading_silence(explosion, silence_thresh)
+        explosion, explosion_length, start_trim_samples = remove_leading_silence(explosion, silence_thresh)
         
+        start_trim_samples_list.append(start_trim_samples)
         explosions_length.append(explosion_length)
         # explosion = truncate_audio(explosion, desired_explosion_length) 
         snr = random.randint(-5, 0)
@@ -145,16 +152,18 @@ def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_
     masked_mix = mix.copy()
     norm_speech = speech.copy() / max(abs(mix))
     masked_norm_speech = speech.copy() / max(abs(mix))
+    explosions = explosions / max(abs(mix))
     for delay, explosion_length in zip(delays, explosions_length):
         masked_mix[delay: delay + explosion_length] = 0
         masked_norm_speech[delay: delay + explosion_length] = 0
         
-    return mix, masked_mix, norm_speech, masked_norm_speech, delays, explosions_length
+    return mix, masked_mix, norm_speech, masked_norm_speech, explosions, delays, explosions_length, start_trim_samples_list, snr, explosions_path_list, speech_path
     
     
 def get_explosion(df_explosions, wav_dir):
     # Randomly select a row
-    random_row = df_explosions.sample(n=1, random_state=42).iloc[0]
+    random_seed = rng.randint(0, 1_000_000)
+    random_row = df_explosions.sample(n=1, random_state=random_seed).iloc[0]
 
     # Get the corresponding filename (without extension) from the 'fname' column
     file_name = f"{random_row['fname']}.wav"
@@ -181,7 +190,8 @@ def get_speech(df_speech):
     #     for file in os.listdir(speech_dir)
     #     if file.endswith(".wav")
     # ]
-    wav_path = df_speech.sample(n=1, random_state=42).iloc[0]["wav_File"]
+    random_seed = rng.randint(0, 1_000_000)
+    wav_path = df_speech.sample(n=1, random_state=random_seed).iloc[0]["wav_File"]
 
     # if os.path.exists(wav_path):
     #     # Read the WAV file
@@ -211,7 +221,7 @@ if __name__ == '__main__':
     df_speech = pd.read_csv(csv_speech, delimiter='|')
     print(f"The number of the speech files in the dataset is: {len(df_speech)}")
 
-    titles = ["exmaple",  "delays", "explosions_length"]
+    titles = ["exmaple",  "delays", "explosions_length", "start_explosions_original", "snr", "explosions_path", "speech_path"]
     with open(os.path.join(output_dir, 'explosions.csv'), mode='w') as f:
         writer = csv.writer(f, delimiter='|')
         writer.writerow(titles)
@@ -220,11 +230,19 @@ if __name__ == '__main__':
     delays_list = []
     explosions_length_list = []
     examples = []
+    speech_path_list = []
+    explosions_path_list = []
+    start_trim_samples_list = []
+    snrs = []
     for example in range(num_examples):
-        mix, masked_mix, norm_speech, masked_norm_speech, delays, explosions_length = mix_sppech_and_explosion(df_explosion, df_speech, num_explosions, silence_thresh)
+        mix, masked_mix, norm_speech, masked_norm_speech, explosions, delays, explosions_length, start_trim_samples, snr, explosions_path, speech_path = mix_sppech_and_explosion(df_explosion, df_speech, num_explosions, silence_thresh)
         delays_list.append(delays)
         explosions_length_list.append(explosions_length)
         examples.append(example)
+        speech_path_list.append(speech_path)
+        explosions_path_list.append(explosions_path)
+        start_trim_samples_list.append(start_trim_samples)
+        snrs.append(snr)
         
         (Path(output_dir) / Path(f'example_{example}')).mkdir(parents=True, exist_ok=True)
         output_file =  Path(output_dir)/ Path(f'example_{example}/mix.wav')
@@ -235,15 +253,19 @@ if __name__ == '__main__':
         wavfile.write(output_file, rate, norm_speech)
         output_file =  Path(output_dir)/ Path(f'example_{example}/masked_speech.wav')
         wavfile.write(output_file, rate, masked_norm_speech)
+        output_file =  Path(output_dir)/ Path(f'example_{example}/explosions.wav')
+        wavfile.write(output_file, rate, explosions)
         
         if example % save_interval ==0 or example == num_examples - 1:
             with open(os.path.join(output_dir, 'explosions.csv'), mode='a') as f:
                 writer = csv.writer(f, delimiter='|')
-                writer.writerows(zip(examples, delays_list, explosions_length_list))
+                writer.writerows(zip(examples, delays_list, explosions_length_list, start_trim_samples_list, snrs, explosions_path_list, speech_path_list))
             delays_list = []
             explosions_length_list = []
             examples = []
-
+            speech_path_list = []
+            explosions_path_list = []
+            start_trim_samples_list = []
 
 
 
