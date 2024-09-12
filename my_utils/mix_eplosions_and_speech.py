@@ -8,6 +8,8 @@ import scipy.io.wavfile as wavfile
 import glob
 from pydub import AudioSegment
 from pydub.silence import detect_nonsilent
+import csv
+from pathlib import Path
 
 np.random.seed(42)
 random.seed(42)
@@ -33,23 +35,31 @@ def remove_leading_silence(audio: AudioSegment, silence_thresh: int = -50, min_s
     :param min_silence_len: Minimum length of silence (in ms) to detect.
     :return: AudioSegment with leading silence removed.
     """
+    rate1 = 16000
     # Convert NumPy array to AudioSegment
     audio = numpy_to_audiosegment(audio)
     # Detect the non-silent chunks of the audio
-    nonsilent_ranges = detect_nonsilent(audio, min_silence_len=min_silence_len, silence_thresh=silence_thresh)
+    nonsilent_ranges_start = detect_nonsilent(audio, silence_thresh=-20, min_silence_len=50) #for start
+    nonsilent_ranges_end = detect_nonsilent(audio, silence_thresh=-40, min_silence_len=50) #for end
     
-    if nonsilent_ranges:
-        # Get the first non-silent range
-        start_trim = nonsilent_ranges[0][0]
+    if nonsilent_ranges_start:
+                # Get the first non-silent range
+        start_trim = random.sample(nonsilent_ranges_start, 1)[0][0]
+        for start, end in nonsilent_ranges_end:
+            if start <= start_trim and end >= start_trim:
+                end_trim = end
+        
+        start_trim = min(0, start_trim - 50)
         # Trim the leading silence
         trimmed_audio = audio[start_trim:]
     else:
         # If no non-silent part is found, return the original audio
         trimmed_audio = audio
-
+    explosion_length = min(int(1.5 * 1000), len(trimmed_audio), end_trim - start_trim)
+    trimmed_audio = trimmed_audio[:explosion_length]
     # Convert the AudioSegment to a NumPy array
     audio_np = np.array(trimmed_audio.get_array_of_samples())
-    return audio_np
+    return audio_np, explosion_length
     
 
 def apply_delay(audio, delay):
@@ -100,7 +110,7 @@ def truncate_audio(audio, target_length):
 def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_thresh=-20):
 
     delays = []
-    desired_explosions_length = []
+    explosions_length = []
     # Load the speech 
     speech_path = get_speech(df_speech)
     rate2, speech = wavfile.read(speech_path)
@@ -110,11 +120,11 @@ def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_
         explosion_path = get_explosion(df_explosion, wav_dir)
         rate1, explosion = wavfile.read(explosion_path)
         explosion = explosion / max(abs(explosion))
-        explosion = remove_leading_silence(explosion, silence_thresh)
-        desired_explosion_length = min(int(1.5 * rate1), len(explosion))
-        desired_explosions_length.append(desired_explosion_length)
-        explosion = truncate_audio(explosion, desired_explosion_length) 
-        snr = -5
+        explosion, explosion_length = remove_leading_silence(explosion, silence_thresh)
+        
+        explosions_length.append(explosion_length)
+        # explosion = truncate_audio(explosion, desired_explosion_length) 
+        snr = random.randint(-5, 0)
         explosion = adjust_snr(speech, explosion, snr)
         explosion, delay = add_delay(speech, explosion, total_interval=num_explosions, interval_num=n_e)
         delays.append(delay)
@@ -133,10 +143,13 @@ def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_
     mix = explosions + speech
     mix = mix / max(abs(mix))
     masked_mix = mix.copy()
-    for delay, desired_explosion_length in zip(delays, desired_explosions_length):
-        masked_mix[delay: delay + desired_explosion_length] = 0
+    norm_speech = speech.copy() / max(abs(mix))
+    masked_norm_speech = speech.copy() / max(abs(mix))
+    for delay, explosion_length in zip(delays, explosions_length):
+        masked_mix[delay: delay + explosion_length] = 0
+        masked_norm_speech[delay: delay + explosion_length] = 0
         
-    return mix, masked_mix, speech, delays, desired_explosions_length
+    return mix, masked_mix, norm_speech, masked_norm_speech, delays, explosions_length
     
     
 def get_explosion(df_explosions, wav_dir):
@@ -183,11 +196,13 @@ def get_speech(df_speech):
     
     
 if __name__ == '__main__':
-    output_dir = '/dsi/gannot-lab1/datasets/Speech_with_Explosions'
+    output_dir = "/home/dsi/moradim/SpeechRepainting/temp_dir/" #'/dsi/gannot-lab1/datasets/Speech_with_Explosions'
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
     num_examples = 10
     rate = 16000
     num_explosions = 2
-    silence_thresh = 20*np.log10(0.1)
+    silence_thresh = -20 #20*np.log10(0.1)
+    save_interval = 5
     wav_dir = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.dev_audio_16k'
     csv_explosion = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.ground_truth/dev_explosion_labels.csv'  # Replace with your actual CSV file path
     csv_speech = '/dsi/gannot-lab1/datasets/reverb_data/Test_complete/room_parameters_with_trans.csv'
@@ -196,16 +211,38 @@ if __name__ == '__main__':
     df_speech = pd.read_csv(csv_speech, delimiter='|')
     print(f"The number of the speech files in the dataset is: {len(df_speech)}")
 
+    titles = ["exmaple",  "delays", "explosions_length"]
+    with open(os.path.join(output_dir, 'explosions.csv'), mode='w') as f:
+        writer = csv.writer(f, delimiter='|')
+        writer.writerow(titles)
 
+    
+    delays_list = []
+    explosions_length_list = []
+    examples = []
     for example in range(num_examples):
-        sp_ex, masked_mix, speech, delays, desired_explosions_length = mix_sppech_and_explosion(df_explosion, df_speech, num_explosions, silence_thresh)
+        mix, masked_mix, norm_speech, masked_norm_speech, delays, explosions_length = mix_sppech_and_explosion(df_explosion, df_speech, num_explosions, silence_thresh)
+        delays_list.append(delays)
+        explosions_length_list.append(explosions_length)
+        examples.append(example)
         
-        output_file = f'/home/dsi/moradim/SpeechRepainting/temp_dir/explosion_with_speech_{example}.wav'
-        wavfile.write(output_file, rate, sp_ex)
-        output_file = f'/home/dsi/moradim/SpeechRepainting/temp_dir/masked_explosion_with_speech0_{example}.wav'
+        (Path(output_dir) / Path(f'example_{example}')).mkdir(parents=True, exist_ok=True)
+        output_file =  Path(output_dir)/ Path(f'example_{example}/mix.wav')
+        wavfile.write(output_file, rate, mix)
+        output_file =  Path(output_dir)/ Path(f'example_{example}/masked_mix.wav')
         wavfile.write(output_file, rate, masked_mix)
-        output_file = f'/home/dsi/moradim/SpeechRepainting/temp_dir/speech_{example}.wav'
-        wavfile.write(output_file, rate, speech)
+        output_file =  Path(output_dir)/ Path(f'example_{example}/speech.wav')
+        wavfile.write(output_file, rate, norm_speech)
+        output_file =  Path(output_dir)/ Path(f'example_{example}/masked_speech.wav')
+        wavfile.write(output_file, rate, masked_norm_speech)
+        
+        if example % save_interval ==0 or example == num_examples - 1:
+            with open(os.path.join(output_dir, 'explosions.csv'), mode='a') as f:
+                writer = csv.writer(f, delimiter='|')
+                writer.writerows(zip(examples, delays_list, explosions_length_list))
+            delays_list = []
+            explosions_length_list = []
+            examples = []
 
 
 

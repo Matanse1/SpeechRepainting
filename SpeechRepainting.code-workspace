@@ -11,22 +11,6 @@
 		{
 			"name": "explosion_project",
 			"path": "../explosion_project"
-		},
-		{
-			"name": "FSD50K",
-			"path": "../../../../dsi/gannot-lab1/datasets/FSD50K"
-		},
-		{
-			"name": "reverb_data",
-			"path": "../../../../dsi/gannot-lab1/datasets/reverb_data"
-		},
-		{
-			"name": "AudioSet",
-			"path": "../../../../dsi/gannot-lab1/datasets/AudioSet"
-		},
-		{
-			"name": "Explosion",
-			"path": "../../../../dsi/gannot-lab1/datasets/AudioSet2/Explosion"
 		}
 	],
 	"settings": {}

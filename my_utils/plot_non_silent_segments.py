@@ -4,6 +4,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io.wavfile as wavfile
 import itertools
+import math
+
+def calc_rms(audio_segment):
+    """
+    Calculate the root mean square of the audio segment.
+    """
+    signal = np.array(audio_segment.get_array_of_samples()).astype(np.float32)
+    rms = np.sqrt(np.mean(np.square(signal)))
+    return rms
+
 
 def detect_silence(audio_segment, min_silence_len=1000, silence_thresh=-16, seek_step=1):
     """
@@ -23,7 +33,6 @@ def detect_silence(audio_segment, min_silence_len=1000, silence_thresh=-16, seek
 
     # convert silence threshold to a float value (so we can compare it to rms)
     silence_thresh = db_to_float(silence_thresh) * audio_segment.max_possible_amplitude
-
     # find silence and add start and end indicies to the to_cut list
     silence_starts = []
 
@@ -39,8 +48,16 @@ def detect_silence(audio_segment, min_silence_len=1000, silence_thresh=-16, seek
 
     for i in slice_starts:
         audio_slice = audio_segment[i:i + min_silence_len]
+        # print(f"rms: {audio_slice.rms} \t i = {i}, \t silence_thresh = {silence_thresh}")
         if audio_slice.rms <= silence_thresh:
             silence_starts.append(i)
+            if i > 3*1000  and i < 4*1000:
+                my_rms = calc_rms(audio_slice)
+                print(f"Getting TRUE rms: {audio_slice.rms} \t my_rms = {my_rms} \t  i = {i}, \t silence_thresh = {silence_thresh}")
+        else:
+            if i > 3*1000  and i < 4*1000:
+                my_rms = calc_rms(audio_slice)
+                print(f"Getting FALSE rms: {audio_slice.rms} \t my_rms = {my_rms} \t i = {i}, \t silence_thresh = {silence_thresh}")
 
     # short circuit when there is no silence
     if not silence_starts:
@@ -108,7 +125,7 @@ def plot_nonsilent_segments_from_numpy(audio: np.ndarray, sample_rate: int, sile
     audio_segment = numpy_to_audiosegment(audio, sample_rate)
 
     # Detect the non-silent chunks of the audio
-    nonsilent_ranges = detect_silence(audio_segment, min_silence_len=min_silence_len, silence_thresh=silence_thresh)
+    nonsilent_ranges = detect_nonsilent(audio_segment, min_silence_len=min_silence_len, silence_thresh=silence_thresh)
     
     # Convert the audio to raw data for plotting
     time = np.linspace(0, len(audio) / sample_rate, num=len(audio))  # Convert to seconds
@@ -121,10 +138,10 @@ def plot_nonsilent_segments_from_numpy(audio: np.ndarray, sample_rate: int, sile
     # start, end = nonsilent_ranges[0]
     # plt.axvspan(start / 1000, end / 1000, color='green', alpha=0.3, label='Non-Silent Segment')
     for i, (start, end) in enumerate(nonsilent_ranges):
-        print(f"The rms is:{audio_segment[start:end].rms}, \t the start is: {start}, \t the end is: {end}")
+        # print(f"The rms is:{audio_segment[start:end].rms}, \t the start is: {start}, \t the end is: {end}")
         plt.axvspan(start / 1000, end / 1000, color='green', alpha=0.3, label='Non-Silent Segment')
-        if i ==1:
-            break
+        # if i ==1:
+        #     break
 
     plt.title('Non-Silent Segments in Audio')
     plt.xlabel('Time (seconds)')
@@ -134,14 +151,14 @@ def plot_nonsilent_segments_from_numpy(audio: np.ndarray, sample_rate: int, sile
     plt.savefig('/home/dsi/moradim/SpeechRepainting/temp_dir/non_silent_segments.png')
 
 # Example usage:
-silence_thresh = -40 #20*np.log10(0.1)
+silence_thresh = -20 #20*np.log10(0.1)
 print(f"Silence threshold: {silence_thresh:.2f} dB")
-explosion_path = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.dev_audio_16k/32799.wav'
+explosion_path = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.dev_audio_16k/40971.wav'
 rate1, explosion = wavfile.read(explosion_path)
 audio = explosion / max(abs(explosion))
 output_file = '/home/dsi/moradim/SpeechRepainting/temp_dir/example_silent_checking.wav'
 wavfile.write(output_file, rate1, audio)
-plot_nonsilent_segments_from_numpy(audio, sample_rate=rate1, silence_thresh=silence_thresh, min_silence_len=10)
+plot_nonsilent_segments_from_numpy(audio, sample_rate=rate1, silence_thresh=silence_thresh, min_silence_len=50)
 
 # 178180,
 # 155654,
