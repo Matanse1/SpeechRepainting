@@ -5,14 +5,16 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import glob
 import os
+import sys
+sys.path.append(".")
 import numpy as np
 import argparse
 import json
 import torch
 from scipy.io.wavfile import write
-from env import AttrDict
-from meldataset import MAX_WAV_VALUE
-from bigvgan import BigVGAN as Generator
+from BigVGAN.env import AttrDict
+from BigVGAN.meldataset import MAX_WAV_VALUE
+from BigVGAN.bigvgan import BigVGAN as Generator
 
 h = None
 device = None

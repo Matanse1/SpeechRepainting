@@ -24108,7 +24108,6 @@ Train/audio_final/example_269553|metadata_placeholder
 Train/audio_final/example_158259|metadata_placeholder
 Train/audio_final/example_78721|metadata_placeholder
 Train/audio_final/example_240402|metadata_placeholder
-Train/audio_final/example_285153|metadata_placeholder
 Train/audio_final/example_178201|metadata_placeholder
 Train/audio_final/example_289361|metadata_placeholder
 Train/audio_final/example_201514|metadata_placeholder

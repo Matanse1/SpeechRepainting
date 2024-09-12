@@ -14,10 +14,10 @@ import torch.nn as nn
 from torch.nn import Conv1d, ConvTranspose1d
 from torch.nn.utils import weight_norm, remove_weight_norm
 
-import activations
-from utils import init_weights, get_padding
-from alias_free_activation.torch.act import Activation1d as TorchActivation1d
-from env import AttrDict
+from BigVGAN import activations
+from BigVGAN.utils import init_weights, get_padding
+from BigVGAN.alias_free_activation.torch.act import Activation1d as TorchActivation1d
+from BigVGAN.env import AttrDict
 
 from huggingface_hub import PyTorchModelHubMixin, hf_hub_download
 
@@ -271,7 +271,7 @@ class BigVGAN(
 
         # Select which Activation1d, lazy-load cuda version to ensure backward compatibility
         if self.h.get("use_cuda_kernel", False):
-            from alias_free_activation.cuda.activation1d import (
+            from BigVGAN.alias_free_activation.cuda.activation1d import (
                 Activation1d as CudaActivation1d,
             )
 

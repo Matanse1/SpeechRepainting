@@ -232,8 +232,9 @@ def generate(
 
     json_config = json.loads(data)
     h = AttrDict(json_config)
-    generator = Generator(h, use_cuda_kernel=True).cuda()
-    state_dict_g = load_checkpoint_vgan(a.checkpoint_file, 'cuda')
+    device_bigvgan = torch.device("cuda")
+    generator = Generator(h, use_cuda_kernel=False).to(device_bigvgan)
+    state_dict_g = load_checkpoint_vgan(checkpoint_file, device_bigvgan)
     generator.load_state_dict(state_dict_g["generator"])
     generator.eval()
     generator.remove_weight_norm()

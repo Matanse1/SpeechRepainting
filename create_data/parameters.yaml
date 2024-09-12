@@ -6,7 +6,7 @@ max_mic_speaker_distance: 4
 min_wall_distance: 0.5
 librispeech_path: /dsi/gannot-lab1/datasets/LibriSpeech/LibriSpeech
 mode: Test
-save_dir: /dsi/gannot-lab1/datasets/reverb_data/Test/audio_final
+save_dir: /dsi/gannot-lab1/datasets/reverb_data/Test_complete/audio_final
 audio_len: 5 # in sec
 
 rt60_min: 0.2

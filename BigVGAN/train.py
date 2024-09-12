@@ -10,6 +10,12 @@ import warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 import itertools
 import os
+import sys
+sys.path.append('/home/dsi/moradim/SpeechRepainting')
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# Set NCCL environment variables
+# os.environ['NCCL_BLOCKING_WAIT'] = '1'
+# os.environ['NCCL_TIMEOUT'] = '600'
 import time
 import argparse
 import json
@@ -226,6 +232,9 @@ def train(rank, a, h):
             base_mels_path=a.input_mels_dir,
             is_seen=True,
         )
+        
+        
+
         validation_loader = DataLoader(
             validset,
             num_workers=1,
@@ -236,6 +245,18 @@ def train(rank, a, h):
             drop_last=True,
         )
 
+        # from torch.utils.data import Subset
+
+        # start_idx = 24100 * validation_loader.batch_size
+        # subset_dataset = Subset(validation_loader.dataset, range(start_idx, len(validation_loader.dataset)))
+
+        # validation_loader = torch.utils.data.DataLoader(
+        #                     subset_dataset,
+        #                     batch_size=validation_loader.batch_size,
+        #                     shuffle=False,  # Maintain the order or modify as needed
+        #                     num_workers=validation_loader.num_workers,
+# )
+        
         list_unseen_validset = []
         list_unseen_validation_loader = []
         for i in range(len(list_unseen_validation_filelist)):
@@ -308,6 +329,10 @@ def train(rank, a, h):
 
             # Loop over validation set and compute metrics
             for j, batch in enumerate(tqdm(loader)):
+            # start_batch = 24100
+            # for j, batch in enumerate(tqdm(itertools.islice(loader, start_batch, None))):
+                # if j < 24100:
+                #     continue
                 x, y, _, y_mel = batch
                 y = y.to(device)
                 if hasattr(generator, "module"):
@@ -680,7 +705,7 @@ def main():
         "--input_training_file", default="/home/dsi/moradim/SpeechRepainting/BigVGAN/input_training_file.txt"
     )
     parser.add_argument(
-        "--input_validation_file", default="/home/dsi/moradim/SpeechRepainting/BigVGAN/input_validation_file.txt"
+        "--input_validation_file", default="/home/dsi/moradim/SpeechRepainting/BigVGAN/input_validation_file_short.txt"
     )
 
     parser.add_argument(
@@ -691,7 +716,7 @@ def main():
     parser.add_argument(
         "--list_input_unseen_validation_file",
         nargs="+",
-        default=["/home/dsi/moradim/SpeechRepainting/BigVGAN/list_input_unseen_validation_file.txt"],
+        default=["/home/dsi/moradim/SpeechRepainting/BigVGAN/list_input_unseen_validation_file_short.txt"],
     )
 
     parser.add_argument("--checkpoint_path", default="/dsi/gannot-lab1/users/mordehay/bigvgan")
@@ -756,7 +781,7 @@ def main():
     torch.manual_seed(h.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(h.seed)
-        h.num_gpus = torch.cuda.device_count()
+        # h.num_gpus = torch.cuda.device_count()
         h.batch_size = int(h.batch_size / h.num_gpus)
         print(f"Batch size per GPU: {h.batch_size}")
     else:
