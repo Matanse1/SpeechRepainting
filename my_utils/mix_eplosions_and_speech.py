@@ -27,7 +27,7 @@ def numpy_to_audiosegment(audio: np.ndarray, sample_rate: int = 16000) -> AudioS
     return AudioSegment(audio.tobytes(), frame_rate=sample_rate, sample_width=2, channels=1)
 
 
-def remove_leading_silence(audio: AudioSegment, silence_thresh: int = -50, min_silence_len: int = 10) -> AudioSegment:
+def remove_leading_silence(audio: AudioSegment, silence_thresh: int = -50, min_silence_len: int = 200) -> AudioSegment:
     """
     Remove leading silence from an audio file.
 
@@ -40,8 +40,12 @@ def remove_leading_silence(audio: AudioSegment, silence_thresh: int = -50, min_s
     # Convert NumPy array to AudioSegment
     audio = numpy_to_audiosegment(audio)
     # Detect the non-silent chunks of the audio
-    nonsilent_ranges_start = detect_nonsilent(audio, silence_thresh=-25, min_silence_len=50) #for start
-    nonsilent_ranges_end = detect_nonsilent(audio, silence_thresh=-40, min_silence_len=50) #for end
+    nonsilent_ranges_start = []
+    silence_thresh = -20
+    while not nonsilent_ranges_start:
+        nonsilent_ranges_start = detect_nonsilent(audio, silence_thresh=silence_thresh, min_silence_len=min_silence_len) #for start
+        silence_thresh -= 10
+    nonsilent_ranges_end = detect_nonsilent(audio, silence_thresh=-50, min_silence_len=min_silence_len) #for end
     
     if nonsilent_ranges_start:
                 # Get the first non-silent range
@@ -50,7 +54,7 @@ def remove_leading_silence(audio: AudioSegment, silence_thresh: int = -50, min_s
             if start <= start_trim and end >= start_trim:
                 end_trim = end
         
-        start_trim = max(0, start_trim - 50)
+        start_trim = max(0, start_trim - min_silence_len)
         # Trim the leading silence
         trimmed_audio = audio[start_trim:]
     else:
@@ -116,6 +120,7 @@ def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_
     explosions_length = []
     explosions_path_list = []
     start_trim_samples_list = []
+    snrs = []
     # Load the speech 
     speech_path = get_speech(df_speech)
     rate2, speech = wavfile.read(speech_path)
@@ -127,15 +132,16 @@ def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_
         rate1, explosion = wavfile.read(explosion_path)
         explosion = explosion / max(abs(explosion))
         explosion, explosion_length, start_trim_samples = remove_leading_silence(explosion, silence_thresh)
-        
+        explosion = explosion.astype(np.float32)
+        explosion = explosion / max(abs(explosion))
         start_trim_samples_list.append(start_trim_samples)
         explosions_length.append(explosion_length)
         # explosion = truncate_audio(explosion, desired_explosion_length) 
-        snr = random.randint(-5, 0)
+        snr = random.randint(-20, -10)
         explosion = adjust_snr(speech, explosion, snr)
         explosion, delay = add_delay(speech, explosion, total_interval=num_explosions, interval_num=n_e)
         delays.append(delay)
-        
+        snrs.append(snr)
         # speech *= 0.2
         if len(speech) > len(explosion):
             explosion = pad_with_zeros(explosion, len(speech))
@@ -148,16 +154,17 @@ def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_
         explosions +=  explosion
         
     mix = explosions + speech
-    mix = mix / max(abs(mix))
+    abs_max_mix= max(abs(mix))
+    mix = mix / abs_max_mix
     masked_mix = mix.copy()
-    norm_speech = speech.copy() / max(abs(mix))
-    masked_norm_speech = speech.copy() / max(abs(mix))
-    explosions = explosions / max(abs(mix))
+    norm_speech = speech.copy() / abs_max_mix
+    masked_norm_speech = speech.copy() / abs_max_mix
+    explosions = explosions / abs_max_mix
     for delay, explosion_length in zip(delays, explosions_length):
         masked_mix[delay: delay + explosion_length] = 0
         masked_norm_speech[delay: delay + explosion_length] = 0
         
-    return mix, masked_mix, norm_speech, masked_norm_speech, explosions, delays, explosions_length, start_trim_samples_list, snr, explosions_path_list, speech_path
+    return mix, masked_mix, norm_speech, masked_norm_speech, explosions, delays, explosions_length, start_trim_samples_list, snrs, explosions_path_list, speech_path
     
     
 def get_explosion(df_explosions, wav_dir):
