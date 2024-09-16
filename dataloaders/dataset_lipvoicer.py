@@ -416,4 +416,62 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
         else:
             return melspec, mask, audio_time
         
+        
+class ExplosionSpeechRepaingingDataset(torch.utils.data.Dataset):
+    """
+    This is the main class that calculates the spectrogram and returns the
+    spectrogram, audio pair.
+    """
+    def __init__(self, split, sampling_rate, min_block_size, max_block_size, min_spacing,
+                 audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties, return_target_time=False):
+        split = split.capitalize()
+        self.mel_dir = Path(base_data_dir, split, "mel")
+        self.audio_dir = Path(base_data_dir, split, "audio_final")
+
+        
+        self.test = True if split=='Test' else False
+        self.audio_stft_hop = audio_stft_hop
+        set_seed(1234)
+        self.sampling_rate = sampling_rate
+        self.csv_info = pd.read_csv(Path(self.audio_dir, "explosions.csv"))
+    
+    def __len__(self):
+        return 100000
+        #return len(self.audio_csv)
+    
+    def __getitem__(self, index):
+        explosions_length = self.csv_info.ilcoc[index, "explosions_length"] # in samples
+        start_explosions = self.csv_info.ilcoc[index, "start_explosions_original"] # in samples
+        filename = Path(self.mel_dir, f"example_{index}.npz")
+        data = torch.load(filename)
+        speech_melspec = data["speech_melspec"]
+        mix_melspec = data["mix_melspec"] # mix of speech and explosions
+        mix_time = data["mix_time"]
+        masked_speech = data["masked_speech"]
+        speech_melspec = normalise_mel(speech_melspec)
+        mix_melspec = normalise_mel(mix_melspec)
+        
+        # For activity of the explosion
+        explosions_length = self.time_to_frames(explosions_length, hop_length=self.audio_stft_hop)
+        start_explosions = self.time_to_frames(start_explosions, hop_length=self.audio_stft_hop)
+        explosions_activity = torch.zeros_like(speech_melspec)
+        for start, length in zip(start_explosions, explosions_length):
+            start_frame = self.time_to_frames(start, hop_length=self.audio_stft_hop)
+            length_frame = self.time_to_frames(length, hop_length=self.audio_stft_hop)
+            explosions_activity[..., start_frame: start_frame + length_frame] = 1 # assume the shape is [..., T]
+        
+        return (speech_melspec, mix_melspec, mix_time, masked_speech, explosions_activity, start_explosions, explosions_length)
+        
+        
+    def time_to_frames(self, time_in_seconds, hop_length=160):
+        return int(time_in_seconds / hop_length)
+    
+    
+def get_dataset(cfg, split='Train', return_mask_properties=False, return_target_time=False):
+    if cfg['dataset_type'] == 'speech_inpainting':
+        return SpeechRepaingingDataset(**cfg['speech_inpainting'], split=split, return_mask_properties=return_mask_properties, return_target_time=return_target_time)
+    elif cfg['dataset_type'] == 'explosion_speech_inpainting':
+        return ExplosionSpeechRepaingingDataset(**cfg['explosion_speech_inpainting'], split=split)
+    else:
+        raise Exception('Invalid dataset type')
     

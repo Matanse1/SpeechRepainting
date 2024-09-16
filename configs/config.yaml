@@ -46,25 +46,32 @@ diffusion:
   beta: null
 
 dataset:
-  base_data_dir: /dsi/gannot-lab1/datasets/reverb_data/
-  sampling_rate: ${audio.sampling_rate}
-  # for train - relatively large masking
-  min_block_size: 30 # 35, 10 
-  max_block_size: 65 # 65 , 15
-  min_spacing:  30 # 30, 70
-  # relatively middle masking
-  # min_block_size: 25 # 35, 10 
-  # max_block_size: 40 # 65 , 15
-  # min_spacing:  70 # 30, 70
-  # relatively small masking
-  # min_block_size: 10 # 35, 10 
-  # max_block_size: 15 # 65 , 15
-  # min_spacing:  70 # 30, 70
-  rand_num_blocks: True
-  num_blocks: 2 #used when rand_num_blocks=False
-  # return_mask_properties: False #for train set this to False, for inference set to True
-  audio_stft_hop: ${audio.hop_length}
-  num4empty_str: -12 #or -12, 0, min
+  dataset_type: 'explosion_speech_inpainting' # explosion_speech_inpainting
+  speech_inpainting:
+    base_data_dir: /dsi/gannot-lab1/datasets/reverb_data/
+    sampling_rate: ${audio.sampling_rate}
+    # for train - relatively large masking
+    min_block_size: 30 # 35, 10 
+    max_block_size: 65 # 65 , 15
+    min_spacing:  30 # 30, 70
+    # relatively middle masking
+    # min_block_size: 25 # 35, 10 
+    # max_block_size: 40 # 65 , 15
+    # min_spacing:  70 # 30, 70
+    # relatively small masking
+    # min_block_size: 10 # 35, 10 
+    # max_block_size: 15 # 65 , 15
+    # min_spacing:  70 # 30, 70
+    rand_num_blocks: True
+    num_blocks: 2 #used when rand_num_blocks=False
+    # return_mask_properties: False #for train set this to False, for inference set to True
+    audio_stft_hop: ${audio.hop_length}
+    num4empty_str: -12 #or -12, 0, min
+  explosion_speech_inpainting:
+    base_data_dir: /dsi/gannot-lab1/datasets/reverb_data/
+    sampling_rate: ${audio.sampling_rate}
+    audio_stft_hop: ${audio.hop_length}
+
 
 audio:
   sampling_rate: 16000

@@ -225,7 +225,7 @@ def generate(
     print('Finish Loading HiFi-GAN')
     vocoders['hifi_gan'] = vocoder
     # BigVGAN
-    checkpoint_file = '/dsi/gannot-lab1/users/mordehay/bigvgan/g_00550000'
+    checkpoint_file = '/dsi/gannot-lab1/users/mordehay/bigvgan/g_00050000'
     config_file = '/dsi/gannot-lab1/users/mordehay/bigvgan/config.json'
     with open(config_file) as f:
         data = f.read()
@@ -254,37 +254,21 @@ def generate(
     csv_writer = csv.writer(csv_file, delimiter='|')
 
     # Write the header row
-    if dataset_type == 'explosion_speech_inpainting':
-        csv_writer.writerow(['Sample', 'start_explosions', 'explosions_length'])
-    elif dataset_type == 'speech_inpainting':
-        csv_writer.writerow(['Sample', 'block_size_list', 'num_blocks'])
+    csv_writer.writerow(['Sample', 'start_explosions', 'explosions_length'])
 
     # ASR based on audio-only model, this is used for getting transcription for guidance, so the input is the masked audio in time domain
     pipeline_asr = InferencePipeline(config_filename_asr_cond, device='cuda')
     
     for i in tqdm(range(n_samples_test)):
         os.makedirs(os.path.join(_output_directory, f'sample_{i}'), exist_ok=True)
-        
-        if dataset_type == 'explosion_speech_inpainting':
-            speech_melspec, mix_melspec, mix_time, masked_speech, explosions_activity, start_explosions, explosions_length = dataset[i]
-            mask = 1 - explosions_activity # zero = explosion, one = no explosion
-            # for j in range(len(masked_cond)):
-            #     masked_cond[j] = masked_cond[j].unsqueeze(0).cuda()
-            csv_writer.writerow([i, start_explosions, explosions_length]) # in samples
-            gt_melspec = speech_melspec.unsqueeze(0)
-            
-            masked_melspec, masked_audio_time = mix_melspec.unsqueeze(0).cuda(), mix_time.unsqueeze(0).cuda()
-            masked_cond = [masked_melspec, masked_audio_time]
-            
-        
-        elif dataset_type == 'speech_inpainting':
-            gt_melspec, *masked_cond, mask, block_size_list, num_blocks = dataset[i]
-            masked_cond = [masked_cond[i].unsqueeze(0).cuda() for i in range(len(masked_cond))]
-            # for j in range(len(masked_cond)):
-            #     masked_cond[j] = masked_cond[j].unsqueeze(0).cuda()
-            csv_writer.writerow([i, block_size_list, num_blocks])
-            gt_melspec = gt_melspec.unsqueeze(0)
-            masked_melspec, masked_audio_time = masked_cond
+        speech_melspec, mix_melspec, masked_speech, explosions_activity, start_explosions, explosions_length = dataset[i]
+        mask = 1 - explosions_activity # zero = explosion, one = no explosion
+        # for j in range(len(masked_cond)):
+        #     masked_cond[j] = masked_cond[j].unsqueeze(0).cuda()
+        csv_writer.writerow([i, start_explosions, explosions_length]) # in samples
+        gt_melspec = speech_melspec.unsqueeze(0)
+        masked_melspec, masked_audio_time = mix_melspec.unsqueeze(0).cuda(), masked_speech.unsqueeze(0).cuda()
+        masked_cond = [masked_melspec, masked_audio_time]
         
         if apply_asr_guidance:
             # Create a temporary file

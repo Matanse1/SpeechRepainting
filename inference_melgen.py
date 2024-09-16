@@ -19,7 +19,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 from models.model_builder import ModelBuilder
 from models.audiovisual_model import AudioVisualModel
-from dataloaders.dataset_lipvoicer import SpeechRepaingingDataset
+from dataloaders.dataset_lipvoicer import get_dataset
 from dataloaders.stft import denormalise_mel
 from tqdm import tqdm
 from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory
@@ -108,8 +108,8 @@ def generate(
         print('Successfully loaded model at iteration {}'.format(ckpt_iter))
     except:
         raise Exception('No valid model found')
-
-    dataset = SpeechRepaingingDataset('test', **dataset_cfg, return_mask_properties=False)
+    
+    dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=False)
     dataset_indices = torch.arange(n_samples)
     groundtruth_melspec, masked_cond = [], []
     for i in dataset_indices:

@@ -135,16 +135,24 @@ def train(
         ckpt_iter = -1
 
     # training
+    dataset_type = dataset_cfg.dataset_type
     n_iter = ckpt_iter + 1
     while n_iter < n_iters + 1:
         epoch_loss = 0.
         for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}') if rank==0 else trainloader:
         # for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}'):
-            melspec, *masked_cond, mask = data
-            masked_cond = [masked_cond[i].cuda() for i in range(len(masked_cond))]
-            melspec, mask = melspec.cuda(), mask.cuda()
-            # for i in range(len(masked_cond)):
-            #     masked_cond[i] = masked_cond[i].cuda()
+            if dataset_type == 'explosion_speech_inpainting':
+                speech_melspec, mix_melspec, mix_time, masked_speech, explosions_activity, start_explosions, explosions_length = data
+                mask = 1 - explosions_activity # zero = explosion, one = no explosion
+                melspec = speech_melspec
+                mix_melspec, mix_time = mix_melspec.cuda(), mix_time.cuda()
+                masked_cond = [mix_melspec, mix_time]
+            elif dataset_type == 'speech_inpainting':
+                melspec, *masked_cond, mask = data
+                masked_cond = [masked_cond[i].cuda() for i in range(len(masked_cond))]
+                melspec, mask = melspec.cuda(), mask.cuda()
+                # for i in range(len(masked_cond)):
+                #     masked_cond[i] = masked_cond[i].cuda()
 
             # back-propagation
             optimizer.zero_grad()

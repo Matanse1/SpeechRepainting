@@ -10,10 +10,11 @@ from pydub import AudioSegment
 from pydub.silence import detect_nonsilent
 import csv
 from pathlib import Path
-
+import pickle
 np.random.seed(42)
 random.seed(42)
 rng = random.Random(42)
+from tqdm import tqdm
 
 def numpy_to_audiosegment(audio: np.ndarray, sample_rate: int = 16000) -> AudioSegment:
     """
@@ -122,7 +123,7 @@ def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_
     start_trim_samples_list = []
     snrs = []
     # Load the speech 
-    speech_path = get_speech(df_speech)
+    speech_path, transcript = get_speech(df_speech)
     rate2, speech = wavfile.read(speech_path)
     speech = speech / max(abs(speech))
     explosions = np.zeros_like(speech)
@@ -164,7 +165,7 @@ def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_
         masked_mix[delay: delay + explosion_length] = 0
         masked_norm_speech[delay: delay + explosion_length] = 0
         
-    return mix, masked_mix, norm_speech, masked_norm_speech, explosions, delays, explosions_length, start_trim_samples_list, snrs, explosions_path_list, speech_path
+    return mix, masked_mix, norm_speech, masked_norm_speech, explosions, delays, explosions_length, start_trim_samples_list, snrs, explosions_path_list, speech_path, transcript
     
     
 def get_explosion(df_explosions, wav_dir):
@@ -186,7 +187,7 @@ def get_explosion(df_explosions, wav_dir):
     #     print(f"Sample Rate: {sample_rate}, Audio Data Shape: {audio_data.shape}")
     # else:
     #     print(f"WAV file not found: {wav_path}")
-    print("picked explosion file: ", wav_path)
+    # print("picked explosion file: ", wav_path)
     # return '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.dev_audio_16k/184418.wav'
     return wav_path
 
@@ -198,7 +199,9 @@ def get_speech(df_speech):
     #     if file.endswith(".wav")
     # ]
     random_seed = rng.randint(0, 1_000_000)
-    wav_path = df_speech.sample(n=1, random_state=random_seed).iloc[0]["wav_File"]
+    chosen_sample = df_speech.sample(n=1, random_state=random_seed).iloc[0]
+    wav_path  = chosen_sample["wav_File"]
+    transcript = chosen_sample["transcript"]
 
     # if os.path.exists(wav_path):
     #     # Read the WAV file
@@ -207,29 +210,32 @@ def get_speech(df_speech):
     #     print(f"Sample Rate: {sample_rate}, Audio Data Shape: {audio_data.shape}")
     # else:
     #     print(f"WAV file not found: {wav_path}")
-    print("picked speech file: ", wav_path)
+    # print("picked speech file: ", wav_path)
     # return "/dsi/gannot-lab1/datasets/reverb_data/Test_complete/audio_final/example_1736.wav"
-    return wav_path
+    return wav_path, transcript
     
     
 if __name__ == '__main__':
-    output_dir = "/home/dsi/moradim/SpeechRepainting/temp_dir/" #'/dsi/gannot-lab1/datasets/Speech_with_Explosions'
+    save_wavs = False
+    save_pickle = True  
+    output_dir = "/dsi/gannot-lab1/datasets/speech_with_explosions/Train/audio" #'/dsi/gannot-lab1/datasets/Speech_with_Explosions'
+    output_dir_csv = os.path.dirname(output_dir)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    num_examples = 10
-    rate = 16000
+    num_examples = 200_000
+    rate = 16_000
     num_explosions = 2
     silence_thresh = -20 #20*np.log10(0.1)
-    save_interval = 5
+    save_interval = 10_000
     wav_dir = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.dev_audio_16k'
     csv_explosion = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.ground_truth/dev_explosion_labels.csv'  # Replace with your actual CSV file path
-    csv_speech = '/dsi/gannot-lab1/datasets/reverb_data/Test_complete/room_parameters_with_trans.csv'
+    csv_speech = '/dsi/gannot-lab1/datasets/reverb_data/Train/room_parameters_with_trans.csv'
     df_explosion = pd.read_csv(csv_explosion)
     print(f"The number of the explosions in the dataset is: {len(df_explosion)}")
     df_speech = pd.read_csv(csv_speech, delimiter='|')
     print(f"The number of the speech files in the dataset is: {len(df_speech)}")
 
-    titles = ["exmaple",  "delays", "explosions_length", "start_explosions_original", "snr", "explosions_path", "speech_path"]
-    with open(os.path.join(output_dir, 'explosions.csv'), mode='w') as f:
+    titles = ["exmaple",  "delays", "explosions_length", "start_explosions_original", "snr", "explosions_path", "speech_path", "transcript"]
+    with open(os.path.join(output_dir_csv, 'explosions.csv'), mode='w') as f:
         writer = csv.writer(f, delimiter='|')
         writer.writerow(titles)
 
@@ -241,8 +247,9 @@ if __name__ == '__main__':
     explosions_path_list = []
     start_trim_samples_list = []
     snrs = []
-    for example in range(num_examples):
-        mix, masked_mix, norm_speech, masked_norm_speech, explosions, delays, explosions_length, start_trim_samples, snr, explosions_path, speech_path = mix_sppech_and_explosion(df_explosion, df_speech, num_explosions, silence_thresh)
+    transcripts = []
+    for example in tqdm(range(num_examples), desc="Generating examples"):
+        mix, masked_mix, norm_speech, masked_norm_speech, explosions, delays, explosions_length, start_trim_samples, snr, explosions_path, speech_path, transcript = mix_sppech_and_explosion(df_explosion, df_speech, num_explosions, silence_thresh)
         delays_list.append(delays)
         explosions_length_list.append(explosions_length)
         examples.append(example)
@@ -250,29 +257,38 @@ if __name__ == '__main__':
         explosions_path_list.append(explosions_path)
         start_trim_samples_list.append(start_trim_samples)
         snrs.append(snr)
+        transcripts.append(transcript)
         
-        (Path(output_dir) / Path(f'example_{example}')).mkdir(parents=True, exist_ok=True)
-        output_file =  Path(output_dir)/ Path(f'example_{example}/mix.wav')
-        wavfile.write(output_file, rate, mix)
-        output_file =  Path(output_dir)/ Path(f'example_{example}/masked_mix.wav')
-        wavfile.write(output_file, rate, masked_mix)
-        output_file =  Path(output_dir)/ Path(f'example_{example}/speech.wav')
-        wavfile.write(output_file, rate, norm_speech)
-        output_file =  Path(output_dir)/ Path(f'example_{example}/masked_speech.wav')
-        wavfile.write(output_file, rate, masked_norm_speech)
-        output_file =  Path(output_dir)/ Path(f'example_{example}/explosions.wav')
-        wavfile.write(output_file, rate, explosions)
         
+        # Save the variables to a pickle file
+        if save_pickle:
+            pickle_file = Path(output_dir) / Path(f'example_{example}.pkl')
+            with open(pickle_file, 'wb') as f:
+                pickle.dump((mix, masked_mix, masked_norm_speech, explosions, norm_speech), f)
+        if save_wavs:    
+            (Path(output_dir) / Path(f'example_{example}')).mkdir(parents=True, exist_ok=True)
+            output_file =  Path(output_dir)/ Path(f'example_{example}/mix.wav')
+            wavfile.write(output_file, rate, mix)
+            output_file =  Path(output_dir)/ Path(f'example_{example}/masked_mix.wav')
+            wavfile.write(output_file, rate, masked_mix)
+            output_file =  Path(output_dir)/ Path(f'example_{example}/speech.wav')
+            wavfile.write(output_file, rate, norm_speech)
+            output_file =  Path(output_dir)/ Path(f'example_{example}/masked_speech.wav')
+            wavfile.write(output_file, rate, masked_norm_speech)
+            output_file =  Path(output_dir)/ Path(f'example_{example}/explosions.wav')
+            wavfile.write(output_file, rate, explosions)
+            
         if example % save_interval ==0 or example == num_examples - 1:
-            with open(os.path.join(output_dir, 'explosions.csv'), mode='a') as f:
+            with open(os.path.join(output_dir_csv, 'explosions.csv'), mode='a') as f:
                 writer = csv.writer(f, delimiter='|')
-                writer.writerows(zip(examples, delays_list, explosions_length_list, start_trim_samples_list, snrs, explosions_path_list, speech_path_list))
+                writer.writerows(zip(examples, delays_list, explosions_length_list, start_trim_samples_list, snrs, explosions_path_list, speech_path_list, transcripts))
             delays_list = []
             explosions_length_list = []
             examples = []
             speech_path_list = []
             explosions_path_list = []
             start_trim_samples_list = []
+            transcripts = []
 
 
 

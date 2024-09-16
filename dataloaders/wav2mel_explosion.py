@@ -1,4 +1,6 @@
 
+# This is script for creating the mel spectrograms from the audio files for the sppech with explosion dataset
+
 import os
 import torch
 import torch.utils.data
@@ -11,13 +13,13 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 # We're using the audio processing from TacoTron2 to make sure it matches
 from stft import TacotronSTFT, normalise_mel
-
+import pickle
 
 def get_all_filenames(data_path):
     """
     Load all .wav files in data_path
     """
-    files = glob(os.path.join(data_path, '*.wav'), recursive=True)
+    files = glob(os.path.join(data_path, '*.pkl'), recursive=True)
     return files
 
 def load_wav_to_torch(full_path):
@@ -56,41 +58,50 @@ def main(cfg):
     dataset_type = cfg.dataset["dataset_type"]
     stft = STFT(**cfg.audio)
     mode = 'Train'
-    filepaths = get_all_filenames(Path(cfg.dataset["base_data_dir"], mode, "audio_final")) #audio_final
+    filepaths = get_all_filenames(Path(cfg.dataset[dataset_type]["base_data_dir"], mode, "audio")) #audio_final
     num_of_files =  len(filepaths)
     #filepaths = sorted(filepaths)
     
-    max_val = 0
-    min_val = 0
+    max_val = {'speech_melspec': 0, 'mix_melspec': 0, 'masked_speech': 0}
+    min_val = {'speech_melspec': 0, 'mix_melspec': 0, 'masked_speech': 0}
     
-    mel_dir  = Path(cfg.dataset["base_data_dir"], mode, "mel")
-    mel_image_dir  = Path(cfg.dataset["base_data_dir"], mode, "mel_image")
+    mel_dir  = Path(cfg.dataset[dataset_type]["base_data_dir"], mode, "mel")
     mel_dir.mkdir(parents=True, exist_ok=True)
     mel_image_dir.mkdir(parents=True, exist_ok=True)
     # for filepath in tqdm(filepaths):
     for i in tqdm(range(num_of_files)):
-        filepath = Path(cfg.dataset["base_data_dir"], mode, "audio_final", f"example_{i}.wav") # audio_final
-        audio, sr = load_wav_to_torch(filepath)
-        # audio = audio / 1.1 / audio.abs().max()     # normalise max amplitude to be ~0.9
-        melspectrogram = stft.get_mel(audio)
-        if melspectrogram.max() > max_val:
-            max_val = melspectrogram.max()
-        if melspectrogram.min() < min_val:
-            min_val = melspectrogram.min()
-        
+        dict2save = {}
+        filepath = Path(cfg.dataset[dataset_type]["base_data_dir"], mode, "audio", f"example_{i}.pkl") # audio_final
+        with open(filepath, 'rb') as f:
+            mix, _, masked_norm_speech, _, norm_speech = pickle.load(f)
+# speech_melspec mix_melspec mix_time masked_speech
+        run_dict = {'speech_melspec': norm_speech, 'mix_melspec': mix, 'masked_speech': masked_norm_speech}
+        for key, value in run_dict.items():
+            mel_image_dir  = Path(cfg.dataset[dataset_type]["base_data_dir"], mode, "mel_image", f"example_{i}")
+            mel_image_dir.mkdir(parents=True, exist_ok=True)
+            audio = torch.from_numpy(value).float()
+            # audio = audio / 1.1 / audio.abs().max()     # normalise max amplitude to be ~0.9
+            melspectrogram = stft.get_mel(audio)
+            if melspectrogram.max() > max_val:
+                max_val[key] = melspectrogram.max()
+            if melspectrogram.min() < min_val:
+                min_val[key] = melspectrogram.min()
+
+            dict2save[key] = melspectrogram
 
 
-        # Convert the spectrogram to an image
-        plt.imshow(melspectrogram.numpy(), cmap='jet', origin='lower')
-        plt.axis('off')
-        plt.colorbar()
-        # Save the image
-        stem = Path(filepath).stem
-        image_path = mel_image_dir / Path(f"{stem}.png")
-        plt.savefig(str(image_path))
-        plt.close()
+            # Convert the spectrogram to an image
+            plt.imshow(melspectrogram.numpy(), cmap='jet', origin='lower')
+            plt.axis('off')
+            plt.colorbar()
+            # Save the image
+            stem = Path(filepath).stem
+            image_path = mel_image_dir / Path(f"{key}.png")
+            plt.savefig(str(image_path))
+            plt.close()
+            
         mel_filepath = mel_dir / Path(f"{stem}.npz")      
-        torch.save(melspectrogram, mel_filepath)
+        torch.save(dict2save, mel_filepath)
         
     print(f"max_val={max_val},\n min_val={min_val}")
 

@@ -2,7 +2,7 @@ import os
 os.sys.path.append("/home/dsi/moradim/SpeechRepainting")
 from ASR import asr_models as asr_models
 import torch
-from dataloaders.dataset_lipvoicer import SpeechRepaingingDataset
+from dataloaders.dataset_lipvoicer import get_dataset
 from omegaconf import DictConfig, OmegaConf
 import hydra
 from utils import calc_diffusion_hyperparams
@@ -30,7 +30,8 @@ def main(cfg: DictConfig) -> None:
     t = list(range(T-1, -1, -1))[-1]
     print(f"t = {t}")
     diffusion_steps = (t * torch.ones((1, 1))).cuda()
-    dataset = SpeechRepaingingDataset('test', **dataset_cfg, return_mask_properties=True, return_target_time=True)
+    
+    dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=True, return_target_time=True)
     i = 0
     audio_time, gt_melspec, *masked_cond, mask, block_size_list, num_blocks = dataset[i]
     # masked_cond = [masked_cond[i].unsqueeze(0).cuda() for i in range(len(masked_cond))]
