@@ -67,28 +67,32 @@ def main(cfg):
     
     mel_dir  = Path(cfg.dataset[dataset_type]["base_data_dir"], mode, "mel")
     mel_dir.mkdir(parents=True, exist_ok=True)
-    mel_image_dir.mkdir(parents=True, exist_ok=True)
+    
     # for filepath in tqdm(filepaths):
     for i in tqdm(range(num_of_files)):
         dict2save = {}
+        mel_image_dir  = Path(cfg.dataset[dataset_type]["base_data_dir"], mode, "mel_image", f"example_{i}")
+        mel_image_dir.mkdir(parents=True, exist_ok=True)
         filepath = Path(cfg.dataset[dataset_type]["base_data_dir"], mode, "audio", f"example_{i}.pkl") # audio_final
         with open(filepath, 'rb') as f:
             mix, _, masked_norm_speech, _, norm_speech = pickle.load(f)
 # speech_melspec mix_melspec mix_time masked_speech
         run_dict = {'speech_melspec': norm_speech, 'mix_melspec': mix, 'masked_speech': masked_norm_speech}
         for key, value in run_dict.items():
-            mel_image_dir  = Path(cfg.dataset[dataset_type]["base_data_dir"], mode, "mel_image", f"example_{i}")
             mel_image_dir.mkdir(parents=True, exist_ok=True)
             audio = torch.from_numpy(value).float()
             # audio = audio / 1.1 / audio.abs().max()     # normalise max amplitude to be ~0.9
-            melspectrogram = stft.get_mel(audio)
-            if melspectrogram.max() > max_val:
+            try:
+                melspectrogram = stft.get_mel(audio)
+            except:
+                print(f"Error in {filepath}_{key}")
+            if melspectrogram.max() > max_val[key]:
                 max_val[key] = melspectrogram.max()
-            if melspectrogram.min() < min_val:
+            if melspectrogram.min() < min_val[key]:
                 min_val[key] = melspectrogram.min()
 
             dict2save[key] = melspectrogram
-
+            melspectrogram = normalise_mel(melspectrogram)
 
             # Convert the spectrogram to an image
             plt.imshow(melspectrogram.numpy(), cmap='jet', origin='lower')

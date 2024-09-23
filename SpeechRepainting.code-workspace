@@ -11,6 +11,9 @@
 		{
 			"name": "explosion_project",
 			"path": "../explosion_project"
+		},
+		{
+			"path": "../sgmse"
 		}
 	],
 	"settings": {}

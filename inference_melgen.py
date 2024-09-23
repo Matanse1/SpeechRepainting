@@ -110,11 +110,23 @@ def generate(
         raise Exception('No valid model found')
     
     dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=False)
+    dataset_type = dataset_cfg.dataset_type
     dataset_indices = torch.arange(n_samples)
     groundtruth_melspec, masked_cond = [], []
     for i in dataset_indices:
-        _gt_melspec, *_masked_cond, _ = dataset[i]
-        _masked_cond = [_masked_cond[i].unsqueeze(0).cuda() for i in range(len(_masked_cond))]
+        
+        if dataset_type == 'explosion_speech_inpainting':
+                speech_melspec, mix_melspec, mix_time, _, explosions_activity, start_explosions, explosions_length = dataset[i]
+                mask = 1 - explosions_activity # zero = explosion, one = no explosion
+                mask = mask.cuda()
+                _gt_melspec = speech_melspec.cuda()
+                mix_melspec, mix_time = mix_melspec.cuda(), mix_time.cuda()
+                _masked_cond = [mix_melspec, mix_time]
+        elif dataset_type == 'speech_inpainting':
+            _gt_melspec, *_masked_cond, _ = dataset[i]
+            _masked_cond = [_masked_cond[i].unsqueeze(0).cuda() for i in range(len(_masked_cond))]
+        
+
         # for i in range(len(_masked_cond)):
         #     _masked_cond[i] = _masked_cond[i].unsqueeze(0).cuda()
         _gt_melspec = denormalise_mel(_gt_melspec)

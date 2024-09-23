@@ -2,7 +2,8 @@
 # under https://github.com/albertfgu/diffwave-sashimi/blob/master/LICENSE
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '5'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '5'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2,3,4,5,6,7'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -144,7 +145,8 @@ def train(
             if dataset_type == 'explosion_speech_inpainting':
                 speech_melspec, mix_melspec, mix_time, masked_speech, explosions_activity, start_explosions, explosions_length = data
                 mask = 1 - explosions_activity # zero = explosion, one = no explosion
-                melspec = speech_melspec
+                mask = mask.cuda()
+                melspec = speech_melspec.cuda()
                 mix_melspec, mix_time = mix_melspec.cuda(), mix_time.cuda()
                 masked_cond = [mix_melspec, mix_time]
             elif dataset_type == 'speech_inpainting':

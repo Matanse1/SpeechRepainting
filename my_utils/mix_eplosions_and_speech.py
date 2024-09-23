@@ -155,12 +155,15 @@ def mix_sppech_and_explosion(df_explosion, df_speech, num_explosions=2, silence_
         explosions +=  explosion
         
     mix = explosions + speech
-    abs_max_mix= max(abs(mix))
-    mix = mix / abs_max_mix
+    abs_max_mix = max(abs(mix))
+    abs_max_speech = max(abs(speech))
+    abs_max_explosions = max(abs(explosions))
+    abs_max = max(abs_max_mix, abs_max_speech, abs_max_explosions) #since can be destruction and mix will not be the highest 
+    mix = mix / abs_max
     masked_mix = mix.copy()
-    norm_speech = speech.copy() / abs_max_mix
-    masked_norm_speech = speech.copy() / abs_max_mix
-    explosions = explosions / abs_max_mix
+    norm_speech = speech.copy() / abs_max
+    masked_norm_speech = speech.copy() / abs_max
+    explosions = explosions / abs_max
     for delay, explosion_length in zip(delays, explosions_length):
         masked_mix[delay: delay + explosion_length] = 0
         masked_norm_speech[delay: delay + explosion_length] = 0
@@ -218,17 +221,17 @@ def get_speech(df_speech):
 if __name__ == '__main__':
     save_wavs = False
     save_pickle = True  
-    output_dir = "/dsi/gannot-lab1/datasets/speech_with_explosions/Train/audio" #'/dsi/gannot-lab1/datasets/Speech_with_Explosions'
+    output_dir = "/dsi/gannot-lab1/datasets/speech_with_explosions/Test/audio_rn" #'/dsi/gannot-lab1/datasets/Speech_with_Explosions'
     output_dir_csv = os.path.dirname(output_dir)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    num_examples = 200_000
+    num_examples = 5000 # 200_000
     rate = 16_000
     num_explosions = 2
     silence_thresh = -20 #20*np.log10(0.1)
     save_interval = 10_000
-    wav_dir = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.dev_audio_16k'
-    csv_explosion = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.ground_truth/dev_explosion_labels.csv'  # Replace with your actual CSV file path
-    csv_speech = '/dsi/gannot-lab1/datasets/reverb_data/Train/room_parameters_with_trans.csv'
+    wav_dir = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.eval_audio_16k' # FSD50K.eval_audio_16k, FSD50K.dev_audio_16k
+    csv_explosion = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.ground_truth/eval_explosion_labels.csv'  # Replace with your actual CSV file path, [eval_explosion_labels.csv, dev_explosion_labels]
+    csv_speech = '/dsi/gannot-lab1/datasets/reverb_data/Test/room_parameters_with_trans.csv'
     df_explosion = pd.read_csv(csv_explosion)
     print(f"The number of the explosions in the dataset is: {len(df_explosion)}")
     df_speech = pd.read_csv(csv_speech, delimiter='|')
