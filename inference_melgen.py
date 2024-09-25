@@ -116,7 +116,7 @@ def generate(
     for i in dataset_indices:
         
         if dataset_type == 'explosion_speech_inpainting':
-                speech_melspec, mix_melspec, mix_time, _, explosions_activity, start_explosions, explosions_length = dataset[i]
+                speech_melspec, mix_melspec, mix_time, _, masked_speech_time, explosions_activity, start_explosions, explosions_length = dataset[i]
                 mask = 1 - explosions_activity # zero = explosion, one = no explosion
                 mask = mask.cuda()
                 _gt_melspec = speech_melspec.cuda()

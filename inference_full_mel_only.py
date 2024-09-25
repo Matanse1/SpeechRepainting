@@ -266,7 +266,7 @@ def generate(
         os.makedirs(os.path.join(_output_directory, f'sample_{i}'), exist_ok=True)
         
         if dataset_type == 'explosion_speech_inpainting':
-            speech_melspec, mix_melspec, mix_time, masked_speech, explosions_activity, start_explosions, explosions_length = dataset[i]
+            speech_melspec, mix_melspec, mix_time, masked_speech, masked_speech_time, explosions_activity, start_explosions, explosions_length = dataset[i]
             mask = 1 - explosions_activity # zero = explosion, one = no explosion
             # for j in range(len(masked_cond)):
             #     masked_cond[j] = masked_cond[j].unsqueeze(0).cuda()
@@ -274,6 +274,7 @@ def generate(
             gt_melspec = speech_melspec.unsqueeze(0)
             
             masked_melspec, masked_audio_time = mix_melspec.unsqueeze(0).cuda(), mix_time.unsqueeze(0).cuda()
+            masked_audio_time4text = masked_speech_time
             masked_cond = [masked_melspec, masked_audio_time]
             
         
@@ -285,13 +286,14 @@ def generate(
             csv_writer.writerow([i, block_size_list, num_blocks])
             gt_melspec = gt_melspec.unsqueeze(0)
             masked_melspec, masked_audio_time = masked_cond
+            masked_audio_time4text = masked_audio_time.squeeze().cpu()
         
         if apply_asr_guidance:
             # Create a temporary file
             sample_rate = 16000  # Example value
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_wav:
                 # Save the masked audio array as a WAV file in the temporary file
-                write(temp_wav.name, sample_rate, masked_audio_time.squeeze().cpu().numpy().astype(np.float32)) # TODO maybe we need to do something more clever here
+                write(temp_wav.name, sample_rate, masked_audio_time4text.numpy().astype(np.float32)) # TODO maybe we need to do something more clever here
                 # Send the temporary WAV file to the pipeline
                 transcript_from_condition = pipeline_asr(temp_wav.name)
                 text = transcript_from_condition

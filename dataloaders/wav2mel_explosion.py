@@ -57,7 +57,7 @@ class STFT():
 def main(cfg):
     dataset_type = cfg.dataset["dataset_type"]
     stft = STFT(**cfg.audio)
-    mode = 'Train'
+    mode = 'Test'
     filepaths = get_all_filenames(Path(cfg.dataset[dataset_type]["base_data_dir"], mode, "audio")) #audio_final
     num_of_files =  len(filepaths)
     #filepaths = sorted(filepaths)

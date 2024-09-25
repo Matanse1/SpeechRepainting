@@ -3,7 +3,7 @@
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '2,3,4,5,6,7'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2,3'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -143,7 +143,7 @@ def train(
         for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}') if rank==0 else trainloader:
         # for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}'):
             if dataset_type == 'explosion_speech_inpainting':
-                speech_melspec, mix_melspec, mix_time, masked_speech, explosions_activity, start_explosions, explosions_length = data
+                speech_melspec, mix_melspec, mix_time, masked_speech, masked_speech_time, explosions_activity, start_explosions, explosions_length = data
                 mask = 1 - explosions_activity # zero = explosion, one = no explosion
                 mask = mask.cuda()
                 melspec = speech_melspec.cuda()

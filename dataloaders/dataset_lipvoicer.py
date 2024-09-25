@@ -449,11 +449,13 @@ class ExplosionSpeechRepaingingDataset(torch.utils.data.Dataset):
         mix_melspec = data["mix_melspec"] # mix of speech and explosions
         filepath = Path(self.audio_dir, f"example_{index}.pkl")
         with open(filepath, 'rb') as f:
-            mix, _, _, _, _ = pickle.load(f)
-        mix_time = mix
+            mix, _, masked_speech_time, _, _ = pickle.load(f)
+        mix_time = torch.from_numpy(mix)
+        masked_speech_time = torch.from_numpy(masked_speech_time)
         masked_speech = data["masked_speech"]
         speech_melspec = normalise_mel(speech_melspec)
         mix_melspec = normalise_mel(mix_melspec)
+        masked_speech = normalise_mel(masked_speech)
         
         # For activity of the explosion
         start_explosions = ast.literal_eval(start_explosions)
@@ -467,7 +469,7 @@ class ExplosionSpeechRepaingingDataset(torch.utils.data.Dataset):
             length_frame = self.time_to_frames(length, hop_length=self.audio_stft_hop)
             explosions_activity[..., start_frame: start_frame + length_frame] = 1 # assume the shape is [..., T]
         
-        return (speech_melspec, mix_melspec, mix_time, masked_speech, explosions_activity, start_explosions, explosions_length)
+        return (speech_melspec, mix_melspec, mix_time, masked_speech, masked_speech_time, explosions_activity, start_explosions, explosions_length)
         
         
     def time_to_frames(self, time_in_seconds, hop_length=160):
