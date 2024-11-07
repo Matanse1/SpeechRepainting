@@ -61,7 +61,8 @@ def remove_leading_silence(audio: AudioSegment, silence_thresh: int = -50, min_s
     else:
         # If no non-silent part is found, return the original audio
         trimmed_audio = audio
-    explosion_length = min(int(1.5 * 1000), len(trimmed_audio), end_trim - start_trim) # in ms
+    max_length = 0.7 * 1000
+    explosion_length = min(int(max_length), len(trimmed_audio), end_trim - start_trim) # in ms
     explosion_length_samples = int(explosion_length * audio.frame_rate / 1000)
     start_trim_samples = int(start_trim * audio.frame_rate / 1000)
     trimmed_audio = trimmed_audio[:explosion_length]
@@ -221,7 +222,7 @@ def get_speech(df_speech):
 if __name__ == '__main__':
     save_wavs = False
     save_pickle = True  
-    output_dir = "/dsi/gannot-lab1/datasets/speech_with_explosions/Test/audio_rn" #'/dsi/gannot-lab1/datasets/Speech_with_Explosions'
+    output_dir = "/dsi/gannot-lab1/datasets/speech_with_explosions/Test/audio" #'/dsi/gannot-lab1/datasets/Speech_with_Explosions'
     output_dir_csv = os.path.dirname(output_dir)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     num_examples = 5000 # 200_000

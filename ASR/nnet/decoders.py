@@ -170,7 +170,7 @@ class CTCBeamSearchDecoder(Module):
         else:
             tokens = outputs[0].tolist()
 
-        return self.tokenizer.decode(tokens)
+        return self.tokenizer.decode(tokens) #tokens to string
 
     def beam_search(self, logits, logits_len, verbose=False):
 

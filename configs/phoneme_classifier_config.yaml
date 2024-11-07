@@ -2,7 +2,7 @@
 melgen:
   _name_: melgen
   in_channels: 80
-  out_channels: 80
+  out_channels: 1 #the number of dictionay size
   diffusion_step_embed_dim_in: 128
   diffusion_step_embed_dim_mid: 512
   diffusion_step_embed_dim_out: 512
@@ -17,7 +17,7 @@ melgen:
     use_weighted_sum_wavlm: True # if False use the last hidden states
     use_all_hidden_states: True
     specific_indices:
-      use_indices_hidden_states: True
+      use_indices_hidden_states: False
       indices_hidden_states: #this indicate for each block which layers to take to the weighted sum
           {0: [0, 1, 2],
           1: [0, 1, 2],
@@ -48,7 +48,7 @@ diffusion:
 dataset:
   dataset_type: 'speech_inpainting' # explosion_speech_inpainting, speech_inpainting
   speech_inpainting:
-    base_data_dir: /dsi/gannot-lab1/datasets/reverb_data/
+    base_data_dir: /dsi/gannot-lab1/datasets/Librispeech_mfa
     sampling_rate: ${audio.sampling_rate}
     # for train - relatively large masking
     min_block_size: 30 # 35, 10 

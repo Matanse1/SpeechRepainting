@@ -279,7 +279,7 @@ class Model(Module):
         elif self.is_parallel:
             outputs = self.dp(inputs, diffusion_steps)
         else:
-            outputs = self.forward(inputs, diffusion_steps)
+            outputs = self.forward(inputs, diffusion_steps) #shape = [B, T, vocab_size], the T is number of frames of the mel spec divided by 2**3
 
         # Format Outputs to dict
         if isinstance(outputs, dict):

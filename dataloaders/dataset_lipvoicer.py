@@ -304,8 +304,13 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
         self.max_block_size = max_block_size
         self.min_spacing = min_spacing
         self.num4empty_str = num4empty_str
-        if self.num4empty_str != 'min':
-            self.num4empty = int(num4empty_str)
+        try:
+            float(num4empty_str)
+            is_number = True  # Conversion succeeded, it's a number
+        except ValueError:
+            is_number = False  # Conversion failed, not a number
+        if is_number:
+            self.num4empty = float(num4empty_str)
         
         self.test = True if split=='Test' else False
         self.audio_stft_hop = audio_stft_hop
@@ -407,7 +412,13 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
             # print(f"start is {start_pos}")
             # Set the mask to 0 for the current block
             # mask[:, start_pos:start_pos + block_size] = 0
-            melspec[:, start_pos:start_pos + block_size] = self.num4empty
+            if start_pos + block_size > shape[-1]:
+                block_size = shape[-1] - start_pos
+            if self.num4empty_str == 'randn' and block_size > 0:
+                self.num4empty = torch.randn((shape[0], block_size))
+                # print("num4empty is randn")
+            if block_size > 0:
+                melspec[:, start_pos:start_pos + block_size] = self.num4empty
             mask[:, start_pos:start_pos + block_size] = 0
             audio_time[int(start_pos*hop_length):int((start_pos + block_size)*hop_length)] = 0
             # Update the end position of the last block

@@ -14,6 +14,9 @@
 		},
 		{
 			"path": "../sgmse"
+		},
+		{
+			"path": "../librispeech_mfa_utils"
 		}
 	],
 	"settings": {}
