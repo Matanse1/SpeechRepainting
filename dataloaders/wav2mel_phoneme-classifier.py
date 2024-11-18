@@ -57,7 +57,7 @@ def main(cfg):
     filter_length = cfg.audio["filter_length"]
     hop_length = cfg.audio["hop_length"]
     stft = STFT(**cfg.audio)
-    mode = 'Test'
+    mode = 'Train' # Test, Train
     wavfile_path_root = Path(cfg.dataset[dataset_type]["base_data_dir"], "data", mode) #audio_final
 
 

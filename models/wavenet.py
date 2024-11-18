@@ -122,7 +122,7 @@ class Residual_block(nn.Module):
         nn.init.kaiming_normal_(self.skip_conv.weight)
         
 
-    def forward(self, input_data, mel_spec=None):
+    def forward(self, input_data, mel_spec=None, mask_padding=None):
         x, diffusion_step_embed = input_data
         h = x
         B, C, L = x.shape
@@ -153,7 +153,7 @@ class Residual_block(nn.Module):
             #     mel_spec = mel_spec[:, :, :L]
             if self.use_wavlm_rep:
                 with torch.no_grad():
-                    masked_audio_time_cond_wavlm = self.wavlm_model(masked_audio_time, output_hidden_states=self.use_all_hidden_states) #representation of the masked audio using wavlm
+                    masked_audio_time_cond_wavlm = self.wavlm_model(masked_audio_time, output_hidden_states=self.use_all_hidden_states, attention_mask=mask_padding) #representation of the masked audio using wavlm
                 if self.use_weighted_sum_wavlm:
                     hidden_states = masked_audio_time_cond_wavlm.hidden_states
                     if self.wavlm_prop["specific_indices"]["use_indices_hidden_states"]:
@@ -218,7 +218,7 @@ class Residual_group(nn.Module):
                                                        number=n,
                                                        **kwargs))
 
-    def forward(self, input_data, mel_spec=None):
+    def forward(self, input_data, mel_spec=None, mask_padding=None):
         x, diffusion_steps = input_data
 
         # embed diffusion step t
@@ -230,7 +230,7 @@ class Residual_group(nn.Module):
         h = x
         skip = 0
         for n in range(self.num_res_layers):
-            h, skip_n = self.residual_blocks[n]((h, diffusion_step_embed), mel_spec=mel_spec)  # use the output from last residual layer
+            h, skip_n = self.residual_blocks[n]((h, diffusion_step_embed), mel_spec=mel_spec, mask_padding=mask_padding)  # use the output from last residual layer
             skip = skip + skip_n  # accumulate all skip outputs
             # skip += skip_n  # accumulate all skip outputs
 
@@ -292,12 +292,12 @@ class WaveNet(nn.Module):
                                         nn.ReLU(),
                                         ZeroConv1d(skip_channels, out_channels))
 
-    def forward(self, input_data, cond=None):
+    def forward(self, input_data, cond=None, mask_padding=None):
         audio, diffusion_steps = input_data
 
         x = audio
         x = self.init_conv(x)
-        x = self.residual_layer((x, diffusion_steps), mel_spec=cond)
+        x = self.residual_layer((x, diffusion_steps), mel_spec=cond, mask_padding=mask_padding)
         x = self.final_conv(x)
 
         return x

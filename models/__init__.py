@@ -15,5 +15,6 @@ def construct_model(model_cfg):
 def model_identifier(model_cfg):
     model_cls = {
         "melgen": WaveNet,
+        "phoneme_classifier": WaveNet,
     }[model_cfg._name_]
     return model_cls.name(model_cfg)
