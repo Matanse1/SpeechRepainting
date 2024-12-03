@@ -85,7 +85,7 @@ def sampling(net, diffusion_hyperparams,
             decoder=None,
             without_condtion=False,
             mask=None,
-            mask_bool=False
+            on_masked_melspec=False
             ):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
@@ -115,7 +115,7 @@ def sampling(net, diffusion_hyperparams,
     masked_melspec, _ = condition
     # This is Algorithm 1 in the paper of classifier-free
     B, C, L = masked_melspec.shape  # B is batchsize, C=80, L is number of melspec frames
-    if mask_bool is not None:
+    if on_masked_melspec is not None:
         mask = mask.cuda()  
     
     x = torch.normal(0, 1, size=masked_melspec.shape).cuda()
@@ -123,7 +123,7 @@ def sampling(net, diffusion_hyperparams,
         for t in tqdm(range(T-1, -1, -1)):
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
             
-            if mask_bool is not None:
+            if on_masked_melspec is not None:
                 z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
                 noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
                 x = noisy_masked_melspec * mask + x * (1 - mask)
@@ -158,7 +158,7 @@ def sampling(net, diffusion_hyperparams,
                     outputs_ao = asr_guidance_net(inputs, diffusion_steps)["outputs"]
                     preds_ao = decoder(outputs_ao)[0]
                     print(preds_ao)
-    if mask_bool is not None:
+    if on_masked_melspec is not None:
         x = masked_melspec * mask + x * (1 - mask)
     return x, preds_ao
 
@@ -180,7 +180,7 @@ def generate(
         config_filename_asr_cond=None,
         apply_asr_guidance=False,
         lipread_text_dir=None,
-        mask_bool=False,
+        on_masked_melspec=False,
         **kwargs
     ):
 
@@ -262,7 +262,7 @@ def generate(
     criterion = nn.L1Loss(reduction='none')
     guidance_dir_name = f'w1={w_mel_cond}'
     guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}'
-    guidance_dir_name += f'_mask={mask_bool}'
+    guidance_dir_name += f'_mask={on_masked_melspec}'
     _output_directory = os.path.join(output_directory, guidance_dir_name)
     os.makedirs(_output_directory, exist_ok=True)
     print("saving to output directory", _output_directory)
@@ -372,7 +372,7 @@ def generate(
                         decoder=decoder,
                         without_condtion=without_condtion,
                         mask=mask,
-                        mask_bool=mask_bool
+                        on_masked_melspec=on_masked_melspec
                         )
         melspec = denormalise_mel(melspec)
         end.record()

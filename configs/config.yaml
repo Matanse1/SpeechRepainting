@@ -114,7 +114,7 @@ generate:
   config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
   apply_asr_guidance: True
   lipread_text_dir: null # directory with predicted text for generating test samples of benchmark dataset 
-  mask_bool: True
+  on_masked_melspec: True # whether to input the model the masked noisy melspec or noisy melspec(in inference only)
 
 distributed:
   dist_backend: nccl

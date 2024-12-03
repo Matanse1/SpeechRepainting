@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 def dataloader(dataset_cfg, batch_size, num_gpus, collate_fn=None, split='Train'):
     # train
-    dataset = get_dataset(dataset_cfg, split='Train', return_mask_properties=False)
+    dataset = get_dataset(dataset_cfg, split=split, return_mask_properties=False)
     # distributed sampler
     train_sampler = DistributedSampler(dataset) if num_gpus > 1 else None
 

@@ -11,6 +11,7 @@ phoneme_classifier:
   num_res_layers: 12
   dilation_cycle: 1
   mel_upsample: [2, 2]
+  unconditional: False
   cond_feat_size: 80
   wavlm:
     use_wavlm_rep: True
@@ -97,21 +98,22 @@ train: # Not used in generate.py
   n_iters: 20000001 #200 #1000001
 
   learning_rate: 2e-4
-  batch_size_per_gpu: 30 # 240
+  batch_size_per_gpu: 30 #64 #30 # 240
   w_masked_pix: 0.99
+  on_masked_melspec: False
 
 inference:
   name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_all_hidden_states_randn-filled_multi-gpu
-  ckpt_path: /dsi/gannot-lab1/users/mordehay/phoneme_classifier/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_all_hidden_states_randn-filled_multi-gpu/wnet_h512_d12_T400_betaT0.02/checkpoint/9000.pkl
+  ckpt_path: /dsi/gannot-lab1/users/mordehay/phoneme_classifier/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.99_two_branch=True_all_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/checkpoint/37500.pkl
   n_samples: 2        # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
   # n_samples_test: 10 # used in full inference mel only
   # video_path: null      # generate audio for a given silent video file
   # w_mel_cond: 2            # w1 in the paper
   # w_asr: 1.5 #1.5            # w2 in the paper
   # asr_start: 270 #270        # t_asr
-  save_dir: /dsi/gannot-lab1/users/mordehay/phoneme_classifier/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_all_hidden_states_randn-filled_multi-gpu/wnet_h512_d12_T400_betaT0.02 # where to save the generated audio
-  inference_phoneme_only_name_dir: as-train-gap_9000cp_filled-with-randn_fixed1 #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
-  # without_condtion: False
+  save_dir: /dsi/gannot-lab1/users/mordehay/phoneme_classifier/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.99_two_branch=True_all_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02 # where to save the generated audio
+  inference_phoneme_only_name_dir: as-train-gap_37500cp_apply-over-masked-melspec #as-train-gap_37500cp_filled-with-randn_on_masked_melspec=${train.on_masked_melspec} #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
+  # without_condtion: False 
   # config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
   # apply_asr_guidance: True
   # lipread_text_dir: null # directory with predicted text for generating test samples of benchmark dataset 

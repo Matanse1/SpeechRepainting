@@ -1,0 +1,102 @@
+
+wavlm_phoneme_classifier_masked_speech:
+  _name_: wavlm_phoneme_classifier_masked_speech
+  wavlm_config_path: /home/dsi/moradim/SpeechRepainting/configs/wavlm_config
+  wavlm_name: microsoft/wavlm-base-plus
+  vocab_size: 72
+  mel_bin_num: 80
+  freeze_feature_extractor: False
+  freeze_feature_projection: False
+  freeze_encoder: False
+  pre_trained_model: False
+  mask_regions: False
+
+
+
+dataset:
+  dataset_type: 'speech_inpainting_phoneme_classifier' # explosion_speech_inpainting_phoneme_classifier, speech_inpainting_phoneme_classifier
+  speech_inpainting_phoneme_classifier:
+    base_data_dir: /dsi/gannot-lab1/datasets/Librispeech_mfa
+    csv_loc: /dsi/gannot-lab1/datasets/Librispeech_mfa/ # /dsi/gannot-lab1/datasets/Librispeech_mfa/Test.csv, /dsi/gannot-lab1/datasets/Librispeech_mfa/Train.csv
+    sampling_rate: ${audio.sampling_rate}
+    # for train - relatively large masking
+    min_block_size: 30 # 35, 10 
+    max_block_size: 65 # 65 , 15
+    min_spacing:  30 # 30, 70
+    # relatively middle masking
+    # min_block_size: 25 # 35, 10 
+    # max_block_size: 40 # 65 , 15
+    # min_spacing:  70 # 30, 70
+    # relatively small masking
+    # min_block_size: 10 # 35, 10 
+    # max_block_size: 15 # 65 , 15
+    # min_spacing:  70 # 30, 70
+    rand_num_blocks: True
+    num_blocks: 2 #used when rand_num_blocks=False
+    # return_mask_properties: False #for train set this to False, for inference set to True
+    audio_stft_hop: ${audio.hop_length}
+    num4empty_str: min #or -12, 0, min, randn
+  explosion_speech_inpainting_phoneme_classifier:
+    base_data_dir: /dsi/gannot-lab1/datasets/speech_with_explosions
+    sampling_rate: ${audio.sampling_rate}
+    audio_stft_hop: ${audio.hop_length}
+
+
+audio:
+  sampling_rate: 16000
+  filter_length: 640
+  hop_length: 160
+  win_length: 640
+  mel_fmin: 20.0
+  mel_fmax: 8000.0
+
+train: # Not used in generate.py
+  name:  LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_lr=${train.learning_rate}_pretrained=${wavlm_phoneme_classifier_masked_speech.pre_trained_model} #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${phoneme_classifier.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
+  save_dir: /dsi/gannot-lab1/users/mordehay/wavlm_phoneme_classifier_masked_speech  # where checkpoints will be saved 
+  ckpt_iter: max    # continue training from a specific iteration
+
+  # for testing the training phase
+  # iters_per_ckpt: 20 #20 #10000
+  # iters_per_logging: 1 #1 #100
+  # n_iters: 200 #200 #1000001
+  #for complete training
+  iters_per_ckpt: 2000 #20 #10000 please change this number with dependence on batch size and number of gpu
+  iters_per_logging: 50 #1 #100
+  n_iters: 20000001 #200 #1000001
+
+  learning_rate: 1e-03
+  batch_size_per_gpu: 8 # For A100 = 20
+  w_masked_pix: 0.7
+
+cfg_loss:
+  use_weights: False
+  path2weights: /home/dsi/moradim/SpeechRepainting/my_utils/label_counts_train.npy
+  loss_type: cross_entropy #cross_entropy # focal_loss
+  cross_entropy:
+    label_smoothing: 0
+  focal:
+    gamma: 2
+    alpha: 1e05
+    label_smoothing: 0
+
+
+inference:
+  name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_all_hidden_states_randn-filled_multi-gpu
+  ckpt_path: /dsi/gannot-lab1/users/mordehay/wavlm_phoneme_classifier_masked_speech/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.7_lr=0.001_pretrained=False/vocab_size=72_mel_bin_num=80_freeze_feature_extractor=False_freeze_feature_projection=False_freeze_encoder=Falseloss_type=focal_use_weights=True_label_smoothing=0_gamma=2_alpha=100000.0/checkpoint/94000.pkl
+  n_samples: 2        # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
+  # n_samples_test: 10 # used in full inference mel only
+  # video_path: null      # generate audio for a given silent video file
+  # w_mel_cond: 2            # w1 in the paper
+  # w_asr: 1.5 #1.5            # w2 in the paper
+  # asr_start: 270 #270        # t_asr
+  save_dir: /dsi/gannot-lab1/users/mordehay/wavlm_phoneme_classifier_masked_speech/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.7_lr=0.001_pretrained=False/vocab_size=72_mel_bin_num=80_freeze_feature_extractor=False_freeze_feature_projection=False_freeze_encoder=Falseloss_type=focal_use_weights=True_label_smoothing=0_gamma=2_alpha=100000.0 # where to save the generated audio
+  inference_phoneme_only_name_dir: as-train-gap_94000cp #as-train-gap_37500cp_filled-with-randn_on_masked_melspec=${train.on_masked_melspec} #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
+  # without_condtion: False 
+  # config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
+  # apply_asr_guidance: True
+  # lipread_text_dir: null # directory with predicted text for generating test samples of benchmark dataset 
+
+
+distributed:
+  dist_backend: nccl
+  dist_url: tcp://localhost:54321 #54321

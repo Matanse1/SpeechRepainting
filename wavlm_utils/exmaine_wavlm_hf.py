@@ -6,7 +6,7 @@ import numpy as np
 from torch.nn import functional as F
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '4'
+os.environ['CUDA_VISIBLE_DEVICES'] = '5'
 # dataset = load_dataset("hf-internal-testing/librispeech_asr_demo", "clean", split="validation", trust_remote_code=True)
 # dataset = dataset.sort("id")
 # sampling_rate = dataset.features["audio"].sampling_rate

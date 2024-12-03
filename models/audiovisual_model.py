@@ -26,21 +26,27 @@ class AudioVisualModel(torch.nn.Module):
 
     def forward(self, melspec, masked_cond, diffusion_steps, cond_drop_prob, mask_padding=None):
         # classifier guidance
-        masked_melspec, masked_audio_time = masked_cond
-        batch, C, L = melspec.shape
-        masked_melspec_null = torch.randn(1, C, L, device=melspec.device)
-        masked_audio_time_null = torch.randn(1, masked_audio_time.shape[-1], device=melspec.device)
-        if cond_drop_prob > 0:
-            # for melspec cond
-            prob_keep_mask = self.prob_mask_like((batch, 1, 1), 1.0 - cond_drop_prob, melspec.device)
-            _masked_melspec = torch.where(prob_keep_mask, masked_melspec, masked_melspec_null)
-            
-            # for audio time cond
-            prob_keep_mask = self.prob_mask_like((batch, 1), 1.0 - cond_drop_prob, melspec.device)
-            _masked_audio_time = torch.where(prob_keep_mask, masked_audio_time, masked_audio_time_null)
+        if self.net_diffwave.unconditional:
+            cond = None
         else:
-            _masked_melspec = masked_melspec
-            _masked_audio_time = masked_audio_time
+            masked_melspec, masked_audio_time = masked_cond
+            batch, C, L = melspec.shape
+            masked_melspec_null = torch.randn(1, C, L, device=melspec.device)
+            masked_audio_time_null = torch.randn(1, masked_audio_time.shape[-1], device=melspec.device)
+            if cond_drop_prob > 0:
+                # for melspec cond
+                prob_keep_mask = self.prob_mask_like((batch, 1, 1), 1.0 - cond_drop_prob, melspec.device)
+                _masked_melspec = torch.where(prob_keep_mask, masked_melspec, masked_melspec_null)
+                
+                # for audio time cond
+                prob_keep_mask = self.prob_mask_like((batch, 1), 1.0 - cond_drop_prob, melspec.device)
+                _masked_audio_time = torch.where(prob_keep_mask, masked_audio_time, masked_audio_time_null)
+                
+            else:
+                _masked_melspec = masked_melspec
+                _masked_audio_time = masked_audio_time
+            
+            cond = (_masked_melspec, _masked_audio_time)
 
         # pass through visual stream and extract lipreading features
         # lipreading_feature = self.net_lipreading(_mouthroi)
@@ -54,7 +60,7 @@ class AudioVisualModel(torch.nn.Module):
         # visual_feature = visual_feature.squeeze(2)  # so dimensions are B, C, num_frames
         
 
-        output = self.net_diffwave((melspec, diffusion_steps), cond=(_masked_melspec, _masked_audio_time), mask_padding=mask_padding)
+        output = self.net_diffwave((melspec, diffusion_steps), cond=cond, mask_padding=mask_padding)
         return output
 
     @staticmethod

@@ -98,7 +98,10 @@ def local_directory(name, model_cfg, diffusion_cfg, save_dir, output_directory):
 
     # generate experiment (local) path
     model_name = model_identifier(model_cfg)
-    diffusion_name = f"_T{diffusion_cfg['T']}_betaT{diffusion_cfg['beta_T']}"
+    if diffusion_cfg is not dict:
+        diffusion_name = diffusion_cfg
+    else:
+        diffusion_name = f"_T{diffusion_cfg['T']}_betaT{diffusion_cfg['beta_T']}"
     local_path = model_name + diffusion_name
 
 

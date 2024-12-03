@@ -516,12 +516,15 @@ class SpeechRepaingingPhonemeClassifierDataset(torch.utils.data.Dataset):
         self.audio_stft_hop = audio_stft_hop
         set_seed(1234)
         self.sampling_rate = sampling_rate
+        self.split = split
         self.csv_path = Path(csv_loc) / f'{split}.csv'
         self.csv_df = pd.read_csv(self.csv_path, delimiter="|")
     
     def __len__(self):
         #return 100000
         # return 100
+        # if self.split=='Train':
+        #     return 300
         return len(self.csv_df)
     
     def __getitem__(self, index):
@@ -587,11 +590,11 @@ class SpeechRepaingingPhonemeClassifierDataset(torch.utils.data.Dataset):
         audio_time = audio_time.clone()
         # print(audio_time.shape)
         mask = torch.ones(melspec.shape[-1])
-        hop_length = 160
-        edge = int(0.5*16000/hop_length) # 0.5sec of edge
+        hop_length = self.audio_stft_hop
+        edge = int(0.5*self.sampling_rate/self.audio_stft_hop) # 0.5sec of edge
         if self.num4empty_str == 'min':
             min_melspec = torch.min(melspec)
-            min_melspec -= 1
+            # min_melspec -= 1
             self.num4empty = min_melspec 
         shape = melspec.shape
         # Determine the number of blocks
@@ -610,7 +613,7 @@ class SpeechRepaingingPhonemeClassifierDataset(torch.utils.data.Dataset):
                 #                             (shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
                 self.num_blocks = torch.randint(max(((shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1),
                                             (shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
-                print(f"num_blocks is {self.num_blocks}. /t from {max(((shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1)} to {(shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1}")
+                # print(f"num_blocks is {self.num_blocks}. /t from {max(((shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1)} to {(shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1}")
         # print(num_blocks)
         # Keep track of the end position of the last block to ensure spacing
         

@@ -48,7 +48,7 @@ def train(
     rank, num_gpus, save_dir,
     diffusion_cfg, model_cfg, dataset_cfg, # dist_cfg, wandb_cfg, # train_cfg,
     ckpt_iter, n_iters, iters_per_ckpt, iters_per_logging,
-    learning_rate, batch_size_per_gpu, w_masked_pix,
+    learning_rate, batch_size_per_gpu, w_masked_pix, on_masked_melspec,
     name=None, cfg=None
 ):
     
@@ -145,6 +145,7 @@ def train(
     n_iter = ckpt_iter + 1
     while n_iter < n_iters + 1:
         epoch_loss = 0.
+        net.train()
         for data in tqdm(trainloader, desc=f'Train Epoch {n_iter // len(trainloader)}') if rank==0 else trainloader:
         # for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}'):
             if dataset_type == 'explosion_speech_inpainting':
@@ -173,7 +174,7 @@ def train(
             optimizer.zero_grad()
             loss = training_loss(net, criterion, melspec, masked_cond, mask,  mask_mask, phoneme_target,
                                  diffusion_hyperparams, w_masked_pix=w_masked_pix, masked_audio_time_mask=masked_audio_time_mask,
-                                 phoneme_target_mask=phoneme_target_mask)
+                                 phoneme_target_mask=phoneme_target_mask, on_masked_melspec=on_masked_melspec)
             if num_gpus > 1:
                 reduced_loss = reduce_tensor(loss.data, num_gpus).item()
             else:
@@ -206,51 +207,53 @@ def train(
             
         ###################################### TEST ######################################
         epoch_loss = 0.
-        for data in tqdm(trainloader_test, desc=f'Test Epoch {n_iter // len(trainloader_test)}') if rank==0 else trainloader_test:
-        # for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}'):
-            if dataset_type == 'explosion_speech_inpainting':
-                speech_melspec, mix_melspec, mix_time, masked_speech, masked_speech_time, explosions_activity, start_explosions, explosions_length = data
-                mask = 1 - explosions_activity # zero = explosion, one = no explosion
-                mask = mask.cuda()
-                melspec = speech_melspec.cuda()
-                mix_melspec, mix_time = mix_melspec.cuda(), mix_time.cuda()
-                masked_cond = [mix_melspec, mix_time]
-            elif dataset_type == 'speech_inpainting':
-                melspec, *masked_cond, mask = data
-                masked_cond = [masked_cond[i].cuda() for i in range(len(masked_cond))]
-                melspec, mask = melspec.cuda(), mask.cuda()
-                # for i in range(len(masked_cond)):
-                #     masked_cond[i] = masked_cond[i].cuda()
-            elif dataset_type == 'speech_inpainting_phoneme_classifier':
-                phoneme_target, phoneme_target_mask = data["targets"]
-                phoneme_target, phoneme_target_mask = phoneme_target.cuda(), phoneme_target_mask.cuda()
-                # melspec, masked_melspec, masked_audio_time, mask
-                inputs, inputs_masks = data["inputs"]
-                melspec, masked_melspec, masked_audio_time, mask = inputs[0].cuda(), inputs[1].cuda(), inputs[2].cuda(), inputs[3].cuda()
-                melspec_mask, masked_melspec_mask, masked_audio_time_mask, mask_mask = inputs_masks[0].cuda(), inputs_masks[1].cuda(), inputs_masks[2].cuda(), inputs_masks[3].cuda()
-                masked_cond = [masked_melspec, masked_audio_time]
-                
-            loss = test_loss(net, criterion, melspec, masked_cond, mask,  mask_mask, phoneme_target,
-                                 diffusion_hyperparams, w_masked_pix=w_masked_pix, masked_audio_time_mask=masked_audio_time_mask,
-                                 phoneme_target_mask=phoneme_target_mask)
-            if num_gpus > 1:
-                reduced_loss = reduce_tensor(loss.data, num_gpus).item()
-            else:
-                reduced_loss = loss.item()
+        net.eval()
+        with torch.no_grad():
+            for data in tqdm(trainloader_test, desc=f'Test Epoch {n_iter // len(trainloader_test)}') if rank==0 else trainloader_test:
+            # for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}'):
+                if dataset_type == 'explosion_speech_inpainting':
+                    speech_melspec, mix_melspec, mix_time, masked_speech, masked_speech_time, explosions_activity, start_explosions, explosions_length = data
+                    mask = 1 - explosions_activity # zero = explosion, one = no explosion
+                    mask = mask.cuda()
+                    melspec = speech_melspec.cuda()
+                    mix_melspec, mix_time = mix_melspec.cuda(), mix_time.cuda()
+                    masked_cond = [mix_melspec, mix_time]
+                elif dataset_type == 'speech_inpainting':
+                    melspec, *masked_cond, mask = data
+                    masked_cond = [masked_cond[i].cuda() for i in range(len(masked_cond))]
+                    melspec, mask = melspec.cuda(), mask.cuda()
+                    # for i in range(len(masked_cond)):
+                    #     masked_cond[i] = masked_cond[i].cuda()
+                elif dataset_type == 'speech_inpainting_phoneme_classifier':
+                    phoneme_target, phoneme_target_mask = data["targets"]
+                    phoneme_target, phoneme_target_mask = phoneme_target.cuda(), phoneme_target_mask.cuda()
+                    # melspec, masked_melspec, masked_audio_time, mask
+                    inputs, inputs_masks = data["inputs"]
+                    melspec, masked_melspec, masked_audio_time, mask = inputs[0].cuda(), inputs[1].cuda(), inputs[2].cuda(), inputs[3].cuda()
+                    melspec_mask, masked_melspec_mask, masked_audio_time_mask, mask_mask = inputs_masks[0].cuda(), inputs_masks[1].cuda(), inputs_masks[2].cuda(), inputs_masks[3].cuda()
+                    masked_cond = [masked_melspec, masked_audio_time]
+                    
+                loss = test_loss(net, criterion, melspec, masked_cond, mask,  mask_mask, phoneme_target,
+                                    diffusion_hyperparams, w_masked_pix=w_masked_pix, masked_audio_time_mask=masked_audio_time_mask,
+                                    phoneme_target_mask=phoneme_target_mask, on_masked_melspec=on_masked_melspec)
+                if num_gpus > 1:
+                    reduced_loss = reduce_tensor(loss.data, num_gpus).item()
+                else:
+                    reduced_loss = loss.item()
 
-            epoch_loss += reduced_loss
+                epoch_loss += reduced_loss
 
-        if rank == 0:
-            epoch_loss /= len(trainloader_test)
-            print("Test loss: {}".format(epoch_loss))
-            writer.add_scalar('test_loss', epoch_loss, n_iter)
+            if rank == 0:
+                epoch_loss /= len(trainloader_test)
+                print("Test loss: {}".format(epoch_loss))
+                writer.add_scalar('test_loss', epoch_loss, n_iter)
 
     # Close logger
     if rank == 0:
         writer.close()
 
 def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, phoneme_target, diffusion_hyperparams, 
-                  masked_audio_time_mask, phoneme_target_mask, w_masked_pix=0.7):
+                  masked_audio_time_mask, phoneme_target_mask, on_masked_melspec, w_masked_pix=0.7):
     """
     Compute the training loss of epsilon and epsilon_theta
 
@@ -271,7 +274,11 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, phoneme_t
     B, C, L = melspec.shape  # B is batchsize, C=80, L is number of melspec frames
     diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
     z = torch.normal(0, 1, size=melspec.shape).cuda()
-    transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
+    if on_masked_melspec:
+        transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z
+        transformed_X = melspec * torch.unsqueeze(mask, dim=1) + transformed_X * (1-torch.unsqueeze(mask, dim=1))
+    else:
+        transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
     # cond_drop_prob = 0 # we don't want dropout in the phoneme classifier model
     phoneme_estimated = net(transformed_X, masked_cond, diffusion_steps.view(B,1), cond_drop_prob=0, mask_padding=masked_audio_time_mask)
     # print(phoneme_estimated)
@@ -283,11 +290,15 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, phoneme_t
     return weighted_loss
 
 def test_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, phoneme_target, diffusion_hyperparams, 
-                  masked_audio_time_mask, phoneme_target_mask, w_masked_pix=0.7):
-    training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, phoneme_target, diffusion_hyperparams, 
-                  masked_audio_time_mask, phoneme_target_mask, w_masked_pix)
+                  masked_audio_time_mask, phoneme_target_mask, on_masked_melspec, w_masked_pix=0.7):
+    return training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, phoneme_target, diffusion_hyperparams, 
+                  masked_audio_time_mask, phoneme_target_mask, on_masked_melspec, w_masked_pix)
 
-@hydra.main(version_base=None, config_path="configs/", config_name="phoneme_classifier_config")
+#/home/dsi/moradim/SpeechRepainting/configs/phoneme_classifier_config_without_condition.yaml
+# phoneme_classifier_config
+#phoneme_classifier_config_unconditional
+# /home/dsi/moradim/SpeechRepainting/configs/phoneme_classifier_config_original.yaml
+@hydra.main(version_base=None, config_path="configs/", config_name="phoneme_classifier_config_original")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     OmegaConf.set_struct(cfg, False)  # Allow writing keys
