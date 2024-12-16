@@ -1,8 +1,10 @@
 """ from https://github.com/keithito/tacotron """
 import re
+import sys
+sys.path.append('/home/dsi/moradim/SpeechRepainting/glow-tts')
 from text import cleaners
 from text.symbols import symbols
-
+from text import cmudict
 
 # Mappings from symbol to numeric ID and vice versa:
 _symbol_to_id = {s: i for i, s in enumerate(symbols)}
@@ -95,4 +97,13 @@ def _arpabet_to_sequence(text):
 
 
 def _should_keep_symbol(s):
-  return s in _symbol_to_id and s is not '_' and s is not '~'
+  return s in _symbol_to_id and s != '_' and s != '~'
+
+
+if __name__ == '__main__':
+  
+  dictionary = cmudict.CMUDict('/home/dsi/moradim/SpeechRepainting/glow-tts/data/cmu_dictionary')
+  text = "Hello, it's me."
+  cleaner_names = ['english_cleaners']
+  sequence_ids = text_to_sequence(text, cleaner_names, dictionary=dictionary)
+  

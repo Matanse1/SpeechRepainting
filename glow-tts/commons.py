@@ -15,6 +15,47 @@ def intersperse(lst, item):
   result[1::2] = lst
   return result
 
+def get_interspersed_phoneme_sequence(phoneme_with_silence, durations_with_silence, durations_without_silence):
+    """"This function return the list of the  phoneme duration with the silence token such that it's interspersed."
+
+    Args:
+        phoneme_with_silence (list): _description_
+        durations_with_silence (list): _description_
+        durations_without_silence (list): _description_
+
+    Returns:
+        list: _description_
+    """
+    interspersed_phoneme_duration = intersperse(durations_without_silence, 1)
+    
+    indices = np.where(np.isin(phoneme_with_silence, 1))[0] # the silence token is 1!!
+    sort_indices = np.sort(indices)
+    sort_indices_without_silence = sort_indices - np.arange(len(sort_indices))
+    for i in range(len(sort_indices_without_silence)):
+        interspersed_phoneme_duration[sort_indices_without_silence[i] * 2] = durations_with_silence[sort_indices[i]]
+    
+    return interspersed_phoneme_duration
+
+def create_attention_matrix(sequence):
+    num_frames = sum(sequence)
+    sequence = np.array(sequence)
+    num_rows = len(sequence)
+    
+    # Calculate start and end indices
+    starts = np.cumsum(np.insert(sequence[:-1], 0, 0))  # Start indices
+    ends = np.cumsum(sequence)                         # End indices
+    
+    # Generate the attention matrix
+    attention_matrix = np.zeros((num_rows, num_frames), dtype=int)
+    
+    # Create a range for all columns
+    columns = np.arange(num_frames)
+    
+    # Use broadcasting to create the matrix
+    mask = (columns >= starts[:, None]) & (columns < ends[:, None])
+    attention_matrix[mask] = 1
+    
+    return attention_matrix
 
 def mle_loss(z, m, logs, logdet, mask):
   l = torch.sum(logs) + 0.5 * torch.sum(torch.exp(-2 * logs) * ((z - m)**2)) # neg normal likelihood w/o the constant term
@@ -26,6 +67,14 @@ def mle_loss(z, m, logs, logdet, mask):
 
 def duration_loss(logw, logw_, lengths):
   l = torch.sum((logw - logw_)**2) / torch.sum(lengths)
+  return l
+
+def ce_loss(logits, targets, mask):
+  targets = targets[..., :logits.size(-1)].type(torch.long)
+  mask = mask[..., :logits.size(-1)]
+  l = F.cross_entropy(logits, targets, reduction='none')
+  l = l * mask
+  l = l.sum() / mask.sum()
   return l
 
 

@@ -143,31 +143,28 @@ def load_filepaths_and_text(filename, split="|"):
 
 def get_hparams(init=True):
   parser = argparse.ArgumentParser()
-  parser.add_argument('-c', '--config', type=str, default="./configs/base.json",
+  parser.add_argument('-c', '--config', type=str, default="./configs/my_base_blank.json",
                       help='JSON file for configuration')
-  parser.add_argument('-m', '--model', type=str, required=True,
-                      help='Model name')
-  
   args = parser.parse_args()
-  model_dir = os.path.join("./logs", args.model)
+  config_path = args.config
+  if init:
+    with open(config_path, "r") as f:
+      data = f.read()
+  config = json.loads(data)
 
+  hparams = HParams(**config)
+  model_dir = os.path.join("/dsi/gannot-lab1/users/mordehay/glow_tts_alignment", hparams.model_name)
   if not os.path.exists(model_dir):
     os.makedirs(model_dir)
-
-  config_path = args.config
   config_save_path = os.path.join(model_dir, "config.json")
+  hparams.model_dir = model_dir
+  
   if init:
     with open(config_path, "r") as f:
       data = f.read()
     with open(config_save_path, "w") as f:
       f.write(data)
-  else:
-    with open(config_save_path, "r") as f:
-      data = f.read()
-  config = json.loads(data)
-  
-  hparams = HParams(**config)
-  hparams.model_dir = model_dir
+
   return hparams
 
 
@@ -194,7 +191,7 @@ def get_hparams_from_file(config_path):
 def check_git_hash(model_dir):
   source_dir = os.path.dirname(os.path.realpath(__file__))
   if not os.path.exists(os.path.join(source_dir, ".git")):
-    logger.warn("{} is not a git repository, therefore hash value comparison will be ignored.".format(
+    logger.warning("{} is not a git repository, therefore hash value comparison will be ignored.".format(
       source_dir
     ))
     return
@@ -205,7 +202,7 @@ def check_git_hash(model_dir):
   if os.path.exists(path):
     saved_hash = open(path).read()
     if saved_hash != cur_hash:
-      logger.warn("git hash values are different. {}(saved) != {}(current)".format(
+      logger.warning("git hash values are different. {}(saved) != {}(current)".format(
         saved_hash[:8], cur_hash[:8]))
   else:
     open(path, "w").write(cur_hash)
@@ -256,3 +253,20 @@ class HParams():
 
   def __repr__(self):
     return self.__dict__.__repr__()
+
+
+def size_model(model):
+    module_parameters = list(filter(lambda p: p[1].requires_grad, model.named_parameters()))
+    params = sum([np.prod(p.size()) for n, p in module_parameters])
+    print("The number of parameters of the model is: {:.6f}M".format(params/1e6))
+    
+
+def get_phones_dict(file_path):
+    phoneme_dict_p2d = {}
+    phoneme_dict_d2p = {}
+    with open(file_path, 'r') as file:
+        for line in file:
+            key, value = line.strip().split()
+            phoneme_dict_p2d[key] = int(value) #phone to digit
+            phoneme_dict_d2p[int(value)] = key #digit to phone
+    return phoneme_dict_p2d, phoneme_dict_d2p

@@ -7,7 +7,8 @@ import modules
 import commons
 import attentions
 import monotonic_align
-
+# import my_monotonic_align as monotonic_align
+import numpy as np
 
 class DurationPredictor(nn.Module):
   def __init__(self, in_channels, filter_channels, kernel_size, p_dropout):
@@ -212,6 +213,8 @@ class FlowGenerator(nn.Module):
       hidden_channels_enc=None,
       hidden_channels_dec=None,
       prenet=False,
+      insert_masked_melspec_bool=False,
+      classification_head=False,
       **kwargs):
 
     super().__init__()
@@ -240,6 +243,8 @@ class FlowGenerator(nn.Module):
     self.hidden_channels_enc = hidden_channels_enc
     self.hidden_channels_dec = hidden_channels_dec
     self.prenet = prenet
+    self.insert_masked_melspec_bool = insert_masked_melspec_bool
+    self.classification_head = classification_head
 
     self.encoder = TextEncoder(
         n_vocab, 
@@ -273,8 +278,22 @@ class FlowGenerator(nn.Module):
     if n_speakers > 1:
       self.emb_g = nn.Embedding(n_speakers, gin_channels)
       nn.init.uniform_(self.emb_g.weight, -0.1, 0.1)
+      
+    if insert_masked_melspec_bool:
+      self.masked_spec_embed = nn.Parameter(torch.Tensor(out_channels).uniform_())
+      
+    if classification_head:
+      self.proj2vocab = nn.Linear(out_channels, n_vocab)
 
-  def forward(self, x, x_lengths, y=None, y_lengths=None, g=None, gen=False, noise_scale=1., length_scale=1.):
+  def forward(self, x, x_lengths, y=None, y_lengths=None, g=None, gen=False, noise_scale=1., length_scale=1., attention_mask=None, masked_region=None, true_attention_matrix=None):
+    if self.insert_masked_melspec_bool and not gen:
+      masked_region_condition = attention_mask * (1 - masked_region)
+      masked_region_condition = masked_region_condition > 0 # make it boolean
+      masked_region_condition = torch.tensor(masked_region_condition, device=y.device, dtype=torch.bool) #[B, T]
+      y = y.transpose(2, 1) #[B, T, mel_bin_num]
+      y[masked_region_condition] = self.masked_spec_embed.to(y.dtype)
+      y = y.transpose(2, 1) #[B, mel_bin_num, T]
+      
     if g is not None:
       g = F.normalize(self.emb_g(g)).unsqueeze(-1) # [b, h]
     x_m, x_logs, logw, x_mask = self.encoder(x, x_lengths, g=g)
@@ -301,6 +320,11 @@ class FlowGenerator(nn.Module):
       return (y, z_m, z_logs, logdet, z_mask), (x_m, x_logs, x_mask), (attn, logw, logw_)
     else:
       z, logdet = self.decoder(y, z_mask, g=g, reverse=False)
+      if self.classification_head:
+        vocab_classification = self.proj2vocab(z.transpose(1, 2))
+        vocab_classification = vocab_classification.transpose(1, 2)
+      else:
+        vocab_classification = None
       with torch.no_grad():
         x_s_sq_r = torch.exp(-2 * x_logs)
         logp1 = torch.sum(-0.5 * math.log(2 * math.pi) - x_logs, [1]).unsqueeze(-1) # [b, t, 1]
@@ -309,11 +333,18 @@ class FlowGenerator(nn.Module):
         logp4 = torch.sum(-0.5 * (x_m ** 2) * x_s_sq_r, [1]).unsqueeze(-1) # [b, t, 1]
         logp = logp1 + logp2 + logp3 + logp4 # [b, t, t']
 
-        attn = monotonic_align.maximum_path(logp, attn_mask.squeeze(1)).unsqueeze(1).detach()
+        if true_attention_matrix is not None:
+          attn = true_attention_matrix
+          t = (attn.shape[-1] // self.n_sqz) * self.n_sqz
+          attn = attn[..., :t]
+          attn = attn.unsqueeze(1)
+            
+        else:
+          attn = monotonic_align.maximum_path(logp, attn_mask.squeeze(1)).unsqueeze(1).detach()
       z_m = torch.matmul(attn.squeeze(1).transpose(1, 2), x_m.transpose(1, 2)).transpose(1, 2) # [b, t', t], [b, t, d] -> [b, d, t']
       z_logs = torch.matmul(attn.squeeze(1).transpose(1, 2), x_logs.transpose(1, 2)).transpose(1, 2) # [b, t', t], [b, t, d] -> [b, d, t']
       logw_ = torch.log(1e-8 + torch.sum(attn, -1)) * x_mask
-      return (z, z_m, z_logs, logdet, z_mask), (x_m, x_logs, x_mask), (attn, logw, logw_)
+      return (z, z_m, z_logs, logdet, z_mask), (x_m, x_logs, x_mask), (attn, logw, logw_), vocab_classification
 
   def preprocess(self, y, y_lengths, y_max_length):
     if y_max_length is not None:
