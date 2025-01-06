@@ -20,7 +20,7 @@ import utils
 from text.symbols import symbols
 import os
 import numpy as np
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 global_step = 0
 
@@ -162,7 +162,7 @@ def train(rank, epoch, hps, generator, optimizer_g, train_loader, logger, writer
     # Train Generator
     optimizer_g.zero_grad()
     
-    (z, z_m, z_logs, logdet, z_mask), (x_m, x_logs, x_mask), (attn, logw, logw_), vocab_classification = generator(x, x_lengths, y, y_lengths, gen=False, attention_mask=attention_mask, masked_region=masked_region, true_attention_matrix=true_attention_matrix)
+    (z, z_m, z_logs, logdet, z_mask), (x_m, x_logs, x_mask), (attn, logw, logw_), (vocab_classification, logp) = generator(x, x_lengths, y, y_lengths, gen=False, attention_mask=attention_mask, masked_region=masked_region, true_attention_matrix=true_attention_matrix)
     l_mle = commons.mle_loss(z, z_m, z_logs, logdet, z_mask)
     if hps.train.use_true_duration:
       true_duration = torch.log(1e-8 + phoneme_duration) * phoneme_duration_mask
@@ -257,7 +257,7 @@ def evaluate(rank, epoch, hps, generator, optimizer_g, val_loader, logger, write
           full_phoneme_squence = full_phoneme_squence.cuda(rank, non_blocking=True)
           full_phoneme_squence_mask = full_phoneme_squence_mask.cuda(rank, non_blocking=True)
         
-        (z, z_m, z_logs, logdet, z_mask), (x_m, x_logs, x_mask), (attn, logw, logw_), vocab_classification = generator(x, x_lengths, y, y_lengths, gen=False, attention_mask=attention_mask, masked_region=masked_region, true_attention_matrix=true_attention_matrix)
+        (z, z_m, z_logs, logdet, z_mask), (x_m, x_logs, x_mask), (attn, logw, logw_), (vocab_classification, logp) = generator(x, x_lengths, y, y_lengths, gen=False, attention_mask=attention_mask, masked_region=masked_region, true_attention_matrix=true_attention_matrix)
         l_mle = commons.mle_loss(z, z_m, z_logs, logdet, z_mask)
         if hps.train.use_true_duration:
           true_duration = torch.log(1e-8 + phoneme_duration) * phoneme_duration_mask

@@ -2,3 +2,6 @@ outputs
 logs
 .vscode
 temp_dir
+temp_dir_explosions
+temp_dir_wavlm_phoneme
+lossy_dir

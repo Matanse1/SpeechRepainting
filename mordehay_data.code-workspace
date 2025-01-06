@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../../../../dsi/gannot-lab1/users/mordehay"
+		},
+		{
+			"path": "../../../../dsi/gannot-lab1/datasets/Librispeech_mfa"
+		},
+		{
+			"path": "../librispeech_mfa_utils"
+		},
+		{
+			"path": "../../../../dsi/gannot-lab1/datasets/lossy_audio"
+		}
+	],
+	"settings": {}
+}

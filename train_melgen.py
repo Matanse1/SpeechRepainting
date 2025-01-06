@@ -3,7 +3,7 @@
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '6'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -19,7 +19,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
-from dataloaders import dataloader, custom_collate_fn
+from dataloaders import dataloader, CollateFn
 from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, plot_melspec
 
 from distributed_util import init_distributed, apply_gradient_allreduce, reduce_tensor
@@ -49,7 +49,7 @@ def train(
     rank, num_gpus, save_dir,
     diffusion_cfg, model_cfg, dataset_cfg, generate_cfg, # dist_cfg, wandb_cfg, # train_cfg,
     ckpt_iter, n_iters, iters_per_ckpt, iters_per_logging,
-    learning_rate, batch_size_per_gpu, w_masked_pix,
+    learning_rate, batch_size_per_gpu, w_masked_pix, on_masked_melspec,
     name=None, cfg=None
 ):
     
@@ -65,6 +65,9 @@ def train(
     batch_size_per_gpu (int):       batchsize per gpu, default is 2 so total batchsize is 16 with 8 gpus
     name (str):                     prefix in front of experiment name
     """
+    
+
+    
     local_path, checkpoint_directory = local_directory(name, model_cfg, diffusion_cfg, save_dir, 'checkpoint')
     
     if rank == 0:
@@ -89,7 +92,27 @@ def train(
     diffusion_hyperparams = calc_diffusion_hyperparams(**diffusion_cfg, fast=False)  # dictionary of all diffusion hyperparameters
 
     # load training data
-    trainloader = dataloader(dataset_cfg, batch_size=batch_size_per_gpu, num_gpus=num_gpus)
+        # load training data
+    if dataset_cfg.dataset_type == 'explosion_speech_inpainting':
+        pass
+    elif dataset_cfg.dataset_type == 'speech_inpainting':
+        pass 
+    elif dataset_cfg.dataset_type == 'plc_task':
+        #melspec, masked_melspec, masked_audio_time, frame_mask, sample_mask
+        collate_fn = CollateFn(inputs_params=[{"axis": 0, "end_number": 0, 'max_length':1701}, {"axis": 1, "end_number": 0, 'max_length':1701},
+                                            {"axis": 2, "end_number": 0, 'max_length':16000 * 17},
+                                            {"axis": 3, "end_number": 1, 'max_length':1701},
+                                            {"axis": 4, "end_number": 1, 'max_length':1701}],
+                            targets_params=[])
+    elif dataset_cfg.dataset_type == 'speech_inpainting_anechoic':
+        #melspec, masked_melspec, masked_audio_time, mask
+        collate_fn = CollateFn(inputs_params=[{"axis": 0, "end_number": 0, 'max_length':1701}, {"axis": 1, "end_number": 0, 'max_length':1701},
+                                            {"axis": 3, "end_number": 1, 'max_length':1701},
+                                            {"axis": 2, "end_number": 0, 'max_length':16000 * 17}],
+                            targets_params=[])
+    # (phoneme_target, melspec, masked_melspec, masked_audio_time, mask)
+    trainloader = dataloader(dataset_cfg, batch_size=batch_size_per_gpu, num_gpus=num_gpus, collate_fn=collate_fn, split='Train')
+    trainloader_test = dataloader(dataset_cfg, batch_size=batch_size_per_gpu, num_gpus=num_gpus, collate_fn=collate_fn, split='Test')
     print('Data loaded')
 
     # predefine model
@@ -155,10 +178,24 @@ def train(
                 melspec, mask = melspec.cuda(), mask.cuda()
                 # for i in range(len(masked_cond)):
                 #     masked_cond[i] = masked_cond[i].cuda()
-
+            elif dataset_type == 'speech_inpainting_anechoic':
+                data_list, mask_list = data["inputs"]
+                melspec, masked_melspec, mask, masked_audio_time = data_list[0].cuda(), data_list[1].cuda(), data_list[2].cuda(), data_list[3].cuda()
+                melspec_mask, masked_melspec_mask, mask_mask, masked_audio_time_mask = mask_list[0].cuda(), mask_list[1].cuda(), mask_list[2].cuda(), mask_list[3].cuda()
+                masked_cond = [masked_melspec, masked_audio_time]
+            elif dataset_type == 'plc_task':
+                data_list, mask_list = data["inputs"]
+                melspec, masked_melspec, masked_audio_time, frame_mask, sample_mask = \
+                        data_list[0].cuda(), data_list[1].cuda(), data_list[2].cuda(), data_list[3].cuda(), data_list[4].cuda()
+                melspec_mask, masked_melspec_mask, masked_audio_time_mask, frame_mask_mask, sample_mask_mask = \
+                        mask_list[0].cuda(), mask_list[1].cuda(), mask_list[2].cuda(), mask_list[3].cuda(), mask_list[4].cuda()
+                masked_cond = [masked_melspec, masked_audio_time]
+                mask = frame_mask
+                mask_mask = frame_mask_mask
             # back-propagation
             optimizer.zero_grad()
-            loss = training_loss(net, criterion, melspec, masked_cond, mask, diffusion_hyperparams, w_masked_pix)
+            loss = training_loss(net, criterion, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, 
+                  masked_audio_time_mask, on_masked_melspec, w_masked_pix)
             if num_gpus > 1:
                 reduced_loss = reduce_tensor(loss.data, num_gpus).item()
             else:
@@ -192,6 +229,7 @@ def train(
                     ckpt_iter="max",
                     n_samples=generate_cfg.n_samples,
                     w_mel_cond=generate_cfg.w_mel_cond,
+                    on_masked_melspec=generate_cfg.on_masked_melspec
                 )
                 
                 # send images to log
@@ -205,12 +243,61 @@ def train(
         if rank == 0:
             epoch_loss /= len(trainloader)
             writer.add_scalar('train_loss', epoch_loss, n_iter)
+            
+        ###################################### TEST ######################################
+        epoch_loss = 0.
+        net.eval()
+        with torch.no_grad():
+            for data in tqdm(trainloader_test, desc=f'Test Epoch {n_iter // len(trainloader_test)}') if rank==0 else trainloader_test:
+            # for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}'):
+                if dataset_type == 'explosion_speech_inpainting':
+                    speech_melspec, mix_melspec, mix_time, masked_speech, masked_speech_time, explosions_activity, start_explosions, explosions_length = data
+                    mask = 1 - explosions_activity # zero = explosion, one = no explosion
+                    mask = mask.cuda()
+                    melspec = speech_melspec.cuda()
+                    mix_melspec, mix_time = mix_melspec.cuda(), mix_time.cuda()
+                    masked_cond = [mix_melspec, mix_time]
+                elif dataset_type == 'speech_inpainting':
+                    melspec, *masked_cond, mask = data
+                    masked_cond = [masked_cond[i].cuda() for i in range(len(masked_cond))]
+                    melspec, mask = melspec.cuda(), mask.cuda()
+                    # for i in range(len(masked_cond)):
+                    #     masked_cond[i] = masked_cond[i].cuda()
+                elif dataset_type == 'plc_task':
+                    data_list, mask_list = data["inputs"]
+                    melspec, masked_melspec, masked_audio_time, frame_mask, sample_mask = \
+                        data_list[0].cuda(), data_list[1].cuda(), data_list[2].cuda(), data_list[3].cuda(), data_list[4].cuda()
+                    melspec_mask, masked_melspec_mask, masked_audio_time_mask, frame_mask_mask, sample_mask_mask = \
+                        mask_list[0].cuda(), mask_list[1].cuda(), mask_list[2].cuda(), mask_list[3].cuda(), mask_list[4].cuda()
+                    masked_cond = [masked_melspec, masked_audio_time]
+                    mask = frame_mask
+                    mask_mask = frame_mask_mask
+                elif dataset_type == 'speech_inpainting_anechoic':
+                    data_list, mask_list = data["inputs"]
+                    melspec, masked_melspec, mask, masked_audio_time = data_list[0].cuda(), data_list[1].cuda(), data_list[2].cuda(), data_list[3].cuda()
+                    melspec_mask, masked_melspec_mask, mask_mask, masked_audio_time_mask = mask_list[0].cuda(), mask_list[1].cuda(), mask_list[2].cuda(), mask_list[3].cuda()
+                    masked_cond = [masked_melspec, masked_audio_time]
+                    
+                loss = test_loss(net, criterion, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, 
+                  masked_audio_time_mask, on_masked_melspec, w_masked_pix)
+                if num_gpus > 1:
+                    reduced_loss = reduce_tensor(loss.data, num_gpus).item()
+                else:
+                    reduced_loss = loss.item()
+
+                epoch_loss += reduced_loss
+
+            if rank == 0:
+                epoch_loss /= len(trainloader_test)
+                print("Test loss: {}".format(epoch_loss))
+                writer.add_scalar('test_loss', epoch_loss, n_iter)
 
     # Close logger
     if rank == 0:
         writer.close()
 
-def training_loss(net, loss_fn, melspec, masked_cond, mask, diffusion_hyperparams, w_masked_pix=0.7):
+def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, 
+                  masked_audio_time_mask, on_masked_melspec, w_masked_pix=0.7):
     """
     Compute the training loss of epsilon and epsilon_theta
 
@@ -231,16 +318,26 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, diffusion_hyperparam
     B, C, L = melspec.shape  # B is batchsize, C=80, L is number of melspec frames
     diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
     z = torch.normal(0, 1, size=melspec.shape).cuda()
-    transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
+    if on_masked_melspec:
+        transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z
+        transformed_X = melspec * torch.unsqueeze(mask, dim=1) + transformed_X * (1-torch.unsqueeze(mask, dim=1))
+    else:
+        transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
     cond_drop_prob = 0.2
-    epsilon_theta = net(transformed_X, masked_cond, diffusion_steps.view(B,1), cond_drop_prob)
-    loss = loss_fn(epsilon_theta, z) #[B, F, T]
-    unmaksed_loss = torch.sum(mask * loss) / torch.sum(mask)
-    masked_loss = torch.sum((1-mask) * loss) / torch.sum(1-mask)
+    epsilon_theta = net(transformed_X, masked_cond, diffusion_steps.view(B,1), cond_drop_prob, mask_padding=masked_audio_time_mask)
+    loss = loss_fn(epsilon_theta, z) #[B, F, T]    
+    loss = loss * mask_mask
+    unmaksed_loss = torch.sum(mask * loss) / torch.sum(mask * mask_mask)
+    masked_loss = torch.sum((1-mask) * loss) / torch.sum((1-mask) * mask_mask)
     weighted_loss = (1 - w_masked_pix) * unmaksed_loss + w_masked_pix * masked_loss
+    
+    
     return weighted_loss
 
-
+def test_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, 
+                  masked_audio_time_mask, on_masked_melspec, w_masked_pix=0.7):
+    return training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, 
+                  masked_audio_time_mask, on_masked_melspec, w_masked_pix)
 
 @hydra.main(version_base=None, config_path="configs/", config_name="config")
 def main(cfg: DictConfig) -> None:

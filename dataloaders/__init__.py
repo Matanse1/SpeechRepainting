@@ -155,15 +155,15 @@ class CollateFn(nn.Module):
         #             masks[name] = mask
 
         # List
-        if isinstance(collate_params, list):
-            collates = []
-            masks = []
-            for params in collate_params:
-                collate = [sample[params["axis"]] for sample in samples]
-                collate, mask = process_single_collate(collate, params)
-                collates.append(torch.stack(collate, dim=0))
-                # if mask is not None:
-                masks.append(torch.stack(mask, dim=0))
+        
+        collates = []
+        masks = []
+        for params in collate_params:
+            collate = [sample[params["axis"]] for sample in samples]
+            collate, mask = process_single_collate(collate, params)
+            collates.append(torch.stack(collate, dim=0))
+            # if mask is not None:
+            masks.append(torch.stack(mask, dim=0))
 
         # Tuple
         # elif isinstance(collate_params, tuple):

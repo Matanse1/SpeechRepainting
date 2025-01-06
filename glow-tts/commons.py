@@ -26,7 +26,7 @@ def get_interspersed_phoneme_sequence(phoneme_with_silence, durations_with_silen
     Returns:
         list: _description_
     """
-    interspersed_phoneme_duration = intersperse(durations_without_silence, 1)
+    interspersed_phoneme_duration = intersperse(durations_without_silence, 0)
     
     indices = np.where(np.isin(phoneme_with_silence, 1))[0] # the silence token is 1!!
     sort_indices = np.sort(indices)
@@ -181,15 +181,23 @@ class Adam():
   def _get_lr_scale(self):
     if self.scheduler == "noam":
       return np.power(self.dim_model, -0.5) * np.min([np.power(self.step_num, -0.5), self.step_num * np.power(self.warmup_steps, -1.5)])
+    elif self.scheduler == "warmup_and_constant":
+      if self.step_num < self.warmup_steps:
+        return np.power(self.dim_model, -0.5) * np.min([np.power(self.step_num, -0.5), self.step_num * np.power(self.warmup_steps, -1.5)])
+      else:
+        return np.power(self.dim_model, -0.5) * np.power(self.warmup_steps, -0.5)
+
+      
     else:
       return 1
 
   def _update_learning_rate(self):
     self.step_num += 1
-    if self.scheduler == "noam":
+    if self.scheduler == "noam" or self.scheduler == "warmup_and_constant":
       self.cur_lr = self.lr * self._get_lr_scale()
       for param_group in self._optim.param_groups:
         param_group['lr'] = self.cur_lr
+
 
   def get_lr(self):
     return self.cur_lr

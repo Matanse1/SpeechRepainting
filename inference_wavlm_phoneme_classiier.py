@@ -195,6 +195,8 @@ def inference(
                     mask_mask = torch.ones_like(mask)
                     melspec_mask, masked_melspec_mask, masked_audio_time_mask, phoneme_target_mask = None, None, None, None
                     csv_writer.writerow([i, block_size_list, num_blocks])
+                    if not model_cfg.mask_regions:
+                        masked_melspec = gt_melspec
 
         
             
@@ -237,16 +239,18 @@ def inference(
             # Create HTML table rows with aligned elements
             rows = []
             color_list = mask.tolist()[0]
-            for true_char, est_char, color in zip(true_phoneme_string, est_phoneme_string, color_list):
+            hop_length = 160
+            sampling_rate = 16000
+            for i, (true_char, est_char, color) in enumerate(zip(true_phoneme_string, est_phoneme_string, color_list)):
                 true_colored = colorize_html(true_char, color)
                 est_colored = colorize_html(est_char, color)
-                rows.append(f"<tr><td>{true_colored}</td><td>{est_colored}</td></tr>")
+                rows.append(f"<tr><td>{true_colored}</td><td>{est_colored}</td><td>{i * hop_length / sampling_rate}</td></tr>")
 
             # Write the aligned and colorized lists to an HTML file
             with open(phoneme_filename, 'w') as f:
                 f.write("<html><body>\n")
                 f.write("<table border='1' style='border-collapse: collapse; text-align: center;'>\n")
-                f.write("<tr><th>true_phoneme_string</th><th>est_phoneme_string</th></tr>\n")
+                f.write("<tr><th>true_phoneme_string</th><th>est_phoneme_string</th><th>time[s]</th></tr>\n")
                 f.write("\n".join(rows))
                 f.write("</table>\n")
                 f.write("</body></html>\n")

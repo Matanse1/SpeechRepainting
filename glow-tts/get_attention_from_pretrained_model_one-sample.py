@@ -24,11 +24,11 @@ import numpy as np
 from PIL import Image
 from pathlib import Path
 from tqdm import tqdm
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 global_step = 0
 original_model = False
-
+save_logp_attn = True
 
 def main():
   """Assume Single Node Multi GPUs Training Only"""
@@ -41,8 +41,8 @@ def main():
     phoneme_dict_d2p[148] = 'sil'
   else:
     phoneme_dict_d2p_or = phoneme_dict_d2p
-  model_dir = '/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/origianl_pretrained_model'
-  pretrained_model_path = '/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/origianl_pretrained_model/pretrained_blank.pth'
+  model_dir = '/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss'
+  pretrained_model_path = '/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss/G_126.pth'
   cp_num = Path(pretrained_model_path).stem
   hps = utils.get_hparams_from_dir(model_dir)
   torch.manual_seed(hps.train.seed)
@@ -117,7 +117,15 @@ def main():
         
       phoneme_duration_length_original, phoneme_int_length_original, true_attention_matrix_length_original, full_phoneme_squence_length_original \
         = targets_length_original[0], targets_length_original[1], targets_length_original[2], targets_length_original[3]
-    
+        
+            #saving results
+      save_dir = Path(os.path.join(model_dir, "alignment_results", cp_num, f"sample_{batch_idx}")) 
+      # save_dir = Path(os.path.join(model_dir, "alignment_results_updated-backward-and-forward", cp_num, f"sample_{batch_idx}"))
+      save_dir.mkdir(parents=True, exist_ok=True)
+      
+      if save_logp_attn:
+        np.save(os.path.join(save_dir, 'true_attn.npy'), true_attention_matrix[0].cpu().numpy())
+        
       if hps.train.insert_masked_melspec_bool:
         y = masked_melspec
         y_lengths = masked_melspec_inputs_length_original
@@ -152,18 +160,20 @@ def main():
       # else:
       true_attention_matrix = None
       
-      (z, z_m, z_logs, logdet, z_mask), (x_m, x_logs, x_mask), (attn, logw, logw_), vocab_classification = generator(x, x_lengths, y, y_lengths, gen=False, attention_mask=attention_mask, masked_region=masked_region, true_attention_matrix=true_attention_matrix)
+      (z, z_m, z_logs, logdet, z_mask), (x_m, x_logs, x_mask), (attn, logw, logw_), (vocab_classification, logp) = generator(x, x_lengths, y, y_lengths, gen=False, attention_mask=attention_mask, masked_region=masked_region, true_attention_matrix=true_attention_matrix)
+      
+      
       l_mle = commons.mle_loss(z, z_m, z_logs, logdet, z_mask)
       l_length = commons.duration_loss(logw, logw_, x_lengths)
 
       loss_gs = [l_mle, l_length]
       loss_g = sum(loss_gs)
       
-      #saving results
-      save_dir = Path(os.path.join(model_dir, "alignment_results", cp_num, f"sample_{batch_idx}")) 
-      # save_dir = Path(os.path.join(model_dir, "alignment_results_updated-backward-and-forward", cp_num, f"sample_{batch_idx}"))
-      save_dir.mkdir(parents=True, exist_ok=True)
-      
+
+      if save_logp_attn:
+        np.save(os.path.join(save_dir, 'logp.npy'), logp[0].cpu().numpy())
+        np.save(os.path.join(save_dir, 'est_attn.npy'), attn[0, 0].cpu().numpy())
+        
       full_phoneme_squence = full_phoneme_squence[0].tolist()
       estimated_full_phoneme_squence = []
       num_occurance_each_phoneme = torch.sum(attn[0,0], dim=-1)
@@ -179,7 +189,7 @@ def main():
         full_phoneme_squence[i] = phoneme_dict_d2p_or[full_phoneme_squence[i]]
       
       # save phoneme estimation
-      phoneme_filename = os.path.join(save_dir, 'phoneme_gt_and_estimated.html')
+      phoneme_filename = os.path.join(save_dir, f'phoneme_gt_and_estimated_{l_mle.item():.2f}.html')
       def colorize_html(char, color):
           return f'<span style="color:red">{char}</span>' if color == 0 else char
 

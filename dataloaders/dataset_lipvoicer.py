@@ -24,7 +24,9 @@ import matplotlib.pyplot as plt
 from scipy.io.wavfile import read
 import pickle
 import ast
-
+from torchaudio.transforms import Resample
+from dataloaders.wav2mel import STFT, load_wav_to_torch
+from collections import Counter
 
 def set_seed(seed):
     # Set the seed for Python's built-in random module
@@ -381,34 +383,51 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
         
         melspec = melspec.clone()
         audio_time = audio_time.clone()
-        mask = torch.ones(melspec.shape)
+        # print(audio_time.shape)
+        mask = torch.ones(melspec.shape[-1])
+        hop_length = self.audio_stft_hop
+        edge = int(0.5*self.sampling_rate/self.audio_stft_hop) # 0.5sec of edge
         if self.num4empty_str == 'min':
             min_melspec = torch.min(melspec)
-            min_melspec -= 1
+            # min_melspec -= 1
             self.num4empty = min_melspec 
         shape = melspec.shape
         # Determine the number of blocks
+        block_size_list = []
         if self.rand_num_blocks:
-            self.num_blocks = torch.randint(2, (shape[1] - self.min_block_size) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
+            # self.num_blocks = torch.randint(2, (shape[1] - self.min_block_size) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
+            if (shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1 <= 1:
+                self.num_blocks = 0
+                if self.return_mask_properties:
+                    return melspec, mask, audio_time, block_size_list, self.num_blocks
+                else:
+                    return melspec, mask, audio_time
+                
+            else:
+                # self.num_blocks = torch.randint(max(((shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1),
+                #                             (shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
+                self.num_blocks = torch.randint(max(((shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1),
+                                            (shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
+                # print(f"num_blocks is {self.num_blocks}. /t from {max(((shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1)} to {(shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1}")
         # print(num_blocks)
         # Keep track of the end position of the last block to ensure spacing
-        hop_length = 160
-        edge = int(0.5*16000/hop_length) # 0.5sec of edge
+        
+        # edge = int(0.5*16000/hop_length) # 0.5sec of edge
         last_block_end = -self.min_spacing + edge
-        block_size_list = []
         for i in range(self.num_blocks):
             #print(i)
             # Random block size
             block_size = torch.randint(self.min_block_size, self.max_block_size + 1, (1,)).item()
-            block_size_list.append(block_size)
+            
             # Ensure valid start_pos to avoid overlapping
-            if last_block_end + self.min_spacing + block_size >= shape[1]-edge:
+            if last_block_end + self.min_spacing + block_size >= shape[-1]-edge:
                 # print("break")
                 break
             if i == self.num_blocks-1:
-                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + shape[1]//self.num_blocks - block_size - edge + 1, (1,)).item()
+                # start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + shape[1]//self.num_blocks - block_size - edge + 1, (1,)).item()
+                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + (shape[-1] - 2 * edge)//self.num_blocks - block_size + 1, (1,)).item()
             else:
-                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + shape[1]//self.num_blocks - block_size + 1, (1,)).item()
+                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + (shape[-1] - 2 * edge)//self.num_blocks - block_size + 1, (1,)).item()
             # print(f"start is {start_pos}")
             # Set the mask to 0 for the current block
             # mask[:, start_pos:start_pos + block_size] = 0
@@ -419,9 +438,10 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
                 # print("num4empty is randn")
             if block_size > 0:
                 melspec[:, start_pos:start_pos + block_size] = self.num4empty
-            mask[:, start_pos:start_pos + block_size] = 0
+            mask[start_pos:start_pos + block_size] = 0
             audio_time[int(start_pos*hop_length):int((start_pos + block_size)*hop_length)] = 0
             # Update the end position of the last block
+            block_size_list.append(block_size)
             last_block_end = start_pos + block_size
         
         if self.return_mask_properties:
@@ -429,6 +449,137 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
         else:
             return melspec, mask, audio_time
         
+
+
+class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
+    """
+    This is the main class that calculates the spectrogram and returns the
+    spectrogram, audio pair.
+    """
+    def __init__(self, split, sampling_rate, csv_loc, min_block_size, max_block_size, min_spacing,
+                 audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties, return_target_time=False):
+        split = split.capitalize()
+        self.return_target_time = return_target_time
+        self.return_mask_properties = return_mask_properties
+        self.num_blocks = num_blocks
+        self.rand_num_blocks = rand_num_blocks
+        self.min_block_size = min_block_size
+        self.max_block_size = max_block_size
+        self.min_spacing = min_spacing
+        self.num4empty_str = num4empty_str
+        self.base_data_dir = base_data_dir
+        self.audio_stft_hop = audio_stft_hop
+
+        try:
+            float(num4empty_str)
+            is_number = True  # Conversion succeeded, it's a number
+        except ValueError:
+            is_number = False  # Conversion failed, not a number
+        if is_number:
+            self.num4empty = float(num4empty_str)
+        
+        self.test = True if split=='Test' else False
+
+        set_seed(1234)
+        self.sampling_rate = sampling_rate
+        self.csv_path = Path(csv_loc) / f'{split}.csv'
+        self.csv_df = pd.read_csv(self.csv_path, delimiter="|")
+    
+    def __len__(self):
+        # return 100000
+        return len(self.csv_df)
+    
+    def __getitem__(self, index):
+
+        melspec_path =  Path(self.base_data_dir) / self.csv_df.loc[index, "mel_spectrum_path"] #npz file
+        melspec = torch.load(melspec_path)
+        melspec = normalise_mel(melspec)
+        
+        audio_path =  Path(self.base_data_dir) / self.csv_df.loc[index, "wav_path"] # wav file
+        _, audio_time = read(audio_path)
+        audio_time = torch.from_numpy(audio_time.astype(np.float32))
+        audio_time =  0.9 * audio_time / audio_time.abs().max() #because we took the original librispeech dataset, the audio is not norlaized to [-1, 1]
+
+        if self.return_mask_properties:
+            masked_melspec, mask, masked_audio_time, block_size_list, num_blocks = self.create_masked_melspec(melspec, audio_time)
+            if self.return_target_time:
+                return (audio_time, melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
+            return (melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
+        else:  
+            masked_melspec, mask, masked_audio_time = self.create_masked_melspec(melspec, audio_time)
+            if self.return_target_time:
+                return (audio_time, melspec, masked_melspec, masked_audio_time, mask)
+            return (melspec, masked_melspec, masked_audio_time, mask)
+
+    
+    def create_masked_melspec(self, melspec, audio_time):
+        
+        melspec = melspec.clone()
+        audio_time = audio_time.clone()
+        # print(audio_time.shape)
+        mask = torch.ones(melspec.shape[-1])
+        hop_length = self.audio_stft_hop
+        edge = int(0.5*self.sampling_rate/self.audio_stft_hop) # 0.5sec of edge
+        if self.num4empty_str == 'min':
+            min_melspec = torch.min(melspec)
+            # min_melspec -= 1
+            self.num4empty = min_melspec 
+        shape = melspec.shape
+        # Determine the number of blocks
+        block_size_list = []
+        if self.rand_num_blocks:
+            # self.num_blocks = torch.randint(2, (shape[1] - self.min_block_size) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
+            if (shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1 <= 1:
+                self.num_blocks = 0
+                if self.return_mask_properties:
+                    return melspec, mask, audio_time, block_size_list, self.num_blocks
+                else:
+                    return melspec, mask, audio_time
+                
+            else:
+                # self.num_blocks = torch.randint(max(((shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1),
+                #                             (shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
+                self.num_blocks = torch.randint(max(((shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1),
+                                            (shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
+                # print(f"num_blocks is {self.num_blocks}. /t from {max(((shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1)} to {(shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1}")
+        # print(num_blocks)
+        # Keep track of the end position of the last block to ensure spacing
+        
+        # edge = int(0.5*16000/hop_length) # 0.5sec of edge
+        last_block_end = -self.min_spacing + edge
+        for i in range(self.num_blocks):
+            #print(i)
+            # Random block size
+            block_size = torch.randint(self.min_block_size, self.max_block_size + 1, (1,)).item()
+            
+            # Ensure valid start_pos to avoid overlapping
+            if last_block_end + self.min_spacing + block_size >= shape[-1]-edge:
+                # print("break")
+                break
+            if i == self.num_blocks-1:
+                # start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + shape[1]//self.num_blocks - block_size - edge + 1, (1,)).item()
+                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + (shape[-1] - 2 * edge)//self.num_blocks - block_size + 1, (1,)).item()
+            else:
+                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + (shape[-1] - 2 * edge)//self.num_blocks - block_size + 1, (1,)).item()
+            # print(f"start is {start_pos}")
+            # Set the mask to 0 for the current block
+            # mask[:, start_pos:start_pos + block_size] = 0
+            if start_pos + block_size > shape[-1]:
+                block_size = shape[-1] - start_pos
+            if self.num4empty_str == 'randn' and block_size > 0:
+                self.num4empty = torch.randn((shape[0], block_size))
+                # print("num4empty is randn")
+            if block_size > 0:
+                melspec[:, start_pos:start_pos + block_size] = self.num4empty
+            mask[start_pos:start_pos + block_size] = 0
+            audio_time[int(start_pos*hop_length):int((start_pos + block_size)*hop_length)] = 0
+            # Update the end position of the last block
+            block_size_list.append(block_size)
+            last_block_end = start_pos + block_size
+        if self.return_mask_properties:
+            return melspec, mask.unsqueeze(0), audio_time, block_size_list, self.num_blocks
+        else:
+            return melspec, mask.unsqueeze(0), audio_time
         
 class ExplosionSpeechRepaingingDataset(torch.utils.data.Dataset):
     """
@@ -654,7 +805,112 @@ class SpeechRepaingingPhonemeClassifierDataset(torch.utils.data.Dataset):
         else:
             return melspec, mask, audio_time
         
+class PlcDataset(torch.utils.data.Dataset):
+    """
+    This is the main class that calculates the spectrogram and returns the
+    spectrogram, audio pair.
+    """
+    def __init__(self, csv_loc, split, fraction_counter, sampling_rate, filter_length, hop_length, win_length,
+                 mel_fmin, mel_fmax, base_data_dir, num4empty_str, return_target_time=False):
+        split = split.capitalize()
+        self.base_data_dir = base_data_dir
+        self.return_target_time = return_target_time
+        self.num4empty_str = num4empty_str
+        self.fraction_counter = fraction_counter
+        self.filter_length = filter_length
+        self.hop_length = hop_length
+        self.audio_cfg = {
+            "sampling_rate": sampling_rate,
+            "filter_length": filter_length,
+            "hop_length": hop_length,
+            "win_length": win_length,
+            "mel_fmin": mel_fmin,
+            "mel_fmax": mel_fmax,
+        }
+        self.stft = STFT(**self.audio_cfg)
+        try:
+            float(num4empty_str)
+            is_number = True  # Conversion succeeded, it's a number
+        except ValueError:
+            is_number = False  # Conversion failed, not a number
+        if is_number:
+            self.num4empty = float(num4empty_str)
         
+        self.test = True if split=='Test' else False
+        self.hop_length = hop_length
+        set_seed(1234)
+        self.sampling_rate = sampling_rate
+        self.csv_path = Path(csv_loc) / f'{split}.csv'
+        self.csv_df = pd.read_csv(self.csv_path, delimiter="|")
+
+    
+    def __len__(self):
+        # return 100000
+        # return 100
+        return len(self.csv_df)
+    
+    def __getitem__(self, index):
+        
+        audio_path =  Path(self.base_data_dir) / self.csv_df.loc[index, "wav_path"] # wav file
+        # Load audio file
+        audio_time, sr = torchaudio.load(audio_path) #load_wav_to_torch(input_path)
+        audio_time = audio_time[0]
+        if sr != self.sampling_rate:
+            resampler = Resample(orig_freq=sr, new_freq=self.sampling_rate)
+            audio_time = resampler(audio_time)
+            sr = self.sampling_rate
+
+
+        len_samples = audio_time.shape[-1]
+        len_frames = len_samples // self.hop_length  # 160 samples = 1 frame = 10ms @ 16kHz
+        audio_time = audio_time[:len_frames * self.hop_length]
+        
+        masked_audio_time = torch.clone(audio_time)
+        
+        # Generate gap mask
+        current_lossy_rate  = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6]) #0.6 #random.choice(lossy_rates)
+        per_frame_mask = np.random.choice([0, 1], size=(len_frames,), p=[current_lossy_rate, 1-current_lossy_rate])
+        sample_mask = torch.tensor(np.repeat(per_frame_mask, self.hop_length), dtype=torch.float32)
+        # sample_mask = torch.tensor(per_frame_mask, dtype=torch.float32).to(device)    
+        masked_audio_time *= sample_mask
+        
+
+
+        # Normalizations
+        audio_time = 0.9 * audio_time / audio_time.abs().max()
+        masked_audio_time = 0.9 * masked_audio_time / masked_audio_time.abs().max()
+
+        # Normalizations
+
+        S_clean = self.stft.get_mel(audio_time)
+        S_lossy = self.stft.get_mel(masked_audio_time)
+        melspec = normalise_mel(S_clean)
+        masked_melspec = normalise_mel(S_lossy)
+        
+        sample_mask = np.pad(sample_mask, (int(self.filter_length / 2), int(self.filter_length / 2)), constant_values=1)
+        num_frames = (len(sample_mask) - self.filter_length) // self.hop_length + 1
+        frame_mask = np.ones(S_lossy.shape)
+        for i in range(num_frames):
+            sunsamples = sample_mask[i * self.hop_length: i * self.hop_length + self.filter_length]
+            counter = Counter(sunsamples)
+            most_common = counter.most_common(2)[0][0]
+            if counter[0] >= int(self.filter_length * self.fraction_counter):
+                frame_mask[:, i] = 0
+                
+        frame_mask = torch.from_numpy(frame_mask.astype(np.float32))
+        sample_mask = torch.from_numpy(sample_mask.astype(np.float32))
+        
+        # S_lossy_freq = S_clean.clone()
+        # S_lossy_freq_min = S_lossy_freq.min()
+        # for i, frame in enumerate(frames_masking):
+        #     if frame == 0:
+        #         S_lossy_freq[:, i] = S_lossy_freq_min
+        
+
+        if self.return_target_time:
+            return (audio_time, melspec, masked_melspec, masked_audio_time, frame_mask, sample_mask)
+        return (melspec, masked_melspec, masked_audio_time, frame_mask, sample_mask)
+
 
     
 def get_dataset(cfg, split='Train', return_mask_properties=False, return_target_time=False):
@@ -664,6 +920,10 @@ def get_dataset(cfg, split='Train', return_mask_properties=False, return_target_
         return ExplosionSpeechRepaingingDataset(**cfg['explosion_speech_inpainting'], split=split)
     elif cfg['dataset_type'] == 'speech_inpainting_phoneme_classifier':
         return SpeechRepaingingPhonemeClassifierDataset(**cfg['speech_inpainting_phoneme_classifier'], split=split, return_mask_properties=return_mask_properties, return_target_time=return_target_time)
+    elif cfg['dataset_type'] == 'plc_task':
+        return PlcDataset(**cfg['plc_task'], split=split, return_target_time=return_target_time)
+    elif cfg['dataset_type'] == 'speech_inpainting_anechoic':
+        return SpeechRepaingingAnechoicDataset(**cfg['speech_inpainting_anechoic'], split=split, return_mask_properties=return_mask_properties, return_target_time=return_target_time)
     else:
         raise Exception('Invalid dataset type')
     

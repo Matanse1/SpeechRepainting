@@ -89,7 +89,7 @@ def calc_phoneme(net, loss_fn, melspec, masked_cond, mask, phoneme_target, diffu
         unmaksed_loss = torch.sum(mask * loss) / torch.sum(mask * mask_mask)
         masked_loss = torch.sum((1-mask) * loss) / torch.sum((1-mask) * mask_mask)
         weighted_loss = (1 - w_masked_pix) * unmaksed_loss + w_masked_pix * masked_loss
-    return weighted_loss, phoneme_estimated, diffusion_steps
+    return weighted_loss, phoneme_estimated, diffusion_steps, transformed_X
 
 
 
@@ -241,7 +241,7 @@ def inference(
                 pass
 
                     
-            weighted_loss, phoneme_estimated, diffusion_steps = calc_phoneme(net, criterion, gt_melspec, masked_cond, mask, phoneme_target,
+            weighted_loss, phoneme_estimated, diffusion_steps, transformed_X = calc_phoneme(net, criterion, gt_melspec, masked_cond, mask, phoneme_target,
                             diffusion_hyperparams, w_masked_pix=0.8, masked_audio_time_mask=masked_audio_time_mask,
                             phoneme_target_mask=phoneme_target_mask, mask_mask=mask_mask, on_masked_melspec=on_masked_melspec)
             phoneme_estimated_prob = torch.nn.functional.softmax(phoneme_estimated, dim=-2)
@@ -254,8 +254,10 @@ def inference(
                     # save as image
             masked_melspec = masked_melspec.squeeze(0).cpu().numpy()
             gt_melspec = gt_melspec.squeeze(0).cpu().numpy()
+            transformed_X = transformed_X.squeeze(0).cpu().numpy()
             matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'gt_spec_image.png'), gt_melspec[::-1])
             matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'masked_spec_image.png'), masked_melspec[::-1])
+            matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'noisy_melspec.png'), transformed_X[::-1])
 
             
             # save phoneme estimation
@@ -266,17 +268,19 @@ def inference(
             # Create HTML table rows with aligned elements
             rows = []
             color_list = mask.tolist()[0]
-            for true_char, est_char, color in zip(true_phoneme_string, est_phoneme_string, color_list):
+            hop_length = 160
+            sampling_rate = 16000
+            for i, (true_char, est_char, color) in enumerate(zip(true_phoneme_string, est_phoneme_string, color_list)):
                 true_colored = colorize_html(true_char, color)
                 est_colored = colorize_html(est_char, color)
-                rows.append(f"<tr><td>{true_colored}</td><td>{est_colored}</td></tr>")
+                rows.append(f"<tr><td>{true_colored}</td><td>{est_colored}</td><td>{i * hop_length / sampling_rate}</td></tr>")
 
             # Write the aligned and colorized lists to an HTML file
             with open(phoneme_filename, 'w') as f:
                 f.write("<html><body>\n")
                 f.write(f"<h1 style='text-align: center;'>The step is: {diffusion_steps.item()}/{diffusion_cfg.T}</h1>\n")  # Add a title
                 f.write("<table border='1' style='border-collapse: collapse; text-align: center;'>\n")
-                f.write("<tr><th>true_phoneme_string</th><th>est_phoneme_string</th></tr>\n")
+                f.write("<tr><th>true_phoneme_string</th><th>est_phoneme_string</th><th>time[s]</th></tr>\n")
                 f.write("\n".join(rows))
                 f.write("</table>\n")
                 f.write("</body></html>\n")
@@ -308,8 +312,10 @@ def inference(
 # phoneme_classifier_config
 #phoneme_classifier_config_unconditional
 # /home/dsi/moradim/SpeechRepainting/configs/phoneme_classifier_config_original.yaml
+# /home/dsi/moradim/SpeechRepainting/configs/phoneme_classifier_config_unconditional.yaml
+# phoneme_classifier_config_unconditional_original
 
-@hydra.main(version_base=None, config_path="configs/", config_name="phoneme_classifier_config_unconditional")
+@hydra.main(version_base=None, config_path="configs/", config_name="phoneme_classifier_config_unconditional_original")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     OmegaConf.set_struct(cfg, False)  # Allow writing keys

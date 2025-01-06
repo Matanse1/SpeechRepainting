@@ -1,6 +1,6 @@
 
 """ 
-This script counts the occurrences of each label in the phoneme-frames .npy files.
+This script counts the occurrences of each label in the phoneme-frames .npy files for weighting the cross entropy loss.
 """
 import numpy as np
 from collections import Counter

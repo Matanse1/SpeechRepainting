@@ -10,7 +10,7 @@ from glob import glob
 from pathlib import Path
 import matplotlib.pyplot as plt
 # We're using the audio processing from TacoTron2 to make sure it matches
-from stft import TacotronSTFT, normalise_mel
+from .stft import TacotronSTFT, normalise_mel
 
 
 def get_all_filenames(data_path):
@@ -25,6 +25,11 @@ def load_wav_to_torch(full_path):
     Loads wavdata into torch array
     """
     sampling_rate, data = read(full_path)
+    if len(data.shape) > 1:
+        if data.shape[1] > data.shape[0]:
+            data = data[0]
+        else:
+            data = data[:, 0]
     return torch.from_numpy(data).float(), sampling_rate
 
 

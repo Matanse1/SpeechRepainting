@@ -6,8 +6,8 @@ from torch.nn import functional as F
 import modules
 import commons
 import attentions
-import monotonic_align
-# import my_monotonic_align as monotonic_align
+# import monotonic_align
+import my_monotonic_align as monotonic_align
 import numpy as np
 
 class DurationPredictor(nn.Module):
@@ -215,6 +215,7 @@ class FlowGenerator(nn.Module):
       prenet=False,
       insert_masked_melspec_bool=False,
       classification_head=False,
+      simple_head=False,
       **kwargs):
 
     super().__init__()
@@ -245,6 +246,7 @@ class FlowGenerator(nn.Module):
     self.prenet = prenet
     self.insert_masked_melspec_bool = insert_masked_melspec_bool
     self.classification_head = classification_head
+    self.simple_head = simple_head
 
     self.encoder = TextEncoder(
         n_vocab, 
@@ -283,7 +285,17 @@ class FlowGenerator(nn.Module):
       self.masked_spec_embed = nn.Parameter(torch.Tensor(out_channels).uniform_())
       
     if classification_head:
-      self.proj2vocab = nn.Linear(out_channels, n_vocab)
+      if self.simple_head:
+        self.proj2vocab = nn.Linear(out_channels, n_vocab)
+      else:
+        self.proj2vocab = nn.Sequential(
+            nn.Linear(out_channels, out_channels),  # First dense layer
+            nn.PReLU(),                        # Activation function
+            nn.Linear(out_channels, n_vocab),  # Second dense layer (optional)
+            nn.PReLU(),                         # Activation function
+            nn.Linear(n_vocab, n_vocab), # Output layer
+        )
+
 
   def forward(self, x, x_lengths, y=None, y_lengths=None, g=None, gen=False, noise_scale=1., length_scale=1., attention_mask=None, masked_region=None, true_attention_matrix=None):
     if self.insert_masked_melspec_bool and not gen:
@@ -344,7 +356,7 @@ class FlowGenerator(nn.Module):
       z_m = torch.matmul(attn.squeeze(1).transpose(1, 2), x_m.transpose(1, 2)).transpose(1, 2) # [b, t', t], [b, t, d] -> [b, d, t']
       z_logs = torch.matmul(attn.squeeze(1).transpose(1, 2), x_logs.transpose(1, 2)).transpose(1, 2) # [b, t', t], [b, t, d] -> [b, d, t']
       logw_ = torch.log(1e-8 + torch.sum(attn, -1)) * x_mask
-      return (z, z_m, z_logs, logdet, z_mask), (x_m, x_logs, x_mask), (attn, logw, logw_), vocab_classification
+      return (z, z_m, z_logs, logdet, z_mask), (x_m, x_logs, x_mask), (attn, logw, logw_), (vocab_classification, logp)
 
   def preprocess(self, y, y_lengths, y_max_length):
     if y_max_length is not None:

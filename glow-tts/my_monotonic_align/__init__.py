@@ -32,6 +32,7 @@ def maximum_path(value, mask):
     
     
     value = value * mask
+    # value[~mask.bool()] = -1e9
     device = value.device
     dtype = value.dtype
 
@@ -60,6 +61,7 @@ def maximum_path(value, mask):
     condition = ~condition
     value[condition] = -1e9
     
+
     t_x_max = t_x_max.cpu().numpy()
     t_y_max = t_y_max.cpu().numpy()
     value = value.cpu().numpy()

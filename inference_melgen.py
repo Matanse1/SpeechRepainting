@@ -24,7 +24,7 @@ from dataloaders.stft import denormalise_mel
 from tqdm import tqdm
 from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory
 
-def sampling(net, diffusion_hyperparams, w_mel_cond, conditions=None):
+def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, conditions=None):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
 
@@ -50,6 +50,11 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, conditions=None):
     with torch.no_grad():
         for t in tqdm(range(T-1, -1, -1)):
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
+            if on_masked_melspec is not None:
+                z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
+                noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
+                x = noisy_masked_melspec * mask + x * (1 - mask)
+            
             epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
             epsilon_theta_uncond = net(x, conditions, diffusion_steps, cond_drop_prob=1)
             epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
@@ -57,6 +62,8 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, conditions=None):
             x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
             if t > 0:
                 x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
+    if on_masked_melspec is not None:
+        x = masked_melspec * mask + x * (1 - mask)
     return x
 
 
@@ -71,6 +78,7 @@ def generate(
         name=None,
         n_samples=None,
         w_mel_cond=0,
+        on_masked_melspec=False
     ):
     """
     Generate melspectrograms based on lips movement
@@ -111,28 +119,38 @@ def generate(
     
     dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=False)
     dataset_type = dataset_cfg.dataset_type
-    dataset_indices = torch.arange(n_samples)
-    groundtruth_melspec, masked_cond = [], []
+    dataset_indices = list(range(n_samples))
+    groundtruth_melspec, masked_cond, masks = [], [], []
     for i in dataset_indices:
         
         if dataset_type == 'explosion_speech_inpainting':
                 speech_melspec, mix_melspec, mix_time, _, masked_speech_time, explosions_activity, start_explosions, explosions_length = dataset[i]
                 mask = 1 - explosions_activity # zero = explosion, one = no explosion
-                mask = mask.cuda()
+                _mask = mask.cuda()
                 _gt_melspec = speech_melspec.cuda()
                 mix_melspec, mix_time = mix_melspec.cuda(), mix_time.cuda()
                 _masked_cond = [mix_melspec, mix_time]
         elif dataset_type == 'speech_inpainting':
-            _gt_melspec, *_masked_cond, _ = dataset[i]
+            _gt_melspec, *_masked_cond, _mask = dataset[i]
             _masked_cond = [_masked_cond[i].unsqueeze(0).cuda() for i in range(len(_masked_cond))]
-        
+        elif dataset_type == 'plc_task':
+            _gt_melspec, masked_melspec, masked_audio_time, frame_mask, sample_mask = dataset[i]
+            _mask = frame_mask
+            _masked_cond = [masked_melspec.cuda(), masked_audio_time.cuda()]
+            _masked_cond = [_masked_cond[i].unsqueeze(0).cuda() for i in range(len(_masked_cond))]
+        elif dataset_cfg.dataset_type == 'speech_inpainting_anechoic':
+        #melspec, masked_melspec, mask, masked_audio_time
+            _gt_melspec, masked_melspec, masked_audio_time, _mask = dataset[i]
+            _mask = _mask.unsqueeze(0).cuda()
+            _masked_cond = [masked_melspec.cuda(), masked_audio_time.cuda()]
+            _masked_cond = [_masked_cond[i].unsqueeze(0) for i in range(len(_masked_cond))]
 
         # for i in range(len(_masked_cond)):
         #     _masked_cond[i] = _masked_cond[i].unsqueeze(0).cuda()
         _gt_melspec = denormalise_mel(_gt_melspec)
         groundtruth_melspec.append(_gt_melspec.unsqueeze(0))
         masked_cond.append(_masked_cond)
-
+        masks.append(_mask)
 
     print(f'begin generating melspectrograms | {n_samples} samples')
 
@@ -149,6 +167,8 @@ def generate(
             diffusion_hyperparams,
             w_mel_cond,
             conditions=masked_cond[i],
+            mask=masks[i],
+            on_masked_melspec=on_masked_melspec
         )
         generated_melspec.append(denormalise_mel(_melspec))
 
