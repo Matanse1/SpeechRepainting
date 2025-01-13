@@ -22,9 +22,9 @@ from models.audiovisual_model import AudioVisualModel
 from dataloaders.dataset_lipvoicer import get_dataset
 from dataloaders.stft import denormalise_mel
 from tqdm import tqdm
-from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory
+from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, fix_len_compatibility, pad_last_dim
 
-def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, conditions=None):
+def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, mask_frames=None, conditions=None):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
 
@@ -49,14 +49,16 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, co
     x = torch.normal(0, 1, size=masked_melspec.shape).cuda()
     with torch.no_grad():
         for t in tqdm(range(T-1, -1, -1)):
+            # if t< T-10:
+            #     break
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
             if on_masked_melspec is not None:
                 z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
                 noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
                 x = noisy_masked_melspec * mask + x * (1 - mask)
             
-            epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
-            epsilon_theta_uncond = net(x, conditions, diffusion_steps, cond_drop_prob=1)
+            epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
+            epsilon_theta_uncond = net(x, conditions, diffusion_steps, cond_drop_prob=1, mask_padding_frames=mask_frames)
             epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
 
             x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
@@ -64,6 +66,8 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, co
                 x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
     if on_masked_melspec is not None:
         x = masked_melspec * mask + x * (1 - mask)
+    if mask_frames is not None:
+        x = x[..., :int(torch.sum(mask_frames, dim=-1).item())]
     return x
 
 
@@ -97,7 +101,7 @@ def generate(
     builder = ModelBuilder()
     # net_lipreading = builder.build_lipreadingnet()
     # net_facial = builder.build_facial(fc_out=128, with_fc=True)
-    net_diffwave = builder.build_diffwave_model(model_cfg)
+    net_diffwave = builder.build_model(model_cfg)
     net = AudioVisualModel(net_diffwave).cuda()
     # net = torch.compile(net)
     # print_size(net)
@@ -120,7 +124,7 @@ def generate(
     dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=False)
     dataset_type = dataset_cfg.dataset_type
     dataset_indices = list(range(n_samples))
-    groundtruth_melspec, masked_cond, masks = [], [], []
+    groundtruth_melspec, masked_cond, masks, mask_frames_list = [], [], [], []
     for i in dataset_indices:
         
         if dataset_type == 'explosion_speech_inpainting':
@@ -132,6 +136,7 @@ def generate(
                 _masked_cond = [mix_melspec, mix_time]
         elif dataset_type == 'speech_inpainting':
             _gt_melspec, *_masked_cond, _mask = dataset[i]
+            mask = _mask.unsqueeze(0).cuda()
             _masked_cond = [_masked_cond[i].unsqueeze(0).cuda() for i in range(len(_masked_cond))]
         elif dataset_type == 'plc_task':
             _gt_melspec, masked_melspec, masked_audio_time, frame_mask, sample_mask = dataset[i]
@@ -144,6 +149,21 @@ def generate(
             _mask = _mask.unsqueeze(0).cuda()
             _masked_cond = [masked_melspec.cuda(), masked_audio_time.cuda()]
             _masked_cond = [_masked_cond[i].unsqueeze(0) for i in range(len(_masked_cond))]
+        
+        #For Unet we need to fix the length of the input to be divided with 4 (2**2)
+        if model_cfg._name_ == 'unet':
+            freq_siganl, time_signal = _masked_cond
+            desired_num_frames = fix_len_compatibility(_gt_melspec.shape[-1])
+            _gt_melspec = pad_last_dim(_gt_melspec, desired_num_frames - _gt_melspec.shape[-1])
+            time_signal = pad_last_dim(time_signal, (desired_num_frames - freq_siganl.shape[-1]) * dataset_cfg[dataset_type]["audio_stft_hop"])
+            freq_siganl = pad_last_dim(freq_siganl, desired_num_frames - freq_siganl.shape[-1]).cuda()
+            mask_frames = torch.zeros((list(_mask.shape[:-1]) + [desired_num_frames]))
+            mask_frames[..., :_mask.shape[-1]] = 1
+            mask_frames = mask_frames.cuda()
+            _mask =pad_last_dim(_mask, desired_num_frames - _mask.shape[-1], pad_value=1)
+            _masked_cond = [freq_siganl, time_signal]
+        else:
+            mask_frames = None
 
         # for i in range(len(_masked_cond)):
         #     _masked_cond[i] = _masked_cond[i].unsqueeze(0).cuda()
@@ -151,7 +171,9 @@ def generate(
         groundtruth_melspec.append(_gt_melspec.unsqueeze(0))
         masked_cond.append(_masked_cond)
         masks.append(_mask)
+        mask_frames_list.append(mask_frames)
 
+    
     print(f'begin generating melspectrograms | {n_samples} samples')
 
     # inference
@@ -168,7 +190,8 @@ def generate(
             w_mel_cond,
             conditions=masked_cond[i],
             mask=masks[i],
-            on_masked_melspec=on_masked_melspec
+            on_masked_melspec=on_masked_melspec,
+            mask_frames=mask_frames_list[i]
         )
         generated_melspec.append(denormalise_mel(_melspec))
 

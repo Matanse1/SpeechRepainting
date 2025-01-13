@@ -1,6 +1,7 @@
 
-melgen:
-  _name_: melgen
+melgen: unet #unet, wavenet
+wavenet:
+  _name_: wavenet
   in_channels: 80
   out_channels: 80
   diffusion_step_embed_dim_in: 128
@@ -12,7 +13,7 @@ melgen:
   dilation_cycle: 1
   mel_upsample: [2, 2]
   cond_feat_size: 80
-  unconditional: False
+  unconditional: True
   wavlm:
     use_wavlm_rep: True
     use_weighted_sum_wavlm: True # if False use the last hidden states
@@ -36,6 +37,29 @@ melgen:
     version_model: 'microsoft/wavlm-base-plus' # microsoft/wavlm-large, microsoft/wavlm-base-plus
     reduce_channels: False
     two_branch: True # process each branch separately and them fuse them
+unet:
+  _name_: unet
+  dim: 64
+  dim_mults: [1, 2, 4]
+  groups: 128
+  n_spks: 1
+  spk_emb_dim: 64
+  n_feats: 80 # 
+  pe_scale: 1000
+  unconditional: Flase
+  wavlm:
+    use_wavlm_rep: True
+    use_weighted_sum_wavlm: True # if False use the last hidden states
+    use_all_hidden_states: True # if false - just the last hidden layer is considered
+    specific_indices:
+      use_indices_hidden_states: True
+      indices_hidden_states: [0, 1, 2]
+    concat_mel_with_wavlm: False # fuse  and then process
+    version_model: 'microsoft/wavlm-base-plus' # microsoft/wavlm-large, microsoft/wavlm-base-plus
+    reduce_channels: False
+    two_branch: True # process each branch separately and them fuse them
+
+
 
 
 
@@ -47,7 +71,7 @@ diffusion:
   beta: null
 
 dataset:
-  dataset_type: 'speech_inpainting_anechoic' # explosion_speech_inpainting, speech_inpainting
+  dataset_type: 'speech_inpainting_anechoic' # explosion_speech_inpainting, speech_inpainting, speech_inpainting_anechoic
   speech_inpainting:
     base_data_dir: /dsi/gannot-lab1/datasets/reverb_data/
     sampling_rate: ${audio.sampling_rate}
@@ -79,7 +103,7 @@ dataset:
     # relatively middle masking
     # min_block_size: 25 # 35, 10 
     # max_block_size: 40 # 65 , 15
-    # min_spacing:  70 # 30, 70
+    # min_spacing:  30 # 30, 70
     # relatively small masking
     # min_block_size: 10 # 35, 10 
     # max_block_size: 15 # 65 , 15
@@ -116,7 +140,7 @@ audio:
   mel_fmax: 8000.0
 
 train: # Not used in generate.py
-  name:  Anechoic_LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}_specific_hidden_states_randn-filled #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
+  name: Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=${train.w_masked_pix} # Wavenet_Anechoic_LibSp_unconditional #2delete_Anechoic_LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${wavenet.wavlm.two_branch}_specific_hidden_states_randn-filled #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting    # where checkpoints will be saved
   ckpt_iter: max    # continue training from a specific iteration
 
@@ -125,34 +149,35 @@ train: # Not used in generate.py
   # iters_per_logging: 1 #1 #100
   # n_iters: 200 #200 #1000001
   #for complete training
-  iters_per_ckpt: 625 #10000 #20 #10000 please change this number with dependence on batch size and number of gpu
-  iters_per_logging: 50 #1 #100
+  iters_per_ckpt: 4000 #1000 #4000 #250 #10000 #20 #10000 please change this number with dependence on batch size and number of gpu
+  iters_per_logging: 10 #25 #10 #1 #100
   n_iters: 20000001 #200 #1000001
 
-  learning_rate: 1e-03 #2e-4
-  batch_size_per_gpu: 32 # 240
+  learning_rate: 2e-04 #2e-4
+  batch_size_per_gpu: 8 #32 #8 #128 #32 # 240
   w_masked_pix: 0.8
   on_masked_melspec: False
   
 
 generate:
   name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states
-  ckpt_path: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/checkpoint/40000.pkl
+  ckpt_path: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Wavenet_Anechoic_LibSp_unconditional/wnet_h512_d12_T400_betaT0.02/checkpoint/94000.pkl
   n_samples: 2        # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
   n_samples_test: 10 # used in full inference mel only
   video_path: null      # generate audio for a given silent video file
   w_mel_cond: 2            # w1 in the paper
   w_asr: 1.5 #1.5            # w2 in the paper
   asr_start: 270 #270        # t_asr
-  save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02  # where to save the generated audio
-  inference_mel_only_name_dir: lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
+  save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Wavenet_Anechoic_LibSp_unconditional/wnet_h512_d12_T400_betaT0.02  # where to save the generated audio
+  inference_mel_only_name_dir: as-train-gap_cp=94000 #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
   without_condtion: False
   config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
   apply_asr_guidance: True
   lipread_text_dir: null # directory with predicted text for generating test samples of benchmark dataset 
   on_masked_melspec: True # whether to input the model the masked noisy melspec or noisy melspec(in inference only)
+  mel_text: False # or masked_text
   mask_info:
-    mask_type: all_time_specific_freq
+    mask_type: none
     repeat_all_freq:
       length: 5
       skip: 20

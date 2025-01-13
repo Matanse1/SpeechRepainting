@@ -30,19 +30,19 @@ from BigVGAN.bigvgan import BigVGAN as Generator
 from BigVGAN.inference_e2e import load_checkpoint as load_checkpoint_vgan
 from hifi_gan import utils as vocoder_utils
 from hifi_gan.env import AttrDict
-
-from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, preprocess_text
+from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, preprocess_text, fix_len_compatibility, pad_last_dim
 import csv
 from mouthroi_processing.pipelines.pipeline import InferencePipeline
 from scipy.io.wavfile import write
 import tempfile
-from my_utils.compute_metrics import Metrics
+# from my_utils.compute_metrics import Metrics
 import ASR.asr_models as asr_models
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 from utils import mask_time_all_frequencies_mask, mask_time_specific_frequencies_mask, mask_specific_frequencies_all_time_mask, mask_combined_mask, mask_with_shape_mask
 print("finished imports")
 
 
-def training_loss(net, loss_fn, melspec, masked_melspec, mask, diffusion_hyperparams, w_masked_pix=0.8):
+def training_loss(net, loss_fn, melspec, masked_melspec, mask, diffusion_hyperparams, w_masked_pix=0.8, mask_frames=None):
     """
     Compute the training loss of epsilon and epsilon_theta
 
@@ -65,7 +65,7 @@ def training_loss(net, loss_fn, melspec, masked_melspec, mask, diffusion_hyperpa
     z = torch.normal(0, 1, size=melspec.shape).cuda()
     transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
     cond_drop_prob = 0.2
-    epsilon_theta = net(transformed_X, masked_melspec, diffusion_steps.view(B,1), cond_drop_prob)
+    epsilon_theta = net(transformed_X, masked_melspec, diffusion_steps.view(B,1), cond_drop_prob, mask_padding_frames=mask_frames)
     loss = loss_fn(epsilon_theta, z) #[B, F, T]
     mean_loss = round(torch.mean(loss).item(), 2)
     unmaksed_loss = torch.sum(mask * loss) / torch.sum(mask)
@@ -86,7 +86,8 @@ def sampling(net, diffusion_hyperparams,
             decoder=None,
             without_condtion=False,
             mask=None,
-            on_masked_melspec=False
+            on_masked_melspec=False,
+            mask_frames=None
             ):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
@@ -130,10 +131,10 @@ def sampling(net, diffusion_hyperparams,
                 x = noisy_masked_melspec * mask + x * (1 - mask)
             
             if without_condtion:
-                epsilon_theta = net(x, condition, diffusion_steps, cond_drop_prob=1)
+                epsilon_theta = net(x, condition, diffusion_steps, cond_drop_prob=1, mask_padding_frames=mask_frames)
             else:
-                epsilon_theta = net(x, condition, diffusion_steps, cond_drop_prob=0)   # predict \epsilon according to \epsilon_\theta
-                epsilon_theta_uncond = net(x, condition, diffusion_steps, cond_drop_prob=1)
+                epsilon_theta = net(x, condition, diffusion_steps, cond_drop_prob=0, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
+                epsilon_theta_uncond = net(x, condition, diffusion_steps, cond_drop_prob=1, mask_padding_frames=mask_frames)
                 epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
             
             if asr_guidance_net is not None and t <= asr_start:
@@ -161,6 +162,8 @@ def sampling(net, diffusion_hyperparams,
                     print(preds_ao)
     if on_masked_melspec is not None:
         x = masked_melspec * mask + x * (1 - mask)
+    if mask_frames is not None:
+        x = x[..., :int(torch.sum(mask_frames, dim=-1).item())]
     return x, preds_ao
 
 
@@ -183,6 +186,7 @@ def generate(
         lipread_text_dir=None,
         on_masked_melspec=False,
         mask_info=None,
+        mel_text=None,
         **kwargs
     ):
 
@@ -195,7 +199,7 @@ def generate(
 
     # predefine MelGen model
     builder = ModelBuilder()
-    net_diffwave = builder.build_diffwave_model(model_cfg)
+    net_diffwave = builder.build_model(model_cfg)
     net = AudioVisualModel(net_diffwave).cuda()
     print_size(net)
     net.eval()
@@ -260,7 +264,7 @@ def generate(
     vocoders['bigvgan'] = generator
     
     dataset_type = dataset_cfg['dataset_type']
-    dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=True)
+    dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=True, return_target_time=True)
     criterion = nn.L1Loss(reduction='none')
     guidance_dir_name = f'w1={w_mel_cond}'
     guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}'
@@ -273,13 +277,13 @@ def generate(
     csv_file = open(os.path.join(_output_directory, 'samples_info.csv'), 'w', newline='')
     csv_writer = csv.writer(csv_file, delimiter='|')
     
-    compute_metrics = Metrics()
+    # compute_metrics = Metrics()
 
     # Write the header row
     if dataset_type == 'explosion_speech_inpainting':
         csv_writer.writerow(['Sample', 'start_explosions', 'explosions_length'])
-    elif dataset_type == 'speech_inpainting':
-        titles = ['Sample', 'block_size_list', 'num_blocks', 'plcmos_masked_init'] #+  \
+    elif dataset_type == 'speech_inpainting' or dataset_type == 'speech_inpainting_anechoic':
+        titles = ['Sample', 'block_size_list', 'num_blocks']#, 'plcmos_masked_init'] #+  \
             # [met + '_' + voc for met in ['WER_init', 'plcmos_target_init', 'LSD_init', 'STOI_init', 'PESQ_init'] for voc in vocoders.keys()] + \
             #     [met + '_' + voc for met in ['WER', 'plcmos_pred' 'LSD', 'STOI', 'PESQ'] for voc in vocoders.keys()]
         csv_writer.writerow(titles)
@@ -324,6 +328,31 @@ def generate(
             masked_cond = [masked_cond[i].unsqueeze(0) for i in range(len(masked_cond))]
             masked_melspec, masked_audio_time = masked_cond
             masked_audio_time4text = masked_audio_time.squeeze().cpu()
+        elif dataset_cfg.dataset_type == 'speech_inpainting_anechoic':
+            #melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks
+            audio_time, gt_melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks = dataset[i]
+            csv_writer.writerow([i, block_size_list, num_blocks])
+            gt_melspec = gt_melspec.unsqueeze(0)
+            mask = mask.unsqueeze(0).cuda()
+            masked_cond = [masked_melspec.cuda(), masked_audio_time.cuda()]
+            masked_cond = [masked_cond[i].unsqueeze(0) for i in range(len(masked_cond))]
+            masked_melspec, masked_audio_time = masked_cond
+            masked_audio_time4text = masked_audio_time.squeeze().cpu()
+        
+                #For Unet we need to fix the length of the input to be divided with 4 (2**2)
+        if model_cfg._name_ == 'unet':
+            freq_siganl, time_signal = masked_cond
+            desired_num_frames = fix_len_compatibility(gt_melspec.shape[-1])
+            gt_melspec = pad_last_dim(gt_melspec, desired_num_frames - gt_melspec.shape[-1])
+            time_signal = pad_last_dim(time_signal, (desired_num_frames - freq_siganl.shape[-1]) * dataset_cfg[dataset_type]["audio_stft_hop"])
+            freq_siganl = pad_last_dim(freq_siganl, desired_num_frames - freq_siganl.shape[-1]).cuda()
+            mask_frames = torch.zeros((list(mask.shape[:-1]) + [desired_num_frames]))
+            mask_frames[..., :mask.shape[-1]] = 1
+            mask_frames = mask_frames.cuda()
+            mask = pad_last_dim(mask, desired_num_frames - mask.shape[-1], pad_value=1)
+            masked_cond = [freq_siganl, time_signal]
+        else:
+            mask_frames = None
         
         if mask_info['mask_type'] == 'repeat_all_freq':
             masked_melspec, mask = mask_time_all_frequencies_mask(gt_melspec[0], mask_info['repeat_all_freq']['length'], mask_info['repeat_all_freq']['skip'])
@@ -350,10 +379,13 @@ def generate(
         text = 'None'
         if apply_asr_guidance:
             # Create a temporary file
+            audio4text = masked_audio_time4text
+            if mel_text:
+                audio4text = audio_time
             sample_rate = 16000  # Example value
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_wav:
                 # Save the masked audio array as a WAV file in the temporary file
-                write(temp_wav.name, sample_rate, masked_audio_time4text.numpy().astype(np.float32)) # TODO maybe we need to do something more clever here
+                write(temp_wav.name, sample_rate, audio4text.numpy().astype(np.float32)) # TODO maybe we need to do something more clever here
                 # Send the temporary WAV file to the pipeline
                 transcript_from_condition = pipeline_asr(temp_wav.name)
                 text = transcript_from_condition
@@ -369,12 +401,12 @@ def generate(
             ## save the masked audio in time domain
             masked_audio_time4saveing = masked_audio_time.squeeze().cpu().numpy()
             sf.write(os.path.join(_output_directory, f'sample_{i}', 'mix_explsions.wav'), masked_audio_time4saveing, 16000)
-        elif dataset_type == 'speech_inpainting' or dataset_type == 'plc_task':
+        elif dataset_type == 'speech_inpainting' or dataset_type == 'plc_task' or dataset_type == 'speech_inpainting_anechoic':
             ## save the masked audio in time domain
             masked_audio_time4saveing = masked_audio_time.squeeze().cpu().numpy()
             sf.write(os.path.join(_output_directory, f'sample_{i}', 'masked_audio_time.wav'), masked_audio_time4saveing, 16000)
         ## get the the clean version of the noisy melspec and the noisy melspec
-        weighted_loss, est_X, transformed_X, diffusion_steps, mean_loss = training_loss(net, criterion, gt_melspec.cuda(), masked_cond,  mask.cuda(), diffusion_hyperparams, w_masked_pix=0.8)
+        weighted_loss, est_X, transformed_X, diffusion_steps, mean_loss = training_loss(net, criterion, gt_melspec.cuda(), masked_cond,  mask.cuda(), diffusion_hyperparams, w_masked_pix=0.8, mask_frames=mask_frames)
         # save the est audio
         est_X = denormalise_mel(est_X)
         est_audio = vocoder(est_X)
@@ -414,7 +446,8 @@ def generate(
                         decoder=decoder,
                         without_condtion=without_condtion,
                         mask=mask,
-                        on_masked_melspec=on_masked_melspec
+                        on_masked_melspec=on_masked_melspec,
+                        mask_frames=mask_frames
                         )
         melspec = denormalise_mel(melspec)
         end.record()
@@ -480,14 +513,14 @@ def generate(
     return
 
 
-@hydra.main(version_base=None, config_path="configs/", config_name="config_plc")
+@hydra.main(version_base=None, config_path="configs/", config_name="config")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     OmegaConf.set_struct(cfg, False)  # Allow writing keys
 
     generate(0,
         diffusion_cfg=cfg.diffusion,
-        model_cfg=cfg.melgen,
+        model_cfg=cfg[cfg.melgen],
         dataset_cfg=cfg.dataset,
         **cfg.generate,
     )

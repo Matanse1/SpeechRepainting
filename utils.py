@@ -9,7 +9,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL import Image
+import torch.nn.functional as F
 
+def pad_last_dim(tensor, pad_size, pad_value=0):
+    # Create the padding tuple dynamically based on the number of dimensions
+    pad = [0, pad_size]  # Only pad the last dimension
+    pad = tuple(pad) + (0,) * (2 * (tensor.dim() - 1)) 
+    
+    # Apply padding
+    return F.pad(tensor, pad, value=pad_value)
+
+def fix_len_compatibility(length, num_downsamplings_in_unet=2):
+    while True:
+        if length % (2**num_downsamplings_in_unet) == 0:
+            return length
+        length += 1
 
 def flatten(v):
     """

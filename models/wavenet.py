@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from models.utils import calc_diffusion_step_embedding, WeightedSum, match_and_concatenate, print_modle_size
 from transformers import AutoModel, WavLMModel
+from . import utils
 def swish(x):
     return x * torch.sigmoid(x)
 
@@ -236,7 +237,7 @@ class Residual_group(nn.Module):
 
         return skip * math.sqrt(1.0 / self.num_res_layers)  # normalize for training stability
 
-
+@utils.register_model(name='wavenet')
 class WaveNet(nn.Module):
     def __init__(self, cond_feat_size, in_channels=1, res_channels=256, skip_channels=128, out_channels=1,
                  num_res_layers=30, dilation_cycle=10,
@@ -292,12 +293,12 @@ class WaveNet(nn.Module):
                                         nn.ReLU(),
                                         ZeroConv1d(skip_channels, out_channels))
 
-    def forward(self, input_data, cond=None, mask_padding=None):
+    def forward(self, input_data, cond=None, mask_padding_time=None, mask_padding_frames=None):
         audio, diffusion_steps = input_data
 
         x = audio
         x = self.init_conv(x)
-        x = self.residual_layer((x, diffusion_steps), mel_spec=cond, mask_padding=mask_padding)
+        x = self.residual_layer((x, diffusion_steps), mel_spec=cond, mask_padding=mask_padding_time)
         x = self.final_conv(x)
 
         return x
@@ -307,6 +308,7 @@ class WaveNet(nn.Module):
 
     @classmethod
     def name(cls, cfg):
+        print("!!!The model is Wavenet!!!")
         return "wnet_h{}_d{}".format(
             cfg["res_channels"],
             cfg["num_res_layers"],

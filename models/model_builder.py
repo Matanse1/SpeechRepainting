@@ -15,7 +15,7 @@ import sys
 # sys.path.insert(0, '..')
 from .utils import load_json
 from .wavenet import WaveNet
-
+from .utils import get_model
 
 class ModelBuilder():
     # builder for facial attributes analysis stream
@@ -44,10 +44,11 @@ class ModelBuilder():
 
         return net
 
-    def build_diffwave_model(self, model_cfg):
+    def build_model(self, model_cfg):
         # cond_feat_size = 640        # size of feature dimension for the conditioner
         name = model_cfg.pop("_name_")
+        cls_model = get_model(name)
         # model = WaveNet(cond_feat_size, **model_cfg)
-        model = WaveNet(**model_cfg)
+        model = cls_model(**model_cfg)
         model_cfg["_name_"] = name # restore
         return model

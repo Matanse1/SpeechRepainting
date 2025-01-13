@@ -93,8 +93,6 @@ def load_wav_to_torch(full_path):
     sampling_rate, data = read(full_path)
     return torch.from_numpy(data).float(), sampling_rate
 
-
-class LipVoicerDataset(torch.utils.data.Dataset):
     """
     This is the main class that calculates the spectrogram and returns the
     spectrogram, audio pair.
@@ -445,9 +443,9 @@ class SpeechRepaingingDataset(torch.utils.data.Dataset):
             last_block_end = start_pos + block_size
         
         if self.return_mask_properties:
-            return melspec, mask, audio_time, block_size_list, self.num_blocks
+            return melspec, mask.unsqueeze(0), audio_time, block_size_list, self.num_blocks
         else:
-            return melspec, mask, audio_time
+            return melspec, mask.unsqueeze(0), audio_time
         
 
 
@@ -479,8 +477,10 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
             self.num4empty = float(num4empty_str)
         
         self.test = True if split=='Test' else False
-
+        seed = 1234
         set_seed(1234)
+        self.torch_rng = torch.Generator().manual_seed(seed)
+        self.rng = np.random.default_rng(seed)
         self.sampling_rate = sampling_rate
         self.csv_path = Path(csv_loc) / f'{split}.csv'
         self.csv_df = pd.read_csv(self.csv_path, delimiter="|")
@@ -540,7 +540,7 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
                 # self.num_blocks = torch.randint(max(((shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1),
                 #                             (shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
                 self.num_blocks = torch.randint(max(((shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1),
-                                            (shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
+                                            (shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1, (1,), generator=self.torch_rng).item()
                 # print(f"num_blocks is {self.num_blocks}. /t from {max(((shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1)} to {(shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1}")
         # print(num_blocks)
         # Keep track of the end position of the last block to ensure spacing
@@ -550,7 +550,7 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
         for i in range(self.num_blocks):
             #print(i)
             # Random block size
-            block_size = torch.randint(self.min_block_size, self.max_block_size + 1, (1,)).item()
+            block_size = torch.randint(self.min_block_size, self.max_block_size + 1, (1,), generator=self.torch_rng).item()
             
             # Ensure valid start_pos to avoid overlapping
             if last_block_end + self.min_spacing + block_size >= shape[-1]-edge:
@@ -558,16 +558,16 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
                 break
             if i == self.num_blocks-1:
                 # start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + shape[1]//self.num_blocks - block_size - edge + 1, (1,)).item()
-                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + (shape[-1] - 2 * edge)//self.num_blocks - block_size + 1, (1,)).item()
+                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + (shape[-1] - 2 * edge)//self.num_blocks - block_size + 1, (1,), generator=self.torch_rng).item()
             else:
-                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + (shape[-1] - 2 * edge)//self.num_blocks - block_size + 1, (1,)).item()
+                start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + (shape[-1] - 2 * edge)//self.num_blocks - block_size + 1, (1,), generator=self.torch_rng).item()
             # print(f"start is {start_pos}")
             # Set the mask to 0 for the current block
             # mask[:, start_pos:start_pos + block_size] = 0
             if start_pos + block_size > shape[-1]:
                 block_size = shape[-1] - start_pos
             if self.num4empty_str == 'randn' and block_size > 0:
-                self.num4empty = torch.randn((shape[0], block_size))
+                self.num4empty = torch.randn((shape[0], block_size), generator=self.torch_rng)
                 # print("num4empty is randn")
             if block_size > 0:
                 melspec[:, start_pos:start_pos + block_size] = self.num4empty
