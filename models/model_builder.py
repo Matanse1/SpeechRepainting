@@ -14,7 +14,6 @@ import os
 import sys
 # sys.path.insert(0, '..')
 from .utils import load_json
-from .wavenet import WaveNet
 from .utils import get_model
 
 class ModelBuilder():

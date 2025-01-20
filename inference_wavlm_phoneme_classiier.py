@@ -28,6 +28,7 @@ from dataloaders.stft import denormalise_mel
 from hifi_gan.env import AttrDict
 
 from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, preprocess_text
+from models.utils import get_phones_dict
 from models.mel_spec_wavlm_phoneme_classifier import WavlmMelSpecPhonemeClassifier
 import csv
 from scipy.io.wavfile import write
@@ -36,15 +37,7 @@ from losses.losses import get_loss_func
 
 from dataloaders import dataloader, CollateFn
 
-def get_phones_dict(file_path):
-    phoneme_dict_p2d = {}
-    phoneme_dict_d2p = {}
-    with open(file_path, 'r') as file:
-        for line in file:
-            key, value = line.strip().split()
-            phoneme_dict_p2d[key] = int(value) #phone to digit
-            phoneme_dict_d2p[int(value)] = key #digit to phone
-    return phoneme_dict_p2d, phoneme_dict_d2p
+
 
 def calc_phoneme(net, loss_fn, masked_melspec, mask, mask_mask, phoneme_target, 
                   phoneme_target_mask, w_masked_pix=0.7, masked_audio_time_mask=None):

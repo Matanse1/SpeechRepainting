@@ -250,6 +250,7 @@ class WaveNet(nn.Module):
         super().__init__()
         representation_models = {}
         #### For WavLM representation model
+        self.text_embed_prop = kwargs.get("text_embed_prop")
         self.wavlm_prop = kwargs.get("wavlm") #properties of wavlm
         self.use_wavlm_rep = self.wavlm_prop["use_wavlm_rep"] # representation
         self.use_weighted_sum_wavlm = self.wavlm_prop["use_weighted_sum_wavlm"]
@@ -293,7 +294,7 @@ class WaveNet(nn.Module):
                                         nn.ReLU(),
                                         ZeroConv1d(skip_channels, out_channels))
 
-    def forward(self, input_data, cond=None, mask_padding_time=None, mask_padding_frames=None):
+    def forward(self, input_data, cond=None, mask_padding_time=None, mask_padding_frames=None, drop_text=None, text=None):
         audio, diffusion_steps = input_data
 
         x = audio

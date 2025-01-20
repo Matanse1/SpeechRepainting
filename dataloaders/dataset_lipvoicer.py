@@ -455,7 +455,7 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
     spectrogram, audio pair.
     """
     def __init__(self, split, sampling_rate, csv_loc, min_block_size, max_block_size, min_spacing,
-                 audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties, return_target_time=False):
+                 audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties, return_target_time=False, return_true_text=False):
         split = split.capitalize()
         self.return_target_time = return_target_time
         self.return_mask_properties = return_mask_properties
@@ -467,7 +467,8 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
         self.num4empty_str = num4empty_str
         self.base_data_dir = base_data_dir
         self.audio_stft_hop = audio_stft_hop
-
+        self.return_true_text = return_true_text
+        
         try:
             float(num4empty_str)
             is_number = True  # Conversion succeeded, it's a number
@@ -499,16 +500,33 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
         _, audio_time = read(audio_path)
         audio_time = torch.from_numpy(audio_time.astype(np.float32))
         audio_time =  0.9 * audio_time / audio_time.abs().max() #because we took the original librispeech dataset, the audio is not norlaized to [-1, 1]
-
+        lab_path = audio_path.with_suffix('.lab')
+    
+        if self.return_true_text:
+            # Read and return the content of the .lab file
+            with open(lab_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+            text = content.strip()
         if self.return_mask_properties:
             masked_melspec, mask, masked_audio_time, block_size_list, num_blocks = self.create_masked_melspec(melspec, audio_time)
             if self.return_target_time:
-                return (audio_time, melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
-            return (melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
+                if self.return_true_text:
+                    return (audio_time, melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, text)
+                else:
+                    return (audio_time, melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
+            if self.return_true_text:
+                return (melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, text)
+            else:
+                return (melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
         else:  
             masked_melspec, mask, masked_audio_time = self.create_masked_melspec(melspec, audio_time)
             if self.return_target_time:
-                return (audio_time, melspec, masked_melspec, masked_audio_time, mask)
+                if self.return_true_text:
+                    return (audio_time, melspec, masked_melspec, masked_audio_time, mask, text)
+                else:
+                    return (audio_time, melspec, masked_melspec, masked_audio_time, mask)
+            if self.return_true_text:
+                return (melspec, masked_melspec, masked_audio_time, mask, text)
             return (melspec, masked_melspec, masked_audio_time, mask)
 
     
@@ -913,7 +931,7 @@ class PlcDataset(torch.utils.data.Dataset):
 
 
     
-def get_dataset(cfg, split='Train', return_mask_properties=False, return_target_time=False):
+def get_dataset(cfg, split='Train', return_mask_properties=False, return_target_time=False, return_true_text=False):
     if cfg['dataset_type'] == 'speech_inpainting':
         return SpeechRepaingingDataset(**cfg['speech_inpainting'], split=split, return_mask_properties=return_mask_properties, return_target_time=return_target_time)
     elif cfg['dataset_type'] == 'explosion_speech_inpainting':
@@ -923,7 +941,7 @@ def get_dataset(cfg, split='Train', return_mask_properties=False, return_target_
     elif cfg['dataset_type'] == 'plc_task':
         return PlcDataset(**cfg['plc_task'], split=split, return_target_time=return_target_time)
     elif cfg['dataset_type'] == 'speech_inpainting_anechoic':
-        return SpeechRepaingingAnechoicDataset(**cfg['speech_inpainting_anechoic'], split=split, return_mask_properties=return_mask_properties, return_target_time=return_target_time)
+        return SpeechRepaingingAnechoicDataset(**cfg['speech_inpainting_anechoic'], split=split, return_mask_properties=return_mask_properties, return_target_time=return_target_time, return_true_text=return_true_text)
     else:
         raise Exception('Invalid dataset type')
     

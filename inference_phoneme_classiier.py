@@ -28,21 +28,14 @@ from dataloaders.stft import denormalise_mel
 from hifi_gan.env import AttrDict
 
 from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, preprocess_text
+from models.utils import get_phones_dict
 import csv
 from scipy.io.wavfile import write
 import tempfile
 
 from dataloaders import dataloader, CollateFn
 
-def get_phones_dict(file_path):
-    phoneme_dict_p2d = {}
-    phoneme_dict_d2p = {}
-    with open(file_path, 'r') as file:
-        for line in file:
-            key, value = line.strip().split()
-            phoneme_dict_p2d[key] = int(value) #phone to digit
-            phoneme_dict_d2p[int(value)] = key #digit to phone
-    return phoneme_dict_p2d, phoneme_dict_d2p
+
 
 def calc_phoneme(net, loss_fn, melspec, masked_cond, mask, phoneme_target, diffusion_hyperparams, 
                   masked_audio_time_mask=None, phoneme_target_mask=None, w_masked_pix=0.7, mask_mask=None, on_masked_melspec=False):

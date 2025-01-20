@@ -24,7 +24,7 @@ from dataloaders.stft import denormalise_mel
 from tqdm import tqdm
 from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, fix_len_compatibility, pad_last_dim
 
-def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, mask_frames=None, conditions=None):
+def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, mask_frames=None, conditions=None, text=None):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
 
@@ -57,8 +57,8 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, ma
                 noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
                 x = noisy_masked_melspec * mask + x * (1 - mask)
             
-            epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
-            epsilon_theta_uncond = net(x, conditions, diffusion_steps, cond_drop_prob=1, mask_padding_frames=mask_frames)
+            epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0, mask_padding_frames=mask_frames, text=text)   # predict \epsilon according to \epsilon_\theta
+            epsilon_theta_uncond = net(x, conditions, diffusion_steps, cond_drop_prob=1, mask_padding_frames=mask_frames, text=text)   # predict \epsilon according to \epsilon_\theta
             epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
 
             x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
@@ -76,13 +76,14 @@ def generate(
         rank,
         diffusion_cfg,
         model_cfg,
+        g_model_cfg,
         dataset_cfg,
         save_dir,
         ckpt_iter="max",
         name=None,
         n_samples=None,
         w_mel_cond=0,
-        on_masked_melspec=False
+        on_masked_melspec=False,
     ):
     """
     Generate melspectrograms based on lips movement
@@ -102,7 +103,7 @@ def generate(
     # net_lipreading = builder.build_lipreadingnet()
     # net_facial = builder.build_facial(fc_out=128, with_fc=True)
     net_diffwave = builder.build_model(model_cfg)
-    net = AudioVisualModel(net_diffwave).cuda()
+    net = AudioVisualModel(g_model_cfg, net_diffwave).cuda()
     # net = torch.compile(net)
     # print_size(net)
     net.eval()
@@ -116,17 +117,26 @@ def generate(
     try:
         model_path = os.path.join(checkpoint_directory, '{}.pkl'.format(ckpt_iter))
         checkpoint = torch.load(model_path, map_location='cpu')
-        net.load_state_dict(checkpoint['model_state_dict'])
-        print('Successfully loaded model at iteration {}'.format(ckpt_iter))
+        model_weights = checkpoint['model_state_dict']
+        model_weights = {k: v for k, v in model_weights.items() if 'wavlm_model' not in k}
+        missing_keys , _ = net.load_state_dict(model_weights, strict=False)
+        filtered_missing_keys = [key for key in missing_keys if 'wavlm_model' not in key]
+        if not filtered_missing_keys:
+            print('All keys loaded successfully')
+            print('Successfully loaded model at iteration {}'.format(ckpt_iter))
+        else:
+            raise Exception(f'The following keys were not loaded: {filtered_missing_keys}')
+
+        
     except:
         raise Exception('No valid model found')
     
-    dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=False)
+    dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=False, return_true_text=model_cfg.text_embed_prop.use_text_embed_rep)
     dataset_type = dataset_cfg.dataset_type
     dataset_indices = list(range(n_samples))
-    groundtruth_melspec, masked_cond, masks, mask_frames_list = [], [], [], []
+    groundtruth_melspec, masked_cond, masks, mask_frames_list, text_list = [], [], [], [], []
     for i in dataset_indices:
-        
+        text = None
         if dataset_type == 'explosion_speech_inpainting':
                 speech_melspec, mix_melspec, mix_time, _, masked_speech_time, explosions_activity, start_explosions, explosions_length = dataset[i]
                 mask = 1 - explosions_activity # zero = explosion, one = no explosion
@@ -145,10 +155,15 @@ def generate(
             _masked_cond = [_masked_cond[i].unsqueeze(0).cuda() for i in range(len(_masked_cond))]
         elif dataset_cfg.dataset_type == 'speech_inpainting_anechoic':
         #melspec, masked_melspec, mask, masked_audio_time
-            _gt_melspec, masked_melspec, masked_audio_time, _mask = dataset[i]
+            if model_cfg.text_embed_prop.use_text_embed_rep:
+                _gt_melspec, masked_melspec, masked_audio_time, _mask, text = dataset[i]
+                text = [text]
+            else:
+                _gt_melspec, masked_melspec, masked_audio_time, _mask = dataset[i]
             _mask = _mask.unsqueeze(0).cuda()
             _masked_cond = [masked_melspec.cuda(), masked_audio_time.cuda()]
             _masked_cond = [_masked_cond[i].unsqueeze(0) for i in range(len(_masked_cond))]
+
         
         #For Unet we need to fix the length of the input to be divided with 4 (2**2)
         if model_cfg._name_ == 'unet':
@@ -172,6 +187,7 @@ def generate(
         masked_cond.append(_masked_cond)
         masks.append(_mask)
         mask_frames_list.append(mask_frames)
+        text_list.append(text)
 
     
     print(f'begin generating melspectrograms | {n_samples} samples')
@@ -191,7 +207,8 @@ def generate(
             conditions=masked_cond[i],
             mask=masks[i],
             on_masked_melspec=on_masked_melspec,
-            mask_frames=mask_frames_list[i]
+            mask_frames=mask_frames_list[i],
+            text=text_list[i]
         )
         generated_melspec.append(denormalise_mel(_melspec))
 
@@ -213,6 +230,7 @@ def main(cfg: DictConfig) -> None:
         name=cfg.generate['name'],
         diffusion_cfg=cfg.diffusion,
         model_cfg=cfg.model,
+        g_model_cfg = cfg.g_model,
         dataset_cfg=cfg.dataset,
         **cfg.generate,
     )

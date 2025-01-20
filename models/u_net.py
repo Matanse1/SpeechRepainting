@@ -1,11 +1,13 @@
-
+from __future__ import annotations
 import numpy as np
 import torch
 from einops import rearrange
 import math
 from . import utils
-from models.utils import print_modle_size, WeightedSum
+import torch.nn as nn
+from models.utils import print_modle_size, WeightedSum, get_tokenizer, list_str_to_tensor
 from transformers import AutoModel, WavLMModel
+from models.modules import TextEmbedding, ConvPositionEmbedding
 
 class BaseModule(torch.nn.Module):
     def __init__(self):
@@ -145,10 +147,22 @@ class SinusoidalPosEmb(BaseModule):
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
 
+class InputEmbedding(nn.Module):
+    def __init__(self, mel_dim, text_dim, out_dim):
+        super().__init__()
+        self.proj = nn.Linear(mel_dim * 2 + text_dim, out_dim)
+        self.conv_pos_embed = ConvPositionEmbedding(dim=out_dim)
+
+    def forward(self, x: float["b n d"], cond: float["b n d"], text_embed: float["b n d"]):  # noqa: F722
+        x = self.proj(torch.cat((x, cond, text_embed), dim=-1))
+        x = self.conv_pos_embed(x) + x
+        return x
+    
+    
 @utils.register_model(name='unet')
 class Unet(BaseModule):
     def __init__(self, dim, dim_mults=(1, 2, 4), groups=8,
-                 n_spks=None, spk_emb_dim=64, n_feats=80, pe_scale=1000, unconditional=False, wavlm=False):
+                 n_spks=None, spk_emb_dim=64, n_feats=80, pe_scale=1000, unconditional=False, wavlm=False, text_embed_prop=None):
         super(Unet, self).__init__()
         self.dim = dim
         self.dim_mults = dim_mults
@@ -158,7 +172,15 @@ class Unet(BaseModule):
         self.pe_scale = pe_scale
         self.unconditional = unconditional
         self.wavlm_prop = wavlm
-        self.cat_cond = not unconditional
+        self.text_embed_prop = text_embed_prop
+        self.use_text_embed_rep = self.text_embed_prop["use_text_embed_rep"]
+        self.cat_cond = (not unconditional) and (not self.use_text_embed_rep)
+
+        if self.use_text_embed_rep:
+            vocab_char_map, vocab_size = get_tokenizer(tokenizer = self.text_embed_prop["tokenizer"])
+            self.vocab_char_map = vocab_char_map
+            self.text_embed = TextEmbedding(vocab_size, self.text_embed_prop["text_dim"], conv_layers=self.text_embed_prop["conv_layers"])
+            self.input_embed = InputEmbedding(self.text_embed_prop["mel_dim"], self.text_embed_prop["text_dim"], self.text_embed_prop["mel_dim"])
         if n_spks > 1:
             self.spk_mlp = torch.nn.Sequential(torch.nn.Linear(spk_emb_dim, spk_emb_dim * 4), Mish(),
                                                torch.nn.Linear(spk_emb_dim * 4, n_feats))
@@ -240,8 +262,9 @@ class Unet(BaseModule):
         self.final_block = Block(dim, dim)
         self.final_conv = torch.nn.Conv2d(dim, 1, 1)
 
-    def forward(self, input_data, cond=None, mask_padding_time=None, mask_padding_frames=None, spk=None):
+    def forward(self, input_data, cond=None, mask_padding_time=None, mask_padding_frames=None, text=None, drop_text=None, spk=None):
         x, t = input_data
+        device = x.device
         B, F, T = x.shape
         t = t.squeeze(1)
         if not self.unconditional:
@@ -252,6 +275,15 @@ class Unet(BaseModule):
         
         t = self.time_pos_emb(t, scale=self.pe_scale)
         t = self.mlp(t)
+        if self.use_text_embed_rep:
+            text = list_str_to_tensor(text).to(device)
+            seq_len = T
+            text_embed = self.text_embed(text, seq_len, drop_text=drop_text)
+            x = x.transpose(-1, -2)
+            masked_melspec = masked_melspec.transpose(-1, -2)
+            x = self.input_embed(x, masked_melspec, text_embed)
+            x = x.transpose(-1, -2)
+            masked_melspec = masked_melspec.transpose(-1, -2)
 
         if self.cat_cond:
             if self.use_wavlm_rep:

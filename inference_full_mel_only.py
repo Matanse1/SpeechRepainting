@@ -37,7 +37,7 @@ from scipy.io.wavfile import write
 import tempfile
 # from my_utils.compute_metrics import Metrics
 import ASR.asr_models as asr_models
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from utils import mask_time_all_frequencies_mask, mask_time_specific_frequencies_mask, mask_specific_frequencies_all_time_mask, mask_combined_mask, mask_with_shape_mask
 print("finished imports")
 
@@ -121,37 +121,50 @@ def sampling(net, diffusion_hyperparams,
         mask = mask.cuda()  
     
     x = torch.normal(0, 1, size=masked_melspec.shape).cuda()
+    repeat_asr = 1
+    asr_finish = -1
     with torch.no_grad():
         for t in tqdm(range(T-1, -1, -1)):
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
-            
+            # if asr_guidance_net is not None and (t <= asr_start and t > asr_finish):
+                # repeat_asr = 1
+            # for _ in range(repeat_asr):
             if on_masked_melspec is not None:
                 z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
                 noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
                 x = noisy_masked_melspec * mask + x * (1 - mask)
             
             if without_condtion:
-                epsilon_theta = net(x, condition, diffusion_steps, cond_drop_prob=1, mask_padding_frames=mask_frames)
+                epsilon_theta_mel = net(x, condition, diffusion_steps, cond_drop_prob=1, mask_padding_frames=mask_frames)
             else:
-                epsilon_theta = net(x, condition, diffusion_steps, cond_drop_prob=0, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
+                epsilon_theta_cond = net(x, condition, diffusion_steps, cond_drop_prob=0, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
                 epsilon_theta_uncond = net(x, condition, diffusion_steps, cond_drop_prob=1, mask_padding_frames=mask_frames)
-                epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
+                epsilon_theta_mel = (1+w_mel_cond) * epsilon_theta_cond - w_mel_cond * epsilon_theta_uncond
             
-            if asr_guidance_net is not None and t <= asr_start:
-                with torch.enable_grad():
-                    length_input = torch.tensor([x.shape[2]]).cuda()
-                    inputs = x.detach().requires_grad_(True), length_input
-                    targets = text_tokens, torch.tensor([text_tokens.shape[1]]).cuda()
-                    asr_guidance_net.device = torch.device("cuda")
-                    batch_losses = asr_guidance_net.forward_model(inputs, diffusion_steps, targets, compute_metrics=True, verbose=0)[0]
-                    asr_grad = torch.autograd.grad(batch_losses["loss"], inputs[0])[0]
-                    asr_guidance_net.device = torch.device("cpu")
-                grad_normaliser = torch.norm(epsilon_theta / torch.sqrt(1 - Alpha_bar[t])) / torch.norm(asr_grad)
-                epsilon_theta = epsilon_theta + torch.sqrt(1 - Alpha_bar[t]) * w_asr * grad_normaliser * asr_grad #the asr_grad include the minus
-
-            x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
-            if t > 0:
-                x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
+            if asr_guidance_net is not None and (t <= asr_start and t > asr_finish):
+                for r in range(repeat_asr):
+                    if r > 1:
+                        if on_masked_melspec is not None:
+                            z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
+                            noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
+                            x = noisy_masked_melspec * mask + x * (1 - mask)
+                    with torch.enable_grad():
+                        length_input = torch.tensor([x.shape[2]]).cuda()
+                        inputs = x.detach().requires_grad_(True), length_input
+                        targets = text_tokens, torch.tensor([text_tokens.shape[1]]).cuda()
+                        asr_guidance_net.device = torch.device("cuda")
+                        batch_losses = asr_guidance_net.forward_model(inputs, diffusion_steps, targets, compute_metrics=True, verbose=0)[0]
+                        asr_grad = torch.autograd.grad(batch_losses["loss"], inputs[0])[0]
+                        asr_guidance_net.device = torch.device("cpu")
+                    grad_normaliser = torch.norm(epsilon_theta_mel / torch.sqrt(1 - Alpha_bar[t])) / torch.norm(asr_grad)
+                    epsilon_theta = epsilon_theta_mel + torch.sqrt(1 - Alpha_bar[t]) * w_asr * grad_normaliser * asr_grad #the asr_grad include the minus
+                    x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
+                    if t > 0:
+                        x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
+            else:
+                x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta_mel) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
+                if t > 0:
+                    x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
             # x = x.clip(-1, 1.5)
             
             if t % 10 == 0:
@@ -207,8 +220,15 @@ def generate(
     # load checkpoint
     try:
         checkpoint = torch.load(ckpt_path, map_location='cpu')
-        net.load_state_dict(checkpoint['model_state_dict'])
-        print('Successfully loaded MelGen checkpoint')
+        model_weights = checkpoint['model_state_dict']
+        model_weights = {k: v for k, v in model_weights.items() if 'wavlm_model' not in k}
+        missing_keys , _ = net.load_state_dict(model_weights, strict=False)
+        filtered_missing_keys = [key for key in missing_keys if 'wavlm_model' not in key]
+        if not filtered_missing_keys:
+            print('All keys loaded successfully')
+            print('Successfully loaded MelGen checkpoint')
+        else:
+            raise Exception(f'The following keys were not loaded: {filtered_missing_keys}')
     except Exception as e:
         print(e)
         raise Exception('No valid model found')
@@ -264,252 +284,260 @@ def generate(
     vocoders['bigvgan'] = generator
     
     dataset_type = dataset_cfg['dataset_type']
-    dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=True, return_target_time=True)
     criterion = nn.L1Loss(reduction='none')
-    guidance_dir_name = f'w1={w_mel_cond}'
-    guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}'
-    guidance_dir_name += f'_mask={on_masked_melspec}'
-    _output_directory = os.path.join(output_directory, guidance_dir_name)
-    os.makedirs(_output_directory, exist_ok=True)
-    print("saving to output directory", _output_directory)
+    w_asr_list = w_asr
+    asr_start_list = asr_start
+    for w_asr in w_asr_list:
+        for asr_start in asr_start_list:
+            dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=True, return_true_text=True)
+            guidance_dir_name = f'w1={w_mel_cond}'
+            guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}' #_asr_finish=80'
+            guidance_dir_name += f'_mask={on_masked_melspec}' #_repeat=5_same-theta_-mel'
+            _output_directory = os.path.join(output_directory, guidance_dir_name)
+            os.makedirs(_output_directory, exist_ok=True)
+            print("saving to output directory", _output_directory)
 
-    # Create a CSV file
-    csv_file = open(os.path.join(_output_directory, 'samples_info.csv'), 'w', newline='')
-    csv_writer = csv.writer(csv_file, delimiter='|')
-    
-    # compute_metrics = Metrics()
-
-    # Write the header row
-    if dataset_type == 'explosion_speech_inpainting':
-        csv_writer.writerow(['Sample', 'start_explosions', 'explosions_length'])
-    elif dataset_type == 'speech_inpainting' or dataset_type == 'speech_inpainting_anechoic':
-        titles = ['Sample', 'block_size_list', 'num_blocks']#, 'plcmos_masked_init'] #+  \
-            # [met + '_' + voc for met in ['WER_init', 'plcmos_target_init', 'LSD_init', 'STOI_init', 'PESQ_init'] for voc in vocoders.keys()] + \
-            #     [met + '_' + voc for met in ['WER', 'plcmos_pred' 'LSD', 'STOI', 'PESQ'] for voc in vocoders.keys()]
-        csv_writer.writerow(titles)
-        # csv_writer.writerow(['Sample', 'block_size_list', 'num_blocks'])
-
-    # ASR based on audio-only model, this is used for getting transcription for guidance, so the input is the masked audio in time domain
-    pipeline_asr = InferencePipeline(config_filename_asr_cond, device='cuda')
-    
-    for i in tqdm(range(n_samples_test)):
-        os.makedirs(os.path.join(_output_directory, f'sample_{i}'), exist_ok=True)
-        
-        if dataset_type == 'explosion_speech_inpainting':
-            speech_melspec, mix_melspec, mix_time, masked_speech, masked_speech_time, explosions_activity, start_explosions, explosions_length = dataset[i]
-            mask = 1 - explosions_activity # zero = explosion, one = no explosion
-            # for j in range(len(masked_cond)):
-            #     masked_cond[j] = masked_cond[j].unsqueeze(0).cuda()
-            # row_dict = {'Sample': i, 'start_explosions': start_explosions, 'explosions_length': explosions_length}
-            csv_writer.writerow([i, start_explosions, explosions_length]) # in samples
-            gt_melspec = speech_melspec.unsqueeze(0)
+            # Create a CSV file
+            csv_file = open(os.path.join(_output_directory, 'samples_info.csv'), 'w', newline='')
+            csv_writer = csv.writer(csv_file, delimiter='|')
             
-            masked_melspec, masked_audio_time = mix_melspec.unsqueeze(0).cuda(), mix_time.unsqueeze(0).cuda()
-            masked_audio_time4text = masked_speech_time
-            masked_cond = [masked_melspec, masked_audio_time]
+            # compute_metrics = Metrics()
+
+            # Write the header row
+            if dataset_type == 'explosion_speech_inpainting':
+                csv_writer.writerow(['Sample', 'start_explosions', 'explosions_length'])
+            elif dataset_type == 'speech_inpainting' or dataset_type == 'speech_inpainting_anechoic':
+                titles = ['Sample', 'block_size_list', 'num_blocks']#, 'plcmos_masked_init'] #+  \
+                    # [met + '_' + voc for met in ['WER_init', 'plcmos_target_init', 'LSD_init', 'STOI_init', 'PESQ_init'] for voc in vocoders.keys()] + \
+                    #     [met + '_' + voc for met in ['WER', 'plcmos_pred' 'LSD', 'STOI', 'PESQ'] for voc in vocoders.keys()]
+                csv_writer.writerow(titles)
+                # csv_writer.writerow(['Sample', 'block_size_list', 'num_blocks'])
+
+            # ASR based on audio-only model, this is used for getting transcription for guidance, so the input is the masked audio in time domain
+            pipeline_asr = InferencePipeline(config_filename_asr_cond, device='cuda')
             
-        
-        elif dataset_type == 'speech_inpainting':
-            gt_melspec, *masked_cond, mask, block_size_list, num_blocks = dataset[i]
-            # row_dict = {'Sample': i, 'block_size_list': block_size_list, 'num_blocks': num_blocks}
-            masked_cond = [masked_cond[i].unsqueeze(0).cuda() for i in range(len(masked_cond))]
-            # for j in range(len(masked_cond)):
-            #     masked_cond[j] = masked_cond[j].unsqueeze(0).cuda()
-            csv_writer.writerow([i, block_size_list, num_blocks])
-            gt_melspec = gt_melspec.unsqueeze(0)
-            masked_melspec, masked_audio_time = masked_cond
-            masked_audio_time4text = masked_audio_time.squeeze().cpu()
-        
-        elif dataset_type == 'plc_task':
-            gt_melspec, masked_melspec, masked_audio_time, frame_mask, sample_mask = dataset[i]
-            mask = frame_mask
-            gt_melspec = gt_melspec.unsqueeze(0)
-            masked_cond = [masked_melspec.cuda(), masked_audio_time.cuda()]
-            masked_cond = [masked_cond[i].unsqueeze(0) for i in range(len(masked_cond))]
-            masked_melspec, masked_audio_time = masked_cond
-            masked_audio_time4text = masked_audio_time.squeeze().cpu()
-        elif dataset_cfg.dataset_type == 'speech_inpainting_anechoic':
-            #melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks
-            audio_time, gt_melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks = dataset[i]
-            csv_writer.writerow([i, block_size_list, num_blocks])
-            gt_melspec = gt_melspec.unsqueeze(0)
-            mask = mask.unsqueeze(0).cuda()
-            masked_cond = [masked_melspec.cuda(), masked_audio_time.cuda()]
-            masked_cond = [masked_cond[i].unsqueeze(0) for i in range(len(masked_cond))]
-            masked_melspec, masked_audio_time = masked_cond
-            masked_audio_time4text = masked_audio_time.squeeze().cpu()
-        
-                #For Unet we need to fix the length of the input to be divided with 4 (2**2)
-        if model_cfg._name_ == 'unet':
-            freq_siganl, time_signal = masked_cond
-            desired_num_frames = fix_len_compatibility(gt_melspec.shape[-1])
-            gt_melspec = pad_last_dim(gt_melspec, desired_num_frames - gt_melspec.shape[-1])
-            time_signal = pad_last_dim(time_signal, (desired_num_frames - freq_siganl.shape[-1]) * dataset_cfg[dataset_type]["audio_stft_hop"])
-            freq_siganl = pad_last_dim(freq_siganl, desired_num_frames - freq_siganl.shape[-1]).cuda()
-            mask_frames = torch.zeros((list(mask.shape[:-1]) + [desired_num_frames]))
-            mask_frames[..., :mask.shape[-1]] = 1
-            mask_frames = mask_frames.cuda()
-            mask = pad_last_dim(mask, desired_num_frames - mask.shape[-1], pad_value=1)
-            masked_cond = [freq_siganl, time_signal]
-        else:
-            mask_frames = None
-        
-        if mask_info['mask_type'] == 'repeat_all_freq':
-            masked_melspec, mask = mask_time_all_frequencies_mask(gt_melspec[0], mask_info['repeat_all_freq']['length'], mask_info['repeat_all_freq']['skip'])
-            masked_melspec = masked_melspec.unsqueeze(0).cuda()
-            mask = mask.unsqueeze(0).cuda()
-            masked_cond = [masked_melspec, masked_audio_time]
-        elif mask_info['mask_type'] == 'repeat_specific_freq':
-            masked_melspec, mask = mask_time_specific_frequencies_mask(gt_melspec[0], mask_info['repeat_specific_freq']['length'], mask_info['repeat_specific_freq']['skip'], mask_info['repeat_specific_freq']['freq'])
-            masked_melspec = gt_melspec[0] * mask
-            masked_melspec = masked_melspec.unsqueeze(0).cuda()
-            mask = mask.unsqueeze(0).cuda()
-            masked_cond = [masked_melspec, masked_audio_time]
-        elif mask_info['mask_type'] == 'by_number':
-            masked_melspec, mask = mask_with_shape_mask(gt_melspec[0], mask_info['by_number']['number'])
-            masked_melspec = masked_melspec.unsqueeze(0).cuda()
-            mask = mask.unsqueeze(0).cuda()
-            masked_cond = [masked_melspec, masked_audio_time]
-        elif mask_info['mask_type'] == 'all_time_specific_freq':
-            masked_melspec, mask = mask_specific_frequencies_all_time_mask(gt_melspec[0], mask_info['all_time_specific_freq']['freq'])
-            masked_melspec = gt_melspec[0] * mask
-            masked_melspec = masked_melspec.unsqueeze(0).cuda()
-            mask = mask.unsqueeze(0).cuda()
+            for i in tqdm(range(n_samples_test)):
+                os.makedirs(os.path.join(_output_directory, f'sample_{i}'), exist_ok=True)
+                
+                if dataset_type == 'explosion_speech_inpainting':
+                    speech_melspec, mix_melspec, mix_time, masked_speech, masked_speech_time, explosions_activity, start_explosions, explosions_length = dataset[i]
+                    mask = 1 - explosions_activity # zero = explosion, one = no explosion
+                    # for j in range(len(masked_cond)):
+                    #     masked_cond[j] = masked_cond[j].unsqueeze(0).cuda()
+                    # row_dict = {'Sample': i, 'start_explosions': start_explosions, 'explosions_length': explosions_length}
+                    csv_writer.writerow([i, start_explosions, explosions_length]) # in samples
+                    gt_melspec = speech_melspec.unsqueeze(0)
+                    
+                    masked_melspec, masked_audio_time = mix_melspec.unsqueeze(0).cuda(), mix_time.unsqueeze(0).cuda()
+                    masked_audio_time4text = masked_speech_time
+                    masked_cond = [masked_melspec, masked_audio_time]
+                    
+                
+                elif dataset_type == 'speech_inpainting':
+                    gt_melspec, *masked_cond, mask, block_size_list, num_blocks = dataset[i]
+                    # row_dict = {'Sample': i, 'block_size_list': block_size_list, 'num_blocks': num_blocks}
+                    masked_cond = [masked_cond[i].unsqueeze(0).cuda() for i in range(len(masked_cond))]
+                    # for j in range(len(masked_cond)):
+                    #     masked_cond[j] = masked_cond[j].unsqueeze(0).cuda()
+                    csv_writer.writerow([i, block_size_list, num_blocks])
+                    gt_melspec = gt_melspec.unsqueeze(0)
+                    masked_melspec, masked_audio_time = masked_cond
+                    masked_audio_time4text = masked_audio_time.squeeze().cpu()
+                
+                elif dataset_type == 'plc_task':
+                    gt_melspec, masked_melspec, masked_audio_time, frame_mask, sample_mask = dataset[i]
+                    mask = frame_mask
+                    gt_melspec = gt_melspec.unsqueeze(0)
+                    masked_cond = [masked_melspec.cuda(), masked_audio_time.cuda()]
+                    masked_cond = [masked_cond[i].unsqueeze(0) for i in range(len(masked_cond))]
+                    masked_melspec, masked_audio_time = masked_cond
+                    masked_audio_time4text = masked_audio_time.squeeze().cpu()
+                elif dataset_cfg.dataset_type == 'speech_inpainting_anechoic':
+                    #melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks
+                    gt_melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, true_text = dataset[i]
+                    csv_writer.writerow([i, block_size_list, num_blocks])
+                    gt_melspec = gt_melspec.unsqueeze(0)
+                    mask = mask.unsqueeze(0).cuda()
+                    masked_cond = [masked_melspec.cuda(), masked_audio_time.cuda()]
+                    masked_cond = [masked_cond[i].unsqueeze(0) for i in range(len(masked_cond))]
+                    masked_melspec, masked_audio_time = masked_cond
+                    masked_audio_time4text = masked_audio_time.squeeze().cpu()
+                
+                        #For Unet we need to fix the length of the input to be divided with 4 (2**2)
+                if model_cfg._name_ == 'unet':
+                    freq_siganl, time_signal = masked_cond
+                    desired_num_frames = fix_len_compatibility(gt_melspec.shape[-1])
+                    gt_melspec = pad_last_dim(gt_melspec, desired_num_frames - gt_melspec.shape[-1])
+                    time_signal = pad_last_dim(time_signal, (desired_num_frames - freq_siganl.shape[-1]) * dataset_cfg[dataset_type]["audio_stft_hop"])
+                    freq_siganl = pad_last_dim(freq_siganl, desired_num_frames - freq_siganl.shape[-1]).cuda()
+                    mask_frames = torch.zeros((list(mask.shape[:-1]) + [desired_num_frames]))
+                    mask_frames[..., :mask.shape[-1]] = 1
+                    mask_frames = mask_frames.cuda()
+                    mask = pad_last_dim(mask, desired_num_frames - mask.shape[-1], pad_value=1)
+                    masked_cond = [freq_siganl, time_signal]
+                else:
+                    mask_frames = None
+                
+                if mask_info['mask_type'] == 'repeat_all_freq':
+                    masked_melspec, mask = mask_time_all_frequencies_mask(gt_melspec[0], mask_info['repeat_all_freq']['length'], mask_info['repeat_all_freq']['skip'])
+                    masked_melspec = masked_melspec.unsqueeze(0).cuda()
+                    mask = mask.unsqueeze(0).cuda()
+                    masked_cond = [masked_melspec, masked_audio_time]
+                elif mask_info['mask_type'] == 'repeat_specific_freq':
+                    masked_melspec, mask = mask_time_specific_frequencies_mask(gt_melspec[0], mask_info['repeat_specific_freq']['length'], mask_info['repeat_specific_freq']['skip'], mask_info['repeat_specific_freq']['freq'])
+                    masked_melspec = gt_melspec[0] * mask
+                    masked_melspec = masked_melspec.unsqueeze(0).cuda()
+                    mask = mask.unsqueeze(0).cuda()
+                    masked_cond = [masked_melspec, masked_audio_time]
+                elif mask_info['mask_type'] == 'by_number':
+                    masked_melspec, mask = mask_with_shape_mask(gt_melspec[0], mask_info['by_number']['number'])
+                    masked_melspec = masked_melspec.unsqueeze(0).cuda()
+                    mask = mask.unsqueeze(0).cuda()
+                    masked_cond = [masked_melspec, masked_audio_time]
+                elif mask_info['mask_type'] == 'all_time_specific_freq':
+                    masked_melspec, mask = mask_specific_frequencies_all_time_mask(gt_melspec[0], mask_info['all_time_specific_freq']['freq'])
+                    masked_melspec = gt_melspec[0] * mask
+                    masked_melspec = masked_melspec.unsqueeze(0).cuda()
+                    mask = mask.unsqueeze(0).cuda()
+                    
+                text = 'None'
+                if apply_asr_guidance:
+                    if mel_text:
+                        text = true_text
+                        print(f"The transcript is: {text}")
+                        text = preprocess_text(text)
+                        print(f"The normalized transcript is: {text}")
+                    else:
+                        # Create a temporary file
+                        audio4text = masked_audio_time4text
+                        sample_rate = 16000  # Example value
+                        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_wav:
+                            # Save the masked audio array as a WAV file in the temporary file
+                            write(temp_wav.name, sample_rate, audio4text.numpy().astype(np.float32)) # TODO maybe we need to do something more clever here
+                            # Send the temporary WAV file to the pipeline
+                            transcript_from_condition = pipeline_asr(temp_wav.name)
+                            text = transcript_from_condition
+                            print(f"The transcript is: {text}")
+                            text = preprocess_text(text)
+                            print(f"The normalized transcript is: {text}")
             
-        text = 'None'
-        if apply_asr_guidance:
-            # Create a temporary file
-            audio4text = masked_audio_time4text
-            if mel_text:
-                audio4text = audio_time
-            sample_rate = 16000  # Example value
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_wav:
-                # Save the masked audio array as a WAV file in the temporary file
-                write(temp_wav.name, sample_rate, audio4text.numpy().astype(np.float32)) # TODO maybe we need to do something more clever here
-                # Send the temporary WAV file to the pipeline
-                transcript_from_condition = pipeline_asr(temp_wav.name)
-                text = transcript_from_condition
-                print(f"The transcript is: {text}")
-                text = preprocess_text(text)
-                print(f"The normalized transcript is: {text}")
-    
-        
-        if dataset_type == 'explosion_speech_inpainting':
-            ## save the masked audio in time domain
-            masked_audio_time4saveing = masked_speech_time.squeeze().cpu().numpy()
-            sf.write(os.path.join(_output_directory, f'sample_{i}', 'speech_time_masking_audio.wav'), masked_audio_time4saveing, 16000)
-            ## save the masked audio in time domain
-            masked_audio_time4saveing = masked_audio_time.squeeze().cpu().numpy()
-            sf.write(os.path.join(_output_directory, f'sample_{i}', 'mix_explsions.wav'), masked_audio_time4saveing, 16000)
-        elif dataset_type == 'speech_inpainting' or dataset_type == 'plc_task' or dataset_type == 'speech_inpainting_anechoic':
-            ## save the masked audio in time domain
-            masked_audio_time4saveing = masked_audio_time.squeeze().cpu().numpy()
-            sf.write(os.path.join(_output_directory, f'sample_{i}', 'masked_audio_time.wav'), masked_audio_time4saveing, 16000)
-        ## get the the clean version of the noisy melspec and the noisy melspec
-        weighted_loss, est_X, transformed_X, diffusion_steps, mean_loss = training_loss(net, criterion, gt_melspec.cuda(), masked_cond,  mask.cuda(), diffusion_hyperparams, w_masked_pix=0.8, mask_frames=mask_frames)
-        # save the est audio
-        est_X = denormalise_mel(est_X)
-        est_audio = vocoder(est_X)
-        est_audio = est_audio.squeeze()
-        est_audio = est_audio / 1.1 / est_audio.abs().max()
-        est_audio = est_audio.cpu().numpy()
-        sf.write(os.path.join(_output_directory, f'sample_{i}', f'est_audio_after_clean_loss={mean_loss}.wav'), est_audio, 16000)
-        
-        est_X = est_X.squeeze(0).cpu().numpy()
-        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'est_melspec_after_clean_image.png'), est_X[::-1])
-        
-        #save the noisy audio
-        transformed_X = denormalise_mel(transformed_X)
-        transformed_X_audio = vocoder(transformed_X)
-        transformed_X_audio = transformed_X_audio.squeeze()
-        transformed_X_audio = transformed_X_audio / 1.1 / transformed_X_audio.abs().max()
-        transformed_X_audio = transformed_X_audio.cpu().numpy()
-        sf.write(os.path.join(_output_directory, f'sample_{i}', f'noisy_audio={diffusion_steps.item()}.wav'), transformed_X_audio, 16000)
-        
-        transformed_X = transformed_X.squeeze(0).cpu().numpy()
-        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'noisy_melspec_image.png'), transformed_X[::-1])
-        
-        # inference
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
+                
+                if dataset_type == 'explosion_speech_inpainting':
+                    ## save the masked audio in time domain
+                    masked_audio_time4saveing = masked_speech_time.squeeze().cpu().numpy()
+                    sf.write(os.path.join(_output_directory, f'sample_{i}', 'speech_time_masking_audio.wav'), masked_audio_time4saveing, 16000)
+                    ## save the masked audio in time domain
+                    masked_audio_time4saveing = masked_audio_time.squeeze().cpu().numpy()
+                    sf.write(os.path.join(_output_directory, f'sample_{i}', 'mix_explsions.wav'), masked_audio_time4saveing, 16000)
+                elif dataset_type == 'speech_inpainting' or dataset_type == 'plc_task' or dataset_type == 'speech_inpainting_anechoic':
+                    ## save the masked audio in time domain
+                    masked_audio_time4saveing = masked_audio_time.squeeze().cpu().numpy()
+                    sf.write(os.path.join(_output_directory, f'sample_{i}', 'masked_audio_time.wav'), masked_audio_time4saveing, 16000)
+                ## get the the clean version of the noisy melspec and the noisy melspec
+                weighted_loss, est_X, transformed_X, diffusion_steps, mean_loss = training_loss(net, criterion, gt_melspec.cuda(), masked_cond,  mask.cuda(), diffusion_hyperparams, w_masked_pix=0.8, mask_frames=mask_frames)
+                # save the est audio
+                est_X = denormalise_mel(est_X)
+                est_audio = vocoder(est_X)
+                est_audio = est_audio.squeeze()
+                est_audio = est_audio / 1.1 / est_audio.abs().max()
+                est_audio = est_audio.cpu().numpy()
+                sf.write(os.path.join(_output_directory, f'sample_{i}', f'est_audio_after_clean_loss={mean_loss}.wav'), est_audio, 16000)
+                
+                est_X = est_X.squeeze(0).cpu().numpy()
+                matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'est_melspec_after_clean_image.png'), est_X[::-1])
+                
+                #save the noisy audio
+                transformed_X = denormalise_mel(transformed_X)
+                transformed_X_audio = vocoder(transformed_X)
+                transformed_X_audio = transformed_X_audio.squeeze()
+                transformed_X_audio = transformed_X_audio / 1.1 / transformed_X_audio.abs().max()
+                transformed_X_audio = transformed_X_audio.cpu().numpy()
+                sf.write(os.path.join(_output_directory, f'sample_{i}', f'noisy_audio={diffusion_steps.item()}.wav'), transformed_X_audio, 16000)
+                
+                transformed_X = transformed_X.squeeze(0).cpu().numpy()
+                matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'noisy_melspec_image.png'), transformed_X[::-1])
+                
+                # inference
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+                start.record()
 
-        melspec, preds_ao = sampling(net, 
-                        diffusion_hyperparams,
-                        w_mel_cond,
-                        condition=masked_cond,
-                        asr_guidance_net=asr_guidance_net,
-                        w_asr=w_asr,
-                        asr_start=asr_start,
-                        guidance_text=text,
-                        tokenizer=tokenizer,
-                        decoder=decoder,
-                        without_condtion=without_condtion,
-                        mask=mask,
-                        on_masked_melspec=on_masked_melspec,
-                        mask_frames=mask_frames
-                        )
-        melspec = denormalise_mel(melspec)
-        end.record()
-        torch.cuda.synchronize()
-        print('generated sample_{} in {} seconds'.format(i, int(start.elapsed_time(end)/1000)))
+                melspec, preds_ao = sampling(net, 
+                                diffusion_hyperparams,
+                                w_mel_cond,
+                                condition=masked_cond,
+                                asr_guidance_net=asr_guidance_net,
+                                w_asr=w_asr,
+                                asr_start=asr_start,
+                                guidance_text=text,
+                                tokenizer=tokenizer,
+                                decoder=decoder,
+                                without_condtion=without_condtion,
+                                mask=mask,
+                                on_masked_melspec=on_masked_melspec,
+                                mask_frames=mask_frames
+                                )
+                melspec = denormalise_mel(melspec)
+                end.record()
+                torch.cuda.synchronize()
+                print('generated sample_{} in {} seconds'.format(i, int(start.elapsed_time(end)/1000)))
 
-        # save text
-        text_filename = os.path.join(_output_directory, f'sample_{i}', 'asr_text.txt')
-        with open(text_filename, 'w') as f:
-            f.write("asr_condition       :  " +text+"\n")
-            f.write("asr_generated_signal:  " + preds_ao)
-        
-        # plcmos_masked_init = compute_metrics.compute_plcmos(masked_audio_time.squeeze().cpu().numpy())
-        # row_dict.update({'plcmos_masked_init': plcmos_masked_init})
-        
-        # generate audio from masked melspec
-        masked_melspec = denormalise_mel(masked_melspec)
-        for vocoder_name, vocoder in vocoders.items():
-            masked_audio = vocoder(masked_melspec.cuda())
-            masked_audio = masked_audio.squeeze()
-            masked_audio = masked_audio / 1.1 / masked_audio.abs().max()
-            masked_audio = masked_audio.cpu().numpy()
-            sf.write(os.path.join(_output_directory, f'sample_{i}', f'spec_masking_audio_{vocoder_name}.wav'), masked_audio, 16000)
+                # save text
+                text_filename = os.path.join(_output_directory, f'sample_{i}', 'asr_text.txt')
+                with open(text_filename, 'w') as f:
+                    f.write("asr_condition       :  " +text+"\n")
+                    f.write("asr_generated_signal:  " + preds_ao)
+                
+                # plcmos_masked_init = compute_metrics.compute_plcmos(masked_audio_time.squeeze().cpu().numpy())
+                # row_dict.update({'plcmos_masked_init': plcmos_masked_init})
+                
+                # generate audio from masked melspec
+                masked_melspec = denormalise_mel(masked_melspec)
+                for vocoder_name, vocoder in vocoders.items():
+                    masked_audio = vocoder(masked_melspec.cuda())
+                    masked_audio = masked_audio.squeeze()
+                    masked_audio = masked_audio / 1.1 / masked_audio.abs().max()
+                    masked_audio = masked_audio.cpu().numpy()
+                    sf.write(os.path.join(_output_directory, f'sample_{i}', f'spec_masking_audio_{vocoder_name}.wav'), masked_audio, 16000)
 
-        # generate audio from generated melspec
-        for vocoder_name, vocoder in vocoders.items():
-            audio = vocoder(melspec)
-            audio = audio.squeeze()
-            audio = audio / 1.1 / audio.abs().max()
-            audio = audio.cpu().numpy()
-            sf.write(os.path.join(_output_directory, f'sample_{i}', f'generated_audio_{vocoder_name}.wav'), audio, 16000)
+                # generate audio from generated melspec
+                for vocoder_name, vocoder in vocoders.items():
+                    audio = vocoder(melspec)
+                    audio = audio.squeeze()
+                    audio = audio / 1.1 / audio.abs().max()
+                    audio = audio.cpu().numpy()
+                    sf.write(os.path.join(_output_directory, f'sample_{i}', f'generated_audio_{vocoder_name}.wav'), audio, 16000)
 
-        
-    # generate audio from gt melspec
-        gt_melspec = denormalise_mel(gt_melspec)
-        for vocoder_name, vocoder in vocoders.items():
-            gt_audio = vocoder(gt_melspec.cuda())
-            gt_audio = gt_audio.squeeze()
-            gt_audio = gt_audio / 1.1 / gt_audio.abs().max()
-            gt_audio = gt_audio.cpu().numpy()
-            sf.write(os.path.join(_output_directory, f'sample_{i}', f'gt_audio_{vocoder_name}.wav'), gt_audio, 16000)
+                
+            # generate audio from gt melspec
+                gt_melspec = denormalise_mel(gt_melspec)
+                for vocoder_name, vocoder in vocoders.items():
+                    gt_audio = vocoder(gt_melspec.cuda())
+                    gt_audio = gt_audio.squeeze()
+                    gt_audio = gt_audio / 1.1 / gt_audio.abs().max()
+                    gt_audio = gt_audio.cpu().numpy()
+                    sf.write(os.path.join(_output_directory, f'sample_{i}', f'gt_audio_{vocoder_name}.wav'), gt_audio, 16000)
 
-        # save as file
-        melspec = melspec.squeeze(0).cpu()
-        torch.save(melspec, os.path.join(_output_directory, f'sample_{i}', 'generated_spec.npz'))
-        
-        mask_cpu = mask.squeeze(0).cpu()
-        torch.save(mask_cpu, os.path.join(_output_directory, f'sample_{i}', 'mask.npz'))
-        # save as image
-        melspec = melspec.numpy()
-        masked_melspec = masked_melspec.squeeze(0).cpu().numpy()
-        gt_melspec = gt_melspec.squeeze(0).numpy()
-        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'generated_spec_image.png'), melspec[::-1])
-        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'gt_spec_image.png'), gt_melspec[::-1])
-        matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'masked_spec_image.png'), masked_melspec[::-1])
-        
-        
-        
-    
-    # Close the CSV file
-    csv_file.close()
-        
+                # save as file
+                melspec = melspec.squeeze(0).cpu()
+                torch.save(melspec, os.path.join(_output_directory, f'sample_{i}', 'generated_spec.npz'))
+                
+                mask_cpu = mask.squeeze(0).cpu()
+                torch.save(mask_cpu, os.path.join(_output_directory, f'sample_{i}', 'mask.npz'))
+                # save as image
+                melspec = melspec.numpy()
+                masked_melspec = masked_melspec.squeeze(0).cpu().numpy()
+                gt_melspec = gt_melspec.squeeze(0).numpy()
+                matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'generated_spec_image.png'), melspec[::-1])
+                matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'gt_spec_image.png'), gt_melspec[::-1])
+                matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{i}', 'masked_spec_image.png'), masked_melspec[::-1])
+                
+                
+                
+            
+            # Close the CSV file
+            csv_file.close()
+            
     return
 
 

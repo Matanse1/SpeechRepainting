@@ -2,6 +2,7 @@
 from .wavenet import WaveNet
 from .u_net import Unet
 from .mel_spec_wavlm_phoneme_classifier import WavlmMelSpecPhonemeClassifier
+
 def construct_model(model_cfg):
     name = model_cfg.pop("_name_")
     model_cls = {

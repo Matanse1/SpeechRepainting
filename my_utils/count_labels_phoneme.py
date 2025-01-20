@@ -11,7 +11,7 @@ import sys
 from torch.nn import functional as F
 import torch
 sys.path.append("/home/dsi/moradim/SpeechRepainting")
-from inference_phoneme_classiier import get_phones_dict
+from models.utils import get_phones_dict
 
 EPS = 1e-06
 

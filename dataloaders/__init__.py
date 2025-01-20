@@ -8,9 +8,9 @@ from torch.utils.data.distributed import DistributedSampler
 from .dataset_lipvoicer import get_dataset
 import torch.nn.functional as F
 
-def dataloader(dataset_cfg, batch_size, num_gpus, collate_fn=None, split='Train'):
+def dataloader(dataset_cfg, batch_size, num_gpus, collate_fn=None, split='Train', return_true_text=False):
     # train
-    dataset = get_dataset(dataset_cfg, split=split, return_mask_properties=False)
+    dataset = get_dataset(dataset_cfg, split=split, return_mask_properties=False, return_true_text=return_true_text)
     # distributed sampler
     train_sampler = DistributedSampler(dataset) if num_gpus > 1 else None
 
@@ -160,10 +160,14 @@ class CollateFn(nn.Module):
         masks = []
         for params in collate_params:
             collate = [sample[params["axis"]] for sample in samples]
-            collate, mask = process_single_collate(collate, params)
-            collates.append(torch.stack(collate, dim=0))
-            # if mask is not None:
-            masks.append(torch.stack(mask, dim=0))
+            if "text" in params: #for text i dont want to pad, i want just list of str so the tokenizer can be applied on this
+                collates.append(collate)
+                masks.append(None)
+            else:
+                collate, mask = process_single_collate(collate, params)
+                collates.append(torch.stack(collate, dim=0))
+                # if mask is not None:
+                masks.append(torch.stack(mask, dim=0))
 
         # Tuple
         # elif isinstance(collate_params, tuple):

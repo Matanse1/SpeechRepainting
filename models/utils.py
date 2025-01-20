@@ -1,11 +1,23 @@
+from __future__ import annotations
 import numpy as np
 import torch
 import json
 import torch.nn as nn
+from torch.nn.utils.rnn import pad_sequence
 
 
 _MODELS = {}
 
+
+def get_phones_dict(file_path):
+    phoneme_dict_p2d = {}
+    phoneme_dict_d2p = {}
+    with open(file_path, 'r') as file:
+        for line in file:
+            key, value = line.strip().split()
+            phoneme_dict_p2d[key] = int(value) #phone to digit
+            phoneme_dict_d2p[int(value)] = key #digit to phone
+    return phoneme_dict_p2d, phoneme_dict_d2p
 
 def register_model(cls=None, *, name=None):
   """A decorator for registering model classes."""
@@ -117,3 +129,51 @@ def match_and_concatenate(H, Y, concat_mel_with_rep=True):
 def print_modle_size(model, model_name):
     params = sum([np.prod(p.size()) for n, p in model.named_parameters()])
     print("The number of parameters of {} is: {:.6f}M".format(model_name, params/1e6))
+    
+  # Get tokenizer
+
+
+def get_tokenizer(tokenizer_path: str = None, tokenizer: str = "byte"):
+    """
+    tokenizer   - "pinyin" do g2p for only chinese characters, need .txt vocab_file
+                - "char" for char-wise tokenizer, need .txt vocab_file
+                - "byte" for utf-8 tokenizer
+                - "custom" if you're directly passing in a path to the vocab.txt you want to use
+    vocab_size  - if use "pinyin", all available pinyin types, common alphabets (also those with accent) and symbols
+                - if use "char", derived from unfiltered character & symbol counts of custom dataset
+                - if use "byte", set to 256 (unicode byte range)
+    """
+    if tokenizer in ["pinyin", "char"]:
+        tokenizer_path = os.path.join(files("f5_tts").joinpath("../../data"), f"{dataset_name}_{tokenizer}/vocab.txt")
+        with open(tokenizer_path, "r", encoding="utf-8") as f:
+            vocab_char_map = {}
+            for i, char in enumerate(f):
+                vocab_char_map[char[:-1]] = i
+        vocab_size = len(vocab_char_map)
+        assert vocab_char_map[" "] == 0, "make sure space is of idx 0 in vocab.txt, cuz 0 is used for unknown char"
+
+    elif tokenizer == "byte":
+        vocab_char_map = None
+        vocab_size = 256
+
+    elif tokenizer == "my_custom":
+        assert tokenizer_path is not None, "please provide path to vocab.txt"
+        phoneme_dict_p2d, phoneme_dict_d2p = get_phones_dict(tokenizer_path)
+        
+    elif tokenizer == "custom":
+        with open(dataset_name, "r", encoding="utf-8") as f:
+            vocab_char_map = {}
+            for i, char in enumerate(f):
+                vocab_char_map[char[:-1]] = i
+        vocab_size = len(vocab_char_map)
+
+    return vocab_char_map, vocab_size
+
+# simple utf-8 tokenizer, since paper went character based
+def list_str_to_tensor(text: list[str], padding_value=-1) -> int["b nt"]:  # noqa: F722
+    list_tensors = [torch.tensor([*bytes(t, "UTF-8")]) for t in text]  # ByT5 style
+    text = pad_sequence(list_tensors, padding_value=padding_value, batch_first=True)
+    return text
+    
+  
+  
