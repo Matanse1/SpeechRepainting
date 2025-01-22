@@ -32,7 +32,7 @@ from dataloaders.wav2mel import STFT, load_wav_to_torch
 from hifi_gan import utils as vocoder_utils
 from hifi_gan.env import AttrDict
 
-from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, preprocess_text
+from utils import find_max_epoch, print_size, get_diffusion_hyperparams, local_directory, preprocess_text
 import csv
 from mouthroi_processing.pipelines.pipeline import InferencePipeline
 from scipy.io.wavfile import write
@@ -61,9 +61,9 @@ def sampling(net, diffusion_hyperparams,
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
 
-    Parameters:
+    Parameters: 
     net (torch network):            the model
-    diffusion_hyperparams (dict):   dictionary of diffusion hyperparameters returned by calc_diffusion_hyperparams
+    diffusion_hyperparams (dict):   dictionary of diffusion hyperparameters returned by get_diffusion_hyperparams
                                     note, the tensors need to be cuda tensors
 
     Returns:
@@ -162,8 +162,8 @@ def generate(
         torch.cuda.set_device(rank % torch.cuda.device_count())
 
     # map diffusion hyperparameters to gpu
-    diffusion_hyperparams  = calc_diffusion_hyperparams(**diffusion_cfg, fast=True)  # dictionary of all diffusion hyperparameters
-
+    # diffusion_hyperparams  = calc_diffusion_hyperparams(**diffusion_cfg, fast=True)  # dictionary of all diffusion hyperparameters
+    diffusion_hyperparams = get_diffusion_hyperparams(diffusion_cfg, fast=True)
     # predefine MelGen model
     builder = ModelBuilder()
     net_diffwave = builder.build_diffwave_model(model_cfg)

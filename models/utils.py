@@ -156,9 +156,13 @@ def get_tokenizer(tokenizer_path: str = None, tokenizer: str = "byte"):
         vocab_char_map = None
         vocab_size = 256
 
-    elif tokenizer == "my_custom":
-        assert tokenizer_path is not None, "please provide path to vocab.txt"
-        phoneme_dict_p2d, phoneme_dict_d2p = get_phones_dict(tokenizer_path)
+    elif tokenizer == "phoneme":
+        assert tokenizer_path is not None, "please provide path to vocab.json"
+       # Load the phoneme-to-number dictionary from the JSON file
+        with open(tokenizer_path, 'r') as f:
+            phoneme_to_number_loaded = json.load(f)
+        vocab_char_map = phoneme_to_number_loaded
+        vocab_size = len(phoneme_to_number_loaded)
         
     elif tokenizer == "custom":
         with open(dataset_name, "r", encoding="utf-8") as f:
@@ -170,9 +174,19 @@ def get_tokenizer(tokenizer_path: str = None, tokenizer: str = "byte"):
     return vocab_char_map, vocab_size
 
 # simple utf-8 tokenizer, since paper went character based
-def list_str_to_tensor(text: list[str], padding_value=-1) -> int["b nt"]:  # noqa: F722
-    list_tensors = [torch.tensor([*bytes(t, "UTF-8")]) for t in text]  # ByT5 style
+def list_str_to_tensor(text: list[str] | list[list[str]], padding_value=-1) -> int["b nt"]:  # noqa: F722
+    list_tensors = [torch.tensor([*bytes(t[0], "UTF-8")]) for t in text]  # ByT5 style
     text = pad_sequence(list_tensors, padding_value=padding_value, batch_first=True)
+    return text
+
+# char tokenizer, based on custom dataset's extracted .txt file
+def list_str_to_idx(
+    text: list[str] | list[list[str]],
+    vocab_char_map: dict[str, int],  # {char: idx}
+    padding_value=-1,
+) -> int["b nt"]:  # noqa: F722
+    list_idx_tensors = [torch.tensor([vocab_char_map.get(c, 0) for c in t]) for t in text] 
+    text = pad_sequence(list_idx_tensors, padding_value=padding_value, batch_first=True)
     return text
     
   

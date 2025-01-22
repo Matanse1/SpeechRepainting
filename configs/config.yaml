@@ -1,6 +1,6 @@
 
 g_model:
-  null_type: 'zeros' # randn, learn
+  null_type: 'zeros' # randn, learn, zeros
 melgen: unet #unet, wavenet
 wavenet:
   _name_: wavenet
@@ -16,7 +16,7 @@ wavenet:
   mel_upsample: [2, 2]
   cond_feat_size: 80
   unconditional: False
-  text_embed_prop:
+  text_embed_prop: 
     use_text_embed_rep: True
     dim: 64
     depth: 18
@@ -26,9 +26,10 @@ wavenet:
     conv_layers: 4
     text_num_embeds: 256
     mel_dim: 80
-    tokenizer: 'byte'
+    tokenizer: 'phoneme' #phoneme
+    tokenizer_path: /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json # none #  /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json
   wavlm:
-    use_wavlm_rep: True
+    use_wavlm_rep: False
     use_weighted_sum_wavlm: True # if False use the last hidden states
     use_all_hidden_states: True
     specific_indices:
@@ -61,7 +62,7 @@ unet:
   pe_scale: 1000
   unconditional: False
   wavlm:
-    use_wavlm_rep: False
+    use_wavlm_rep: True
     use_weighted_sum_wavlm: True # if False use the last hidden states
     use_all_hidden_states: True # if false - just the last hidden layer is considered
     specific_indices:
@@ -72,7 +73,7 @@ unet:
     reduce_channels: False
     two_branch: True # process each branch separately and them fuse them
   text_embed_prop:
-    use_text_embed_rep: True
+    use_text_embed_rep: False
     dim: 64
     depth: 18
     heads: 12
@@ -81,18 +82,22 @@ unet:
     conv_layers: 4
     text_num_embeds: 256
     mel_dim: 80
-    tokenizer: 'byte'
-
-
-
+    tokenizer: phoneme #'byte' #phoneme
+    tokenizer_path: /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json #none #  /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json
 
 
 
 diffusion:
-  T: 400
-  beta_0: 0.0001
-  beta_T: 0.02
-  beta: null
+  name: 'cosine'
+  cosine:
+      T: 400
+      s: 0.008
+  linear:
+    T: 400
+    beta_0: 0.0001
+    beta_T: 0.02
+    beta: null
+    fast: False
 
 dataset:
   dataset_type: 'speech_inpainting_anechoic' # explosion_speech_inpainting, speech_inpainting, speech_inpainting_anechoic
@@ -116,7 +121,7 @@ dataset:
     # return_mask_properties: False #for train set this to False, for inference set to True
     audio_stft_hop: ${audio.hop_length}
     num4empty_str: randn #or -12, 0, min, randn
-  speech_inpainting_anechoic:
+  speech_inpainting_anechoic: 
     base_data_dir: /dsi/gannot-lab1/datasets/Librispeech_mfa
     csv_loc: /dsi/gannot-lab1/datasets/Librispeech_mfa/
     sampling_rate: ${audio.sampling_rate}
@@ -136,7 +141,8 @@ dataset:
     num_blocks: 2 #used when rand_num_blocks=False
     # return_mask_properties: False #for train set this to False, for inference set to True
     audio_stft_hop: ${audio.hop_length}
-    num4empty_str: randn #or -12, 0, min, randn
+    num4empty_str: 0 #or -12, 0, min, randn
+    use_input_text: none # text, None, phoneme
   explosion_speech_inpainting:
     base_data_dir: /dsi/gannot-lab1/datasets/speech_with_explosions
     sampling_rate: ${audio.sampling_rate}
@@ -163,8 +169,10 @@ audio:
   mel_fmin: 20.0
   mel_fmax: 8000.0
 
-train: # Not used in generate.py
-  name:  Unet_Anechoic_LibSp_conditional-masked-melspec-text_w-masked-pix=${train.w_masked_pix} #Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=${train.w_masked_pix} # Wavenet_Anechoic_LibSp_unconditional #2delete_Anechoic_LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${wavenet.wavlm.two_branch}_specific_hidden_states_randn-filled #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
+#Wavenet_Anechoic_LibSp_conditional-masked-melspec-text_w-masked-pix=${train.w_masked_pix}_tokenizer=${wavenet.text_embed_prop.tokenizer}_num4empty_str=${dataset.speech_inpainting_anechoic.num4empty_str}
+# Unet_Anechoic_LibSp_conditional-masked-melspec-text_w-masked-pix=${train.w_masked_pix}_tokenizer=${unet.text_embed_prop.tokenizer}_num4empty_str=${dataset.speech_inpainting_anechoic.num4empty_str}
+train:  # Not used in generate.py
+  name:  Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=${train.w_masked_pix}_diffusion-name=${diffusion.name} # Wavenet_Anechoic_LibSp_unconditional #2delete_Anechoic_LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${wavenet.wavlm.two_branch}_specific_hidden_states_randn-filled #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting    # where checkpoints will be saved
   ckpt_iter: max    # continue training from a specific iteration
 
@@ -173,27 +181,27 @@ train: # Not used in generate.py
   # iters_per_logging: 1 #1 #100
   # n_iters: 200 #200 #1000001
   #for complete training
-  iters_per_ckpt: 4000 #4000 #1000 #4000 #250 #10000 #20 #10000 please change this number with dependence on batch size and number of gpu
+  iters_per_ckpt: 200 #4000 #1000 #4000 #250 #10000 #20 #10000 please change this number with dependence on batch size and number of gpu
   iters_per_logging: 10 #25 #10 #1 #100
   n_iters: 20000001 #200 #1000001
 
   learning_rate: 2e-04 #2e-4
-  batch_size_per_gpu: 8 #32 #8 #128 #32 # 240
+  batch_size_per_gpu: 80 #32 #8 #128 #32 # 240
   w_masked_pix: 0.8
   on_masked_melspec: False
   
 
 generate:
   name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states
-  ckpt_path: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/700000.pkl #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/64000.pkl
+  ckpt_path: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/532000.pkl #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/700000.pkl #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/64000.pkl
   n_samples: 2        # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
   n_samples_test: 10 # used in full inference mel only
   video_path: null      # generate audio for a given silent video file
   w_mel_cond: 2            # w1 in the paper
-  w_asr: [0.5, 0.6, 0.7, 0.8, 1, 1.5] #1.5            # w2 in the paper
-  asr_start: [270, 300, 320, 340, 360] #270        # t_asr
-  save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02 #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
-  inference_mel_only_name_dir: as-train-gap_cp=700000_mel_text=True #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
+  w_asr: [0.8] #1.5            # w2 in the paper
+  asr_start: [320] #270        # t_asr
+  save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02 #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
+  inference_mel_only_name_dir: as-train-gap_cp=532000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
   without_condtion: False
   config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
   apply_asr_guidance: True

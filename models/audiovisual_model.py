@@ -25,7 +25,7 @@ class AudioVisualModel(torch.nn.Module):
         # classifier guidance null conditioners
         torch.manual_seed(0)        # so we have the same null tokens on all nodes
 
-    def forward(self, melspec, masked_cond, diffusion_steps, cond_drop_prob, mask_padding_time=None, mask_padding_frames=None, text=None):
+    def forward(self, melspec, masked_cond, diffusion_steps, cond_drop_prob, mask_padding_time=None, mask_padding_frames=None, text=None, input_text=None):
         # classifier guidance
         if self.net_diffwave.unconditional:
             cond = None
@@ -69,7 +69,7 @@ class AudioVisualModel(torch.nn.Module):
         # visual_feature = visual_feature.squeeze(2)  # so dimensions are B, C, num_frames
         
 
-        output = self.net_diffwave((melspec, diffusion_steps), cond=cond, text=text, mask_padding_time=mask_padding_time, mask_padding_frames=mask_padding_frames, drop_text=drop_text)
+        output = self.net_diffwave((melspec, diffusion_steps), cond=cond, text=text, input_text=input_text, mask_padding_time=mask_padding_time, mask_padding_frames=mask_padding_frames, drop_text=drop_text)
         return output
 
     @staticmethod

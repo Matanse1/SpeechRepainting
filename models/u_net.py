@@ -5,7 +5,7 @@ from einops import rearrange
 import math
 from . import utils
 import torch.nn as nn
-from models.utils import print_modle_size, WeightedSum, get_tokenizer, list_str_to_tensor
+from models.utils import print_modle_size, WeightedSum, get_tokenizer, list_str_to_tensor, list_str_to_idx
 from transformers import AutoModel, WavLMModel
 from models.modules import TextEmbedding, ConvPositionEmbedding
 
@@ -177,7 +177,7 @@ class Unet(BaseModule):
         self.cat_cond = (not unconditional) and (not self.use_text_embed_rep)
 
         if self.use_text_embed_rep:
-            vocab_char_map, vocab_size = get_tokenizer(tokenizer = self.text_embed_prop["tokenizer"])
+            vocab_char_map, vocab_size = get_tokenizer(tokenizer_path=self.text_embed_prop["tokenizer_path"], tokenizer=self.text_embed_prop["tokenizer"])
             self.vocab_char_map = vocab_char_map
             self.text_embed = TextEmbedding(vocab_size, self.text_embed_prop["text_dim"], conv_layers=self.text_embed_prop["conv_layers"])
             self.input_embed = InputEmbedding(self.text_embed_prop["mel_dim"], self.text_embed_prop["text_dim"], self.text_embed_prop["mel_dim"])
@@ -262,7 +262,7 @@ class Unet(BaseModule):
         self.final_block = Block(dim, dim)
         self.final_conv = torch.nn.Conv2d(dim, 1, 1)
 
-    def forward(self, input_data, cond=None, mask_padding_time=None, mask_padding_frames=None, text=None, drop_text=None, spk=None):
+    def forward(self, input_data, cond=None, mask_padding_time=None, mask_padding_frames=None, text=None, input_text=None, drop_text=None, spk=None):
         x, t = input_data
         device = x.device
         B, F, T = x.shape
@@ -276,9 +276,12 @@ class Unet(BaseModule):
         t = self.time_pos_emb(t, scale=self.pe_scale)
         t = self.mlp(t)
         if self.use_text_embed_rep:
-            text = list_str_to_tensor(text).to(device)
+            if self.vocab_char_map is not None:
+                input_text = list_str_to_idx(input_text, self.vocab_char_map).to(device)
+            else:
+                input_text = list_str_to_tensor(input_text).to(device)
             seq_len = T
-            text_embed = self.text_embed(text, seq_len, drop_text=drop_text)
+            text_embed = self.text_embed(input_text, seq_len, drop_text=drop_text)
             x = x.transpose(-1, -2)
             masked_melspec = masked_melspec.transpose(-1, -2)
             x = self.input_embed(x, masked_melspec, text_embed)

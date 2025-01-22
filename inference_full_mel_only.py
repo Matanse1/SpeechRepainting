@@ -30,7 +30,7 @@ from BigVGAN.bigvgan import BigVGAN as Generator
 from BigVGAN.inference_e2e import load_checkpoint as load_checkpoint_vgan
 from hifi_gan import utils as vocoder_utils
 from hifi_gan.env import AttrDict
-from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, preprocess_text, fix_len_compatibility, pad_last_dim
+from utils import find_max_epoch, print_size, get_diffusion_hyperparams, local_directory, preprocess_text, fix_len_compatibility, pad_last_dim
 import csv
 from mouthroi_processing.pipelines.pipeline import InferencePipeline
 from scipy.io.wavfile import write
@@ -158,6 +158,7 @@ def sampling(net, diffusion_hyperparams,
                         asr_guidance_net.device = torch.device("cpu")
                     grad_normaliser = torch.norm(epsilon_theta_mel / torch.sqrt(1 - Alpha_bar[t])) / torch.norm(asr_grad)
                     epsilon_theta = epsilon_theta_mel + torch.sqrt(1 - Alpha_bar[t]) * w_asr * grad_normaliser * asr_grad #the asr_grad include the minus
+                    # print(f"grad_normaliser: {grad_normaliser} \t w_asr: {w_asr} \t grad: {torch.norm(asr_grad)} \t 1-alpha_bar: {torch.sqrt(1 - Alpha_bar[t])}")
                     x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
                     if t > 0:
                         x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
@@ -185,6 +186,7 @@ def generate(
         rank,
         diffusion_cfg,
         model_cfg,
+        g_model_cfg,
         dataset_cfg,
         ckpt_path,
         w_mel_cond=0,
@@ -208,12 +210,12 @@ def generate(
         torch.cuda.set_device(rank % torch.cuda.device_count())
 
     # map diffusion hyperparameters to gpu
-    diffusion_hyperparams  = calc_diffusion_hyperparams(**diffusion_cfg, fast=True)  # dictionary of all diffusion hyperparameters
-
+    # diffusion_hyperparams  = calc_diffusion_hyperparams(**diffusion_cfg, fast=True)  # dictionary of all diffusion hyperparameters
+    diffusion_hyperparams = get_diffusion_hyperparams(diffusion_cfg, fast=True)
     # predefine MelGen model
     builder = ModelBuilder()
     net_diffwave = builder.build_model(model_cfg)
-    net = AudioVisualModel(net_diffwave).cuda()
+    net = AudioVisualModel(g_model_cfg, net_diffwave).cuda()
     print_size(net)
     net.eval()
 
@@ -318,7 +320,7 @@ def generate(
             
             for i in tqdm(range(n_samples_test)):
                 os.makedirs(os.path.join(_output_directory, f'sample_{i}'), exist_ok=True)
-                
+                input_text = None
                 if dataset_type == 'explosion_speech_inpainting':
                     speech_melspec, mix_melspec, mix_time, masked_speech, masked_speech_time, explosions_activity, start_explosions, explosions_length = dataset[i]
                     mask = 1 - explosions_activity # zero = explosion, one = no explosion
@@ -354,7 +356,11 @@ def generate(
                     masked_audio_time4text = masked_audio_time.squeeze().cpu()
                 elif dataset_cfg.dataset_type == 'speech_inpainting_anechoic':
                     #melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks
-                    gt_melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, true_text = dataset[i]
+                    if model_cfg.text_embed_prop.use_text_embed_rep:
+                        gt_melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, true_text, input_text = dataset[i]
+                        input_text = [input_text]
+                    else:
+                        gt_melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, true_text = dataset[i]
                     csv_writer.writerow([i, block_size_list, num_blocks])
                     gt_melspec = gt_melspec.unsqueeze(0)
                     mask = mask.unsqueeze(0).cuda()
@@ -403,7 +409,7 @@ def generate(
                 text = 'None'
                 if apply_asr_guidance:
                     if mel_text:
-                        text = true_text
+                        text = true_text[0]
                         print(f"The transcript is: {text}")
                         text = preprocess_text(text)
                         print(f"The normalized transcript is: {text}")
@@ -549,6 +555,7 @@ def main(cfg: DictConfig) -> None:
     generate(0,
         diffusion_cfg=cfg.diffusion,
         model_cfg=cfg[cfg.melgen],
+        g_model_cfg=cfg.g_model,
         dataset_cfg=cfg.dataset,
         **cfg.generate,
     )

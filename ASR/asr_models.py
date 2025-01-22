@@ -10,17 +10,25 @@ def get_models(dataset):
     asr_guidance_net = asr_guidance_net.cuda()
     asr_guidance_net.load(checkpoint_ao)
     asr_guidance_net.eval()
-    tokenizer_path = "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/tokenizerbpe256.model"
+    tokenizer_path = "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/tokenizerbpe256.model" #thi is the tokenizer
     tokenizer = spm.SentencePieceProcessor(tokenizer_path)  # for converting text to tokens
-    ngram_path = "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/6gram_lrs23.arpa"
-    neural_config_path = "ASR/configs/LRS23/LM/GPT-Small-demo.py"
-    neural_checkpoint = "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_epoch_10_step_2860.ckpt"
+    ngram_path = "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/6gram_lrs23.arpa" # this is the language model
+    neural_config_path = "ASR/configs/LRS23/LM/GPT-Small-demo.py" # this is the acoustic model
+    neural_checkpoint = "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_epoch_10_step_2860.ckpt" # this is the acoustic model's weights
 
-    # Decoder for converting tokens to text at the ASR output
+    # Decoder for converting tokens to text at the ASR output - With LM
+    # decoder = CTCBeamSearchDecoder( 
+    #     tokenizer_path=tokenizer_path,
+    #     ngram_path=ngram_path,
+    #     neural_config_path=neural_config_path,
+    #     neural_checkpoint=neural_checkpoint,
+    # ) 
+        # Decoder for converting tokens to text at the ASR output - Without LM
     decoder = CTCBeamSearchDecoder( 
+        ngram_alpha=0,
         tokenizer_path=tokenizer_path,
         ngram_path=ngram_path,
-        neural_config_path=neural_config_path,
+        neural_config_path=None ,#neural_config_path,
         neural_checkpoint=neural_checkpoint,
     ) 
 

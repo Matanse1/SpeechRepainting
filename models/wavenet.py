@@ -1,11 +1,12 @@
+from __future__ import annotations
 import math
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from models.utils import calc_diffusion_step_embedding, WeightedSum, match_and_concatenate, print_modle_size
+from models.utils import calc_diffusion_step_embedding, WeightedSum, match_and_concatenate, print_modle_size, get_tokenizer, list_str_to_tensor, list_str_to_idx
 from transformers import AutoModel, WavLMModel
 from . import utils
+from models.modules import TextEmbedding, ConvPositionEmbedding
 def swish(x):
     return x * torch.sigmoid(x)
 
@@ -219,7 +220,7 @@ class Residual_group(nn.Module):
                                                        number=n,
                                                        **kwargs))
 
-    def forward(self, input_data, mel_spec=None, mask_padding=None):
+    def forward(self, input_data, mel_spec=None, mask_padding=None, input_text=None):
         x, diffusion_steps = input_data
 
         # embed diffusion step t
@@ -236,7 +237,18 @@ class Residual_group(nn.Module):
             # skip += skip_n  # accumulate all skip outputs
 
         return skip * math.sqrt(1.0 / self.num_res_layers)  # normalize for training stability
+    
+class InputEmbedding(nn.Module):
+    def __init__(self, mel_dim, text_dim, out_dim):
+        super().__init__()
+        self.proj = nn.Linear(mel_dim * 2 + text_dim, out_dim)
+        self.conv_pos_embed = ConvPositionEmbedding(dim=out_dim)
 
+    def forward(self, x: float["b n d"], cond: float["b n d"], text_embed: float["b n d"]):  # noqa: F722
+        x = self.proj(torch.cat((x, cond, text_embed), dim=-1))
+        x = self.conv_pos_embed(x) + x
+        return x
+    
 @utils.register_model(name='wavenet')
 class WaveNet(nn.Module):
     def __init__(self, cond_feat_size, in_channels=1, res_channels=256, skip_channels=128, out_channels=1,
@@ -246,6 +258,7 @@ class WaveNet(nn.Module):
                  diffusion_step_embed_dim_out=512,
                  unconditional=False,
                  mel_upsample=[16,16],
+                 text_embed_prop=None,
                  **kwargs):
         super().__init__()
         representation_models = {}
@@ -255,6 +268,13 @@ class WaveNet(nn.Module):
         self.use_wavlm_rep = self.wavlm_prop["use_wavlm_rep"] # representation
         self.use_weighted_sum_wavlm = self.wavlm_prop["use_weighted_sum_wavlm"]
         self.use_all_hidden_states = self.wavlm_prop["use_all_hidden_states"]
+        self.text_embed_prop = text_embed_prop
+        self.use_text_embed_rep = self.text_embed_prop["use_text_embed_rep"]
+        if self.use_text_embed_rep:
+            vocab_char_map, vocab_size = get_tokenizer(tokenizer_path=self.text_embed_prop["tokenizer_path"], tokenizer=self.text_embed_prop["tokenizer"])
+            self.vocab_char_map = vocab_char_map
+            self.text_embed = TextEmbedding(vocab_size, self.text_embed_prop["text_dim"], conv_layers=self.text_embed_prop["conv_layers"])
+            self.input_embed = InputEmbedding(self.text_embed_prop["mel_dim"], self.text_embed_prop["text_dim"], res_channels)
         version_model = self.wavlm_prop["version_model"]
         if self.use_wavlm_rep:
             print("Loading WavLM model")
@@ -294,12 +314,27 @@ class WaveNet(nn.Module):
                                         nn.ReLU(),
                                         ZeroConv1d(skip_channels, out_channels))
 
-    def forward(self, input_data, cond=None, mask_padding_time=None, mask_padding_frames=None, drop_text=None, text=None):
+    def forward(self, input_data, cond=None, mask_padding_time=None, mask_padding_frames=None, drop_text=None, text=None, input_text=None):
         audio, diffusion_steps = input_data
-
+        device = audio.device
         x = audio
-        x = self.init_conv(x)
-        x = self.residual_layer((x, diffusion_steps), mel_spec=cond, mask_padding=mask_padding_time)
+        B, F, T = x.shape
+        if self.use_text_embed_rep and (not self.unconditional):
+            masked_melspec, masked_audio_time = cond
+            if self.vocab_char_map is not None:
+                input_text = list_str_to_idx(input_text, self.vocab_char_map).to(device)
+            else:
+                input_text = list_str_to_tensor(input_text).to(device)
+            seq_len = T
+            text_embed = self.text_embed(input_text, seq_len, drop_text=drop_text)
+            x = x.transpose(-1, -2)
+            masked_melspec = masked_melspec.transpose(-1, -2)
+            x = self.input_embed(x, masked_melspec, text_embed)
+            x = x.transpose(-1, -2)
+            masked_melspec = masked_melspec.transpose(-1, -2)
+        if not self.use_text_embed_rep:
+            x = self.init_conv(x)
+        x = self.residual_layer((x, diffusion_steps), mel_spec=cond, mask_padding=mask_padding_time, input_text=input_text)
         x = self.final_conv(x)
 
         return x

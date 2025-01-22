@@ -455,7 +455,8 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
     spectrogram, audio pair.
     """
     def __init__(self, split, sampling_rate, csv_loc, min_block_size, max_block_size, min_spacing,
-                 audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties, return_target_time=False, return_true_text=False):
+                 audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties, return_target_time=False,
+                 return_true_text=False, use_input_text=False):
         split = split.capitalize()
         self.return_target_time = return_target_time
         self.return_mask_properties = return_mask_properties
@@ -468,7 +469,7 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
         self.base_data_dir = base_data_dir
         self.audio_stft_hop = audio_stft_hop
         self.return_true_text = return_true_text
-        
+        self.use_input_text = use_input_text
         try:
             float(num4empty_str)
             is_number = True  # Conversion succeeded, it's a number
@@ -500,34 +501,76 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
         _, audio_time = read(audio_path)
         audio_time = torch.from_numpy(audio_time.astype(np.float32))
         audio_time =  0.9 * audio_time / audio_time.abs().max() #because we took the original librispeech dataset, the audio is not norlaized to [-1, 1]
-        lab_path = audio_path.with_suffix('.lab')
+
     
         if self.return_true_text:
+            lab_path = audio_path.with_suffix('.lab')
             # Read and return the content of the .lab file
             with open(lab_path, 'r', encoding='utf-8') as file:
                 content = file.read()
             text = content.strip()
+            text = [text]
+            
+        if self.use_input_text == 'phoneme':
+            Path(self.base_data_dir)
+            input_text_path = audio_path.with_suffix('.phonemes')
+            input_text_path = Path(self.base_data_dir) / 'phoneme_seq' / (Path(input_text_path).relative_to(Path(self.base_data_dir).joinpath('data')))
+            with open(input_text_path, 'rb') as file:
+                input_text = pickle.load(file)  # Load the phoneme sequence from the file
+        elif self.use_input_text == 'text':
+            lab_path = audio_path.with_suffix('.lab')
+            # Read and return the content of the .lab file
+            with open(lab_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+            input_text = content.strip()
+            input_text = [input_text]
+        
+        # if self.return_mask_properties:
+        #     masked_melspec, mask, masked_audio_time, block_size_list, num_blocks = self.create_masked_melspec(melspec, audio_time)
+        #     if self.return_target_time:
+        #         if self.return_true_text:
+        #             return (audio_time, melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, text)
+        #         else:
+        #             return (audio_time, melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
+        #     if self.return_true_text:
+        #         return (melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, text)
+        #     else:
+        #         return (melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
+        # else:  
+        #     masked_melspec, mask, masked_audio_time = self.create_masked_melspec(melspec, audio_time)
+        #     if self.return_target_time:
+        #         if self.return_true_text:
+        #             return (audio_time, melspec, masked_melspec, masked_audio_time, mask, text)
+        #         else:
+        #             return (audio_time, melspec, masked_melspec, masked_audio_time, mask)
+        #     if self.return_true_text:
+        #         return (melspec, masked_melspec, masked_audio_time, mask, text)
+        #     return (melspec, masked_melspec, masked_audio_time, mask)
+        
+        # Generate masked mel-spectrogram and related data
+        mask_properties = self.create_masked_melspec(melspec, audio_time)
+
+        # Unpack variables based on whether return_mask_properties is True
         if self.return_mask_properties:
-            masked_melspec, mask, masked_audio_time, block_size_list, num_blocks = self.create_masked_melspec(melspec, audio_time)
-            if self.return_target_time:
-                if self.return_true_text:
-                    return (audio_time, melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, text)
-                else:
-                    return (audio_time, melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
-            if self.return_true_text:
-                return (melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, text)
-            else:
-                return (melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
-        else:  
-            masked_melspec, mask, masked_audio_time = self.create_masked_melspec(melspec, audio_time)
-            if self.return_target_time:
-                if self.return_true_text:
-                    return (audio_time, melspec, masked_melspec, masked_audio_time, mask, text)
-                else:
-                    return (audio_time, melspec, masked_melspec, masked_audio_time, mask)
-            if self.return_true_text:
-                return (melspec, masked_melspec, masked_audio_time, mask, text)
-            return (melspec, masked_melspec, masked_audio_time, mask)
+            masked_melspec, mask, masked_audio_time, block_size_list, num_blocks = mask_properties
+            base_output = (melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks)
+        else:
+            masked_melspec, mask, masked_audio_time = mask_properties[:3]
+            base_output = (melspec, masked_melspec, masked_audio_time, mask)
+
+        # Include audio_time if return_target_time is True
+        if self.return_target_time:
+            base_output = (audio_time,) + base_output
+
+        # Include text if return_true_text is True
+        if self.return_true_text:
+            base_output += (text,)
+
+        # Include input_text if use_input_text is True
+        if self.use_input_text != 'none':
+            base_output += (input_text,)
+
+        return base_output
 
     
     def create_masked_melspec(self, melspec, audio_time):
@@ -941,7 +984,8 @@ def get_dataset(cfg, split='Train', return_mask_properties=False, return_target_
     elif cfg['dataset_type'] == 'plc_task':
         return PlcDataset(**cfg['plc_task'], split=split, return_target_time=return_target_time)
     elif cfg['dataset_type'] == 'speech_inpainting_anechoic':
-        return SpeechRepaingingAnechoicDataset(**cfg['speech_inpainting_anechoic'], split=split, return_mask_properties=return_mask_properties, return_target_time=return_target_time, return_true_text=return_true_text)
+        return SpeechRepaingingAnechoicDataset(**cfg['speech_inpainting_anechoic'], split=split, return_mask_properties=return_mask_properties,
+                                               return_target_time=return_target_time, return_true_text=return_true_text)
     else:
         raise Exception('Invalid dataset type')
     
