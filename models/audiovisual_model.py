@@ -29,6 +29,7 @@ class AudioVisualModel(torch.nn.Module):
         # classifier guidance
         if self.net_diffwave.unconditional:
             cond = None
+            drop_text = None
         else:
             masked_melspec, masked_audio_time = masked_cond
             batch, C, L = melspec.shape
@@ -54,8 +55,8 @@ class AudioVisualModel(torch.nn.Module):
                 _masked_melspec = masked_melspec
                 _masked_audio_time = masked_audio_time
             
-        drop_text = random() < cond_drop_prob  # p_drop in voicebox paper
-        cond = (_masked_melspec, _masked_audio_time)
+            drop_text = random() < cond_drop_prob  # p_drop in voicebox paper
+            cond = (_masked_melspec, _masked_audio_time)
 
         # pass through visual stream and extract lipreading features
         # lipreading_feature = self.net_lipreading(_mouthroi)

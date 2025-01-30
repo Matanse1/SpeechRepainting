@@ -29,7 +29,11 @@ import numpy as np
 import requests
 import pickle
 import gdown
-
+import pandas as pd
+from pathlib import Path
+import json
+from scipy.io.wavfile import read
+from models.utils import print_modle_size, list_str_to_tensor, list_str_to_idx
 # NeuralNets
 from ASR.nnet import layers
 from ASR.nnet import transforms
@@ -607,6 +611,76 @@ class LRS(Dataset):
         for batch in tqdm(dataloader):
             pass
 
+
+class LibriSpeechPhoneme(Dataset):
+    """
+    This is the main class that calculates the spectrogram and returns the
+    spectrogram, audio pair.
+    """              
+    def __init__(self, split, sampling_rate, csv_loc, vocab_char_map, base_data_dir, batch_size,
+                    collate_fn=collate_fn, use_input_text=False):
+        super(LibriSpeechPhoneme, self).__init__(batch_size=batch_size, collate_fn=collate_fn)
+        split = split.capitalize()
+        self.base_data_dir = base_data_dir
+        self.use_input_text = use_input_text
+        self.test = True if split=='Test' else False
+        # seed = 1234
+        # set_seed(seed)
+        # self.torch_rng = torch.Generator().manual_seed(seed)
+        # self.rng = np.random.default_rng(seed)
+        self.sampling_rate = sampling_rate
+        self.csv_path = Path(csv_loc) / f'{split}.csv'
+        self.csv_df = pd.read_csv(self.csv_path, delimiter="|")
+        self.vocab_char_map = vocab_char_map
+
+    
+    def __len__(self):
+        # return 100
+        return len(self.csv_df)
+    
+    def __getitem__(self, index):
+
+        melspec_path =  Path(self.base_data_dir) / self.csv_df.loc[index, "mel_spectrum_path"] #npz file
+        melspec = torch.load(melspec_path)
+        melspec = self.normalise_mel(melspec)
+        
+        audio_path =  Path(self.base_data_dir) / self.csv_df.loc[index, "wav_path"] # wav file
+        # _, audio_time = read(audio_path)
+        # audio_time = torch.from_numpy(audio_time.astype(np.float32))
+        # audio_time =  0.9 * audio_time / audio_time.abs().max() #because we took the original librispeech dataset, the audio is not norlaized to [-1, 1]
+            
+        if self.use_input_text == 'phoneme':
+            Path(self.base_data_dir)
+            input_text_path = audio_path.with_suffix('.phonemes')
+            input_text_path = Path(self.base_data_dir) / 'phoneme_seq' / (Path(input_text_path).relative_to(Path(self.base_data_dir).joinpath('data')))
+            with open(input_text_path, 'rb') as file:
+                input_text = pickle.load(file)  # Load the phoneme sequence from the file
+                if input_text[-1] == 'space':
+                    input_text = input_text[:-1]
+            input_text_tensor = list_str_to_idx([input_text], self.vocab_char_map)[0]
+        elif self.use_input_text == 'text':
+            lab_path = audio_path.with_suffix('.lab')
+            # Read and return the content of the .lab file
+            with open(lab_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+            input_text = content.strip()
+            input_text = [[input_text]]
+            input_text_tensor = list_str_to_tensor(input_text)[0]
+        
+        
+        input_text_len = len(input_text_tensor)
+        melspec_len = melspec.shape[-1]
+        input_text_len = torch.tensor(input_text_len, dtype=torch.long)
+        melspec_len = torch.tensor(melspec_len, dtype=torch.long)
+
+        return melspec.transpose(1,0), input_text_tensor, melspec_len, input_text_len
+    
+    def normalise_mel(self, melspec, min_val=math.log(1e-5)): 
+        melspec = ((melspec - min_val) / (-min_val / 2)) - 1    #log(1e-5)~2 --> -1~1
+        return melspec
+
+        
+        
 class CorpusLM(Dataset):
 
     def __init__(self, batch_size, collate_fn, root="datasets", shuffle=True, download=False, tokenizer_path="datasets/LibriSpeechCorpus/tokenizer.model", max_length=None, corpus_path="datasets/LibriSpeechCorpus/librispeech-lm-norm.txt"):

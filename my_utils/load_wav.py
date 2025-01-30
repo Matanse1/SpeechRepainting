@@ -1,5 +1,4 @@
 import scipy.io.wavfile as wav
-
 # Specify the path to the WAV file
 wav_file = '/dsi/gannot-lab1/datasets/reverb_data/Train/audio_final/example_129797.wav'
 

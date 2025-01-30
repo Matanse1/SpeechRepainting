@@ -3,12 +3,13 @@
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,2,4,5,7'
 import time
 import warnings
 warnings.filterwarnings("ignore")
 from functools import partial
 import multiprocessing as mp
+# import torch.multiprocessing as mp
 from pathlib import Path
 import numpy as np
 import torch
@@ -27,7 +28,7 @@ from inference_melgen import generate
 
 from models.model_builder import ModelBuilder
 from models.audiovisual_model import AudioVisualModel
-from models import WaveNet, Unet
+from models import WaveNet, Unet, DiT
 
 def distributed_train(rank, num_gpus, group_name, cfg):
 
@@ -396,8 +397,8 @@ def main(cfg: DictConfig) -> None:
     if num_gpus <= 1:
         train_fn(0)
     else:
-        # mp.set_start_method("spawn")
-        mp.set_start_method("fork", force=True)
+        mp.set_start_method("spawn", force=True)
+        # mp.set_start_method("fork", force=True)
         processes = []
         for i in range(num_gpus):
             p = mp.Process(target=train_fn, args=(i,))

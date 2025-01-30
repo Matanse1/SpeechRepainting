@@ -107,6 +107,7 @@ def load_model(args):
         print("Parallelize model on", torch.cuda.device_count(), "GPUs")
         model.parallel_strategy()
 
+    model.grad_max_norm = getattr(args.config, "grad_max_norm", None)
     return model
 
 

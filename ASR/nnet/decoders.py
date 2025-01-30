@@ -76,11 +76,14 @@ class ArgMaxDecoder(nn.Module):
 
 class CTCGreedySearchDecoder(nn.Module):
 
-    def __init__(self, tokenizer_path, blank_token=0):
+    def __init__(self, tokenizer_path, blank_token=0, custom_tokenizer=False, num_to_phoneme=None):
         super(CTCGreedySearchDecoder, self).__init__()
 
         # Load Tokenizer
-        self.tokenizer = spm.SentencePieceProcessor(tokenizer_path)
+        self.num_to_phoneme = num_to_phoneme
+        self.custom_tokenizer = custom_tokenizer
+        if not custom_tokenizer:
+            self.tokenizer = spm.SentencePieceProcessor(tokenizer_path)
 
         # Blank Token
         self.blank_token = blank_token
@@ -91,14 +94,20 @@ class CTCGreedySearchDecoder(nn.Module):
             tokens = self.greedy_search(*outputs)
         else:
             tokens = outputs[0].tolist()
-
+            
+        if self.custom_tokenizer:
+            for b, (token, length) in enumerate(zip(tokens, outputs[1].tolist())):
+                for i in range(len(token)):
+                    tokens[b][i] = self.num_to_phoneme[token[i]]
+                tokens[b] = tokens[b][:length]
+            return tokens
         return self.tokenizer.decode(tokens)
 
     def greedy_search(self, logits, logits_len):
 
         # Argmax (B, T, V) -> (B, T)
         preds = logits.argmax(dim=-1)
-
+        print(f"preds: {preds}")
         # Batch Pred List
         batch_pred_list = []
 

@@ -517,6 +517,8 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
             input_text_path = Path(self.base_data_dir) / 'phoneme_seq' / (Path(input_text_path).relative_to(Path(self.base_data_dir).joinpath('data')))
             with open(input_text_path, 'rb') as file:
                 input_text = pickle.load(file)  # Load the phoneme sequence from the file
+                if input_text[-1] == 'space':
+                    input_text = input_text[:-1]
         elif self.use_input_text == 'text':
             lab_path = audio_path.with_suffix('.lab')
             # Read and return the content of the .lab file
@@ -567,7 +569,7 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
             base_output += (text,)
 
         # Include input_text if use_input_text is True
-        if self.use_input_text != 'none':
+        if self.use_input_text.lower() != 'none':
             base_output += (input_text,)
 
         return base_output

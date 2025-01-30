@@ -18,7 +18,7 @@ def dataloader(dataset_cfg, batch_size, num_gpus, collate_fn=None, split='Train'
         dataset,
         batch_size=batch_size,
         sampler=train_sampler,
-        num_workers=4,
+        num_workers=0,
         pin_memory=False,
         drop_last=True,
         collate_fn=collate_fn

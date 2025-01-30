@@ -24,7 +24,7 @@ from dataloaders.stft import denormalise_mel
 from tqdm import tqdm
 from utils import find_max_epoch, print_size, get_diffusion_hyperparams, local_directory, fix_len_compatibility, pad_last_dim
 
-def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, mask_frames=None, conditions=None, text=None, input_text=None):
+def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, mask_frames=None, masked_audio_time_mask=None, conditions=None, text=None, input_text=None):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
 
@@ -57,8 +57,8 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, ma
                 noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
                 x = noisy_masked_melspec * mask + x * (1 - mask)
             
-            epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0, mask_padding_frames=mask_frames, text=text, input_text=input_text)   # predict \epsilon according to \epsilon_\theta
-            epsilon_theta_uncond = net(x, conditions, diffusion_steps, cond_drop_prob=1, mask_padding_frames=mask_frames, text=text, input_text=input_text)   # predict \epsilon according to \epsilon_\theta
+            epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
+            epsilon_theta_uncond = net(x, conditions, diffusion_steps, cond_drop_prob=1, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
             epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
 
             x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
@@ -134,7 +134,7 @@ def generate(
     dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=False, return_true_text=True)
     dataset_type = dataset_cfg.dataset_type
     dataset_indices = list(range(n_samples))
-    groundtruth_melspec, masked_cond, masks, mask_frames_list, text_list, input_text_list = [], [], [], [], [], []
+    groundtruth_melspec, masked_cond, masks, mask_frames_list, text_list, input_text_list, masked_audio_time_mask_list = [], [], [], [], [], [], []
     for i in dataset_indices:
         text = None
         input_text = None
@@ -170,6 +170,8 @@ def generate(
         if model_cfg._name_ == 'unet':
             freq_siganl, time_signal = _masked_cond
             desired_num_frames = fix_len_compatibility(_gt_melspec.shape[-1])
+            masked_audio_time_mask = torch.ones_like(time_signal)
+            masked_audio_time_mask = pad_last_dim(masked_audio_time_mask, (desired_num_frames - freq_siganl.shape[-1]) * dataset_cfg[dataset_type]["audio_stft_hop"])
             _gt_melspec = pad_last_dim(_gt_melspec, desired_num_frames - _gt_melspec.shape[-1])
             time_signal = pad_last_dim(time_signal, (desired_num_frames - freq_siganl.shape[-1]) * dataset_cfg[dataset_type]["audio_stft_hop"])
             freq_siganl = pad_last_dim(freq_siganl, desired_num_frames - freq_siganl.shape[-1]).cuda()
@@ -178,8 +180,10 @@ def generate(
             mask_frames = mask_frames.cuda()
             _mask =pad_last_dim(_mask, desired_num_frames - _mask.shape[-1], pad_value=1)
             _masked_cond = [freq_siganl, time_signal]
+            
         else:
             mask_frames = None
+            masked_audio_time_mask = None
 
         # for i in range(len(_masked_cond)):
         #     _masked_cond[i] = _masked_cond[i].unsqueeze(0).cuda()
@@ -190,7 +194,7 @@ def generate(
         mask_frames_list.append(mask_frames)
         text_list.append(text)
         input_text_list.append(input_text)
-
+        masked_audio_time_mask_list.append(masked_audio_time_mask)
     
     print(f'begin generating melspectrograms | {n_samples} samples')
 
@@ -210,6 +214,7 @@ def generate(
             mask=masks[i],
             on_masked_melspec=on_masked_melspec,
             mask_frames=mask_frames_list[i],
+            masked_audio_time_mask=masked_audio_time_mask_list[i],
             text=text_list[i],
             input_text=input_text_list[i]
         )

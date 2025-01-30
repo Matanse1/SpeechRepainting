@@ -90,6 +90,7 @@ class AudioEfficientConformerInterCTC(Model):
         x, lengths = inputs
         x, lengths, interctc_outputs = self.encoder(x, lengths, diffusion_step_embed)
         outputs = {"outputs": [x, lengths]}
+        # print(x[0])
         outputs.update(interctc_outputs)
         return outputs
 

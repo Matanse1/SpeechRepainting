@@ -1,6 +1,7 @@
 # from .sashimi import Sashimi
 from .wavenet import WaveNet
 from .u_net import Unet
+from .dit import DiT
 from .mel_spec_wavlm_phoneme_classifier import WavlmMelSpecPhonemeClassifier
 
 def construct_model(model_cfg):
@@ -18,6 +19,7 @@ def model_identifier(model_cfg):
     model_cls = {
         "wavenet": WaveNet,
         "unet": Unet,
+        "dit": DiT,
         "phoneme_classifier": WaveNet,
         "wavlm_phoneme_classifier_masked_speech": WavlmMelSpecPhonemeClassifier
     }[model_cfg._name_]

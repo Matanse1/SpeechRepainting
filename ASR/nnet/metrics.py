@@ -108,6 +108,16 @@ class WordErrorRate(nn.Module):
         return torch.tensor(100 * jiwer.wer(targets, outputs, standardize=True))
 
 
+class PhonemeErrorRate(nn.Module):
+    def __init__(self, name="per"):
+        super(PhonemeErrorRate, self).__init__()
+        self.name = name
+
+    def forward(self, targets, outputs):
+        joined_targets = [' '.join(inner_list) for inner_list in targets]
+        joined_outputs = [' '.join(inner_list) for inner_list in outputs]
+        # Phoneme Error Rate
+        return torch.tensor(100 * jiwer.wer(joined_targets, joined_outputs))
 ###############################################################################
 # Metric Dictionary
 ###############################################################################
@@ -115,4 +125,5 @@ class WordErrorRate(nn.Module):
 metric_dict = {
     "CategoricalAccuracy": CategoricalAccuracy,
     "WordErrorRate": WordErrorRate,
+    'PhonemeErrorRate': PhonemeErrorRate,
 }

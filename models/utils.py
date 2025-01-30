@@ -179,7 +179,7 @@ def list_str_to_tensor(text: list[str] | list[list[str]], padding_value=-1) -> i
     text = pad_sequence(list_tensors, padding_value=padding_value, batch_first=True)
     return text
 
-# char tokenizer, based on custom dataset's extracted .txt file
+# char tokenizer, based on custom dataset's extracted .txt file (for phoneme)
 def list_str_to_idx(
     text: list[str] | list[list[str]],
     vocab_char_map: dict[str, int],  # {char: idx}

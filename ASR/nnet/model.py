@@ -40,7 +40,7 @@ from ASR.nnet import normalizations as norms
 from ASR.nnet import preprocessing
 
 # Difusion
-from utils import calc_diffusion_hyperparams
+from utils import calc_diffusion_hyperparams_linear
 
 from ASR.nnet.schedulers import Scheduler, ConstantScheduler
 from dataloaders.stft import normalise_mel, denormalise_mel
@@ -62,7 +62,7 @@ class Model(Module):
         self.grad_max_norm = None
 
         # Diffusion params
-        diffusion_hyperparams = calc_diffusion_hyperparams(T, beta_0, beta_T, fast=False)
+        diffusion_hyperparams = calc_diffusion_hyperparams_linear(T, beta_0, beta_T, fast=False)
         self.T = T
         self.Alpha_bar = diffusion_hyperparams["Alpha_bar"]
 
@@ -384,7 +384,7 @@ class Model(Module):
         mel, lengths = inputs
         mel = mel.permute(0,2,1)
 
-        diffusion_steps = torch.randint(350, size=(B, 1, 1)).to(self.device)  # randomly sample diffusion steps from 1~T
+        diffusion_steps = torch.randint(self.T, size=(B, 1, 1)).to(self.device)  # randomly sample diffusion steps from 1~T
         z = torch.normal(0, 1, size=mel.shape).cuda()
         mel = torch.sqrt(self.Alpha_bar[diffusion_steps]) * mel + torch.sqrt(1 - self.Alpha_bar[diffusion_steps]) * z  # compute x_t from q(x_t|x_0)
         inputs = mel, lengths
@@ -398,6 +398,7 @@ class Model(Module):
 
         # Accumulated Steps
         loss = batch_losses["loss"] / accumulated_steps
+        print(f"the loss is {loss}")
         acc_step += 1
 
         # Backward: Accumulate gradients
@@ -416,19 +417,23 @@ class Model(Module):
 
         # Clip Gradients Global Norm
         if self.grad_max_norm != None:
-            if not sum(
-                v.item()
-                for v in grad_scaler._found_inf_per_device(self.optimizer).values()
-            ):  # nan grad
-                self.add_info(
-                    "grad_norm",
-                    round(
-                        torch.nn.utils.clip_grad_norm_(
+            torch.nn.utils.clip_grad_norm_(
                             self.parameters(), self.grad_max_norm
-                        ).item(),
-                        4,
-                    ),
-                )
+                        )
+        # if self.grad_max_norm != None:
+        #     if not sum(
+        #         v.item()
+        #         for v in grad_scaler._found_inf_per_device(self.optimizer).values()
+        #     ):  # nan grad
+        #         self.add_info(
+        #             "grad_norm",
+        #             round(
+        #                 torch.nn.utils.clip_grad_norm_(
+        #                     self.parameters(), self.grad_max_norm
+        #                 ).item(),
+        #                 4,
+        #             ),
+        #         )
 
         # Optimizer Step and Update Scale
         grad_scaler.step(self.optimizer)
@@ -606,19 +611,43 @@ class Model(Module):
     def load(self, path, load_optimizer=True, verbose=True, strict=False):
         # Load Model Checkpoint
         checkpoint = torch.load(path, map_location=self.device)
-
-        # Load Model State Dict
-        if checkpoint["is_distributed"] and not self.is_distributed:
-            self.load_state_dict(
-                {
-                    key.replace(".module.", "."): value
-                    for key, value in checkpoint["model_state_dict"].items()
-                },
-                strict=strict,
-            )
-        else:
-            self.load_state_dict({key: value for key, value in checkpoint["model_state_dict"].items()}, strict=strict)
-
+            # Get current and checkpoint state dictionaries
+        current_state_dict = self.state_dict()
+        checkpoint_state_dict = checkpoint["model_state_dict"]
+        
+        # Handle distributed vs non-distributed case
+        if checkpoint.get("is_distributed", False) and not self.is_distributed:
+            checkpoint_state_dict = {
+                key.replace(".module.", "."): value 
+                for key, value in checkpoint_state_dict.items()
+            }
+        
+        # Create new state dict with only compatible parameters
+        new_state_dict = {}
+        for key, checkpoint_param in checkpoint_state_dict.items():
+            if key in current_state_dict:
+                current_param = current_state_dict[key]
+                if current_param.shape == checkpoint_param.shape:
+                    new_state_dict[key] = checkpoint_param
+                else:
+                    print(f"Skipping parameter {key} due to shape mismatch: "
+                        f"checkpoint shape {checkpoint_param.shape} vs "
+                        f"current shape {current_param.shape}")
+        self.load_state_dict({key: value for key, value in new_state_dict.items()}, strict=strict)
+        # # Load the compatible parameters
+        # self.load_state_dict(new_state_dict, strict=False)
+        # # Load Model State Dict
+        # if checkpoint["is_distributed"] and not self.is_distributed:
+        #     self.load_state_dict(
+        #         {
+        #             key.replace(".module.", "."): value
+        #             for key, value in checkpoint["model_state_dict"].items()
+        #         },
+        #         strict=strict,
+        #     )
+        # else:
+        #     self.load_state_dict({key: value for key, value in checkpoint["model_state_dict"].items()}, strict=strict)
+            
         # Load Optimizer State Dict
         if load_optimizer and checkpoint["optimizer_state_dict"] is not None:
             if isinstance(self.optimizer, dict):
@@ -843,7 +872,7 @@ class Model(Module):
             raise Exception("You must compile your model before training/testing.")
 
         # Mixed Precision Gradient Scaler
-        self.grad_scaler = torch.cuda.amp.GradScaler(
+        self.grad_scaler = torch.amp.GradScaler("cuda",
             init_scale=grad_init_scale,
             enabled=(grad_init_scale != None)
             and (precision == torch.float16)

@@ -344,6 +344,11 @@ class CTCLoss(nn.Module):
             )
 
         # Compute Loss
+        if torch.isnan(logits).any() or torch.isinf(logits).any():
+            print("Input to LogSoftmax contains invalid values:", logits)
+            raise ValueError("Input to LogSoftmax contains invalid values")
+        print(f"max of the logits is {torch.max(logits)}")
+        print(f"min of the logits is {torch.min(logits)}")
         loss = self.loss(
             log_probs=torch.nn.functional.log_softmax(logits, dim=-1).transpose(
                 0, 1
@@ -352,10 +357,13 @@ class CTCLoss(nn.Module):
             input_lengths=logits_len,
             target_lengths=y_len,
         )
-
+        if torch.isnan(loss).any() or torch.isinf(loss).any():
+            print("Output to LogSoftmax contains invalid values:", logits)
         # Reduction
+        # print(f"the loss is {loss}")
+        # print(f"max of the loss is {torch.max(loss)}")
+        # print(f"min of the loss is {torch.min(loss)}")
         loss = self.reduction(loss)
-
         return loss
 
 

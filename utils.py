@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from PIL import Image
 import torch.nn.functional as F
-
+import math
 
 
 
@@ -125,7 +125,10 @@ def local_directory(name, model_cfg, diffusion_cfg, save_dir, output_directory):
     if not isinstance(diffusion_cfg, DictConfig):
         diffusion_name = diffusion_cfg
     else:
-        diffusion_name = f"_T{diffusion_cfg['T']}_betaT{diffusion_cfg['beta_T']}"
+        if diffusion_cfg.name == 'linear':
+            diffusion_name = f"_T{diffusion_cfg.linear['T']}_betaT{diffusion_cfg.linear['beta_T']}"
+        elif diffusion_cfg.name == 'cosine':
+            diffusion_name = f"_T{diffusion_cfg.cosine['T']}_s{diffusion_cfg.cosine['s']}"
     local_path = model_name + diffusion_name
 
 
@@ -204,9 +207,29 @@ def calc_diffusion_hyperparams_linear(T, beta_0, beta_T, beta=None, fast=False):
         Beta_tilde[t] *= (1-Alpha_bar[t-1]) / (1-Alpha_bar[t])  # \tilde{\beta}_t = \beta_t * (1-\bar{\alpha}_{t-1}) / (1-\bar{\alpha}_t)
     Sigma = torch.sqrt(Beta_tilde)  # \sigma_t^2  = \tilde{\beta}_t
 
-    _dh = {}
+    _dh = {"name": "linear"}
     _dh["T"], _dh["Beta"], _dh["Alpha"], _dh["Alpha_bar"], _dh["Sigma"] = T, Beta.cuda(), Alpha.cuda(), Alpha_bar.cuda(), Sigma
     return _dh
+
+
+def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):
+    """
+    Create a beta schedule that discretizes the given alpha_t_bar function,
+    which defines the cumulative product of (1-beta) over time from t = [0,1].
+
+    :param num_diffusion_timesteps: the number of betas to produce.
+    :param alpha_bar: a lambda that takes an argument t from 0 to 1 and
+                      produces the cumulative product of (1-beta) up to that
+                      part of the diffusion process.
+    :param max_beta: the maximum beta to use; use values lower than 1 to
+                     prevent singularities.
+    """
+    betas = []
+    for i in range(num_diffusion_timesteps):
+        t1 = i / num_diffusion_timesteps
+        t2 = (i + 1) / num_diffusion_timesteps
+        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+    return torch.tensor(betas)
 
 def calc_diffusion_hyperparams_cosine(T, s=0.008):
     """
@@ -219,24 +242,19 @@ def calc_diffusion_hyperparams_cosine(T, s=0.008):
     Returns:
     dict: Diffusion hyperparameters including T, Beta, Alpha, Alpha_bar, and Sigma
     """
-    steps = T + 1  # Create T+1 points to cover the range from 0 to T
-    x = torch.linspace(0, T, steps)
-    alphas_cumprod = torch.cos(((x / T) + s) / (1 + s) * np.pi * 0.5) ** 2
-    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
 
-    Beta = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])  # Beta has length T
-    Beta = torch.clamp(Beta, 0, 0.999)
-
+    Beta =  betas_for_alpha_bar(T, lambda t: (math.cos((t + s) / (s + 1) * math.pi / 2) ** 2) / (math.cos((0 + s) / (s + 1) * math.pi / 2) ** 2))
     Alpha = 1 - Beta
-    Alpha_bar = torch.cumprod(Alpha, dim=0)
+    Alpha_bar = Alpha + 0
+    Beta_tilde = Beta + 0
+    for t in range(1, T):
+        Alpha_bar[t] *= Alpha_bar[t-1]  # \bar{\alpha}_t = \prod_{s=1}^t \alpha_s
+        Beta_tilde[t] *= (1-Alpha_bar[t-1]) / (1-Alpha_bar[t])  # \tilde{\beta}_t = \beta_t * (1-\bar{\alpha}_{t-1}) / (1-\bar{\alpha}_t)
+    Sigma = torch.sqrt(Beta_tilde)  # \sigma_t^2  = \tilde{\beta}_t
 
-    # Compute Beta_tilde
-    Beta_tilde = Beta.clone()  # Initialize Beta_tilde
-    Beta_tilde[1:] = Beta[1:] * (1 - Alpha_bar[:-1]) / (1 - Alpha_bar[1:])  # Fix dimensions
-
-    Sigma = torch.sqrt(Beta_tilde)  # Compute Sigma
-    _dh = {}
-    _dh["T"], _dh["Beta"], _dh["Alpha"], _dh["Alpha_bar"], _dh["Sigma"] = T, Beta.cuda(), Alpha.cuda(), alphas_cumprod.cuda(), Sigma
+    _dh = {"name": "cosine"}
+    _dh["T"], _dh["Beta"], _dh["Alpha"], _dh["Alpha_bar"], _dh["Sigma"] = T, Beta.cuda(), Alpha.cuda(), Alpha_bar.cuda(), Sigma
+    
     return _dh
 
 
@@ -248,16 +266,21 @@ def get_diffusion_hyperparams(diffusion_cfg, fast=False):
     return dh
 
 
-def find_linear_t_given_nonlinear_t(t_prime, alpha_bar_t_prime, linear_alpha_bar):
-    alpha_bar_t = alpha_bar_t_prime[t_prime]
-    # Calculate the absolute difference between alpha_bar_t_prime and alpha_bar_t
-    diff = np.abs(linear_alpha_bar - alpha_bar_t_prime)
+def find_linear_t_given_cosine_t():
+    dh_linear = calc_diffusion_hyperparams_linear(T=400, beta_0=0.0001, beta_T=0.02)
+    Alpha_bar_linear = dh_linear["Alpha_bar"]
+    dh_cosine = calc_diffusion_hyperparams_cosine(T=400, s=0.008)
+    Alpha_bar_cosine = dh_cosine["Alpha_bar"]
+    def linear_t_given_cosine_t(t_prime):
+        alpha_bar_t = Alpha_bar_cosine[t_prime]
+        # Calculate the absolute difference between alpha_bar_t_prime and alpha_bar_t
+        diff = np.abs(Alpha_bar_linear - alpha_bar_t)
+        # Find the timestep in the linear schedule that minimizes the difference
+        corresponding_linear_t = np.argmin(diff)
+        return corresponding_linear_t
+    return linear_t_given_cosine_t
 
-    # Find the timestep in the linear schedule that minimizes the difference
-    corresponding_linear_t = np.argmin(diff)
-
-    return corresponding_linear_t
-
+linear_t_given_cosine_t = find_linear_t_given_cosine_t()
 
 def plot_melspec(melspec):
     fig = plt.figure()

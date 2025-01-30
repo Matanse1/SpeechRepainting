@@ -175,7 +175,7 @@ class Unet(BaseModule):
         self.text_embed_prop = text_embed_prop
         self.use_text_embed_rep = self.text_embed_prop["use_text_embed_rep"]
         self.cat_cond = (not unconditional) and (not self.use_text_embed_rep)
-
+        
         if self.use_text_embed_rep:
             vocab_char_map, vocab_size = get_tokenizer(tokenizer_path=self.text_embed_prop["tokenizer_path"], tokenizer=self.text_embed_prop["tokenizer"])
             self.vocab_char_map = vocab_char_map

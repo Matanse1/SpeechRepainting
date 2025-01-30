@@ -24,7 +24,7 @@ import torch.nn.functional as F
 import torchaudio
 from librosa.filters import mel as librosa_mel_fn
 from torch import nn
-# from x_transformers.x_transformers import apply_rotary_pos_emb
+from x_transformers.x_transformers import apply_rotary_pos_emb
 
 
 # raw wav to mel spec
