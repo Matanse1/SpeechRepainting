@@ -15,7 +15,7 @@
 import sys
 sys.path.append(".")
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "6"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,5"
 # PyTorch
 import torch
 
@@ -142,7 +142,7 @@ def main(rank, args):
 
 if __name__ == "__main__":
     # Args
-    # python main.py -c ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme.py -m training --checkpoint /dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_lrs3.ckpt -d"
+    # python ASR/main.py -c ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme.py -m training --checkpoint /dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_lrs3.ckpt -d"
     parser = argparse.ArgumentParser()
     # 'ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme.py'
      # "ASR/configs/LRS23/AO/EffConfCTC_noised.py"

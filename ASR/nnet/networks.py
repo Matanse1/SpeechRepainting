@@ -403,7 +403,7 @@ class ConformerInterCTC(nn.Module):
 
 
 class AudioEfficientConformerEncoder(nn.Module):
-    def __init__(self, include_head=True, vocab_size=256, att_type="patch", interctc_blocks=[3, 6, 10, 13], num_blocks=[5, 6, 5], loss_prefix="ctc"):
+    def __init__(self, include_head=True, vocab_size=256, att_type="patch", interctc_blocks=[3, 6, 10, 13], num_blocks=[5, 6, 5], loss_prefix="ctc", strides_subsampling=2):
         super(AudioEfficientConformerEncoder, self).__init__()
 
         assert att_type in ["regular", "grouped", "patch"]
@@ -455,7 +455,7 @@ class AudioEfficientConformerEncoder(nn.Module):
             dim_input=1,
             dim_layers=subsampling_filters,
             kernel_size=3,
-            strides=2,
+            strides=strides_subsampling, # it was 2
             norm="BatchNorm2d",
             act_fun="Swish",
             drop_rate=0.0,
@@ -738,6 +738,7 @@ class AudioVisualEfficientConformerEncoder(nn.Module):
         v_interctc_blocks=[3, 6],
         a_interctc_blocks=[8, 11],
         f_interctc_blocks=[2],
+        strides_subsampling=2,
     ):
         super(AudioVisualEfficientConformerEncoder, self).__init__()
 
@@ -768,6 +769,7 @@ class AudioVisualEfficientConformerEncoder(nn.Module):
             interctc_blocks=a_interctc_blocks,
             num_blocks=a_num_blocks,
             loss_prefix="a_ctc",
+            strides_subsampling=strides_subsampling
         )
 
         # Fusion Module

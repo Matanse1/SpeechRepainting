@@ -166,7 +166,7 @@ class ConvNeuralNetwork(nn.Module):
             # Update Sequence Lengths
             if x_len is not None:
                 x_len = (
-                    torch.div(x_len - 1, 2, rounding_mode="floor") + 1
+                    torch.div(x_len - 1, self.strides, rounding_mode="floor") + 1
                 )  # to generalize
 
         return x if x_len == None else (x, x_len)

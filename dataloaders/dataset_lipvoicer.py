@@ -480,7 +480,7 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
         
         self.test = True if split=='Test' else False
         seed = 1234
-        set_seed(1234)
+        set_seed(seed)
         self.torch_rng = torch.Generator().manual_seed(seed)
         self.rng = np.random.default_rng(seed)
         self.sampling_rate = sampling_rate
@@ -519,6 +519,8 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
                 input_text = pickle.load(file)  # Load the phoneme sequence from the file
                 if input_text[-1] == 'space':
                     input_text = input_text[:-1]
+                if 'spn' in input_text:
+                    input_text = list(filter(lambda x: x != 'spn', input_text))
         elif self.use_input_text == 'text':
             lab_path = audio_path.with_suffix('.lab')
             # Read and return the content of the .lab file

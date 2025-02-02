@@ -9,7 +9,7 @@ def get_models(dataset, type_input_guidance='text'):
     assert dataset.lower() in ['lrs3', 'lrs2'], 'Dataset must be LRS3 or LRS2'
     if type_input_guidance == 'text':
         print("The Guidance is ASR")
-        asr_guidance_net = AudioEfficientConformerInterCTC(interctc_blocks=[], T=400, beta_0=0.0001, beta_T=0.02)
+        asr_guidance_net = AudioEfficientConformerInterCTC(interctc_blocks=[], T=400, beta_0=0.0001, beta_T=0.02, strides_subsampling=2)
         checkpoint_ao = f"/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_{dataset.lower()}.ckpt"
         tokenizer_path = "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/tokenizerbpe256.model" #thi is the tokenizer
         tokenizer = spm.SentencePieceProcessor(tokenizer_path)  # for converting text to tokens
@@ -38,8 +38,8 @@ def get_models(dataset, type_input_guidance='text'):
         num_to_phoneme[0] = 'blank'
         vocab_size = len(phoneme_to_number_loaded)
         tokenizer = phoneme_to_number_loaded
-        asr_guidance_net = AudioEfficientConformerInterCTC(vocab_size=vocab_size, interctc_blocks=[], T=400, beta_0=0.0001, beta_T=0.02)
-        checkpoint_ao = "/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_1_step_1031.ckpt"
+        asr_guidance_net = AudioEfficientConformerInterCTC(vocab_size=vocab_size, interctc_blocks=[], T=400, beta_0=0.0001, beta_T=0.02, strides_subsampling=1)
+        checkpoint_ao = "/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_9_step_9285.ckpt"
         decoder = CTCGreedySearchDecoder(tokenizer_path=tokenizer_path, custom_tokenizer=True, num_to_phoneme=num_to_phoneme)
         metric = PhonemeErrorRate()
     

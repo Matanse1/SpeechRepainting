@@ -20,10 +20,10 @@ class DotDict(dict):
 device = "cuda"
 print("Loading the phoneme sequence and mel spectrogram")
 basde_dir = '/dsi/gannot-lab1/datasets/Librispeech_mfa'
-mode = 'Train' # Test, Train
-phonemes_dir = 'phoneme_seq'
+mode = 'Test' # Test, Train
+phonemes_dir = 'phoneme_seq2'
 melspec_dir = 'mel_filter_length=640_hop_length=160'
-file_name = '16/16-122827-0000' # 16-122827-0000, 61/61-70968-0002
+file_name = '61/61-70968-0002' # 16-122827-0000, 61/61-70968-0002
 input_text_path = Path(basde_dir) / phonemes_dir/ mode / f"{file_name}.phonemes"
 melspec_path = Path(basde_dir) / melspec_dir/ mode / f"{file_name}.npz"
 
@@ -81,10 +81,10 @@ decoder = nnet.CTCGreedySearchDecoder(tokenizer_path=tokenizer_path, custom_toke
 
 
 print("Loading the model")
-asr_guidance_net = nnet.AudioEfficientConformerInterCTC(vocab_size=vocab_size, att_type=att_type, interctc_blocks=interctc_blocks)
+asr_guidance_net = nnet.AudioEfficientConformerInterCTC(vocab_size=vocab_size, att_type=att_type, interctc_blocks=interctc_blocks, strides_subsampling=2)
 # checkpoint_ao = '/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_4_step_4127.ckpt'
-checkpoint_ao = '/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_1_step_1031.ckpt'
-# checkpoint_ao = "/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_6_step_6190.ckpt"
+checkpoint_ao = '/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_9_step_9285.ckpt'
+# checkpoint_ao = "/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space/checkpoints_epoch_3_step_4127.ckpt"
 asr_guidance_net.compile(losses=CTCLoss(zero_infinity=True, assert_shorter=False), loss_weights=None, decoders=decoder)
 asr_guidance_net = asr_guidance_net.cuda()
 asr_guidance_net.load(checkpoint_ao)

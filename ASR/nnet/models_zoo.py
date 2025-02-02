@@ -68,10 +68,10 @@ class VisualEfficientConformerCE(Model):
             
 class AudioEfficientConformerInterCTC(Model):
 
-    def __init__(self, vocab_size=256, att_type="patch", interctc_blocks=[3, 6, 10, 13], T=400, beta_0=0.0001, beta_T=0.02):
+    def __init__(self, vocab_size=256, att_type="patch", interctc_blocks=[3, 6, 10, 13], T=400, beta_0=0.0001, beta_T=0.02, strides_subsampling=2):
         super(AudioEfficientConformerInterCTC, self).__init__(name="Audio Efficient Conformer Inter CTC", T=T, beta_0=beta_0, beta_T=beta_T)
 
-        self.encoder = networks.AudioEfficientConformerEncoder(vocab_size=vocab_size, att_type=att_type, interctc_blocks=interctc_blocks)
+        self.encoder = networks.AudioEfficientConformerEncoder(vocab_size=vocab_size, att_type=att_type, interctc_blocks=interctc_blocks, strides_subsampling=strides_subsampling)
 
         # the shared two fc layers for diffusion step embedding
         self.diffusion_step_embed_dim_in = 128

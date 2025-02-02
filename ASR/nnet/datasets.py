@@ -635,7 +635,7 @@ class LibriSpeechPhoneme(Dataset):
 
     
     def __len__(self):
-        # return 100
+        # return 30
         return len(self.csv_df)
     
     def __getitem__(self, index):
@@ -652,7 +652,7 @@ class LibriSpeechPhoneme(Dataset):
         if self.use_input_text == 'phoneme':
             Path(self.base_data_dir)
             input_text_path = audio_path.with_suffix('.phonemes')
-            input_text_path = Path(self.base_data_dir) / 'phoneme_seq' / (Path(input_text_path).relative_to(Path(self.base_data_dir).joinpath('data')))
+            input_text_path = Path(self.base_data_dir) / 'phoneme_seq2' / (Path(input_text_path).relative_to(Path(self.base_data_dir).joinpath('data')))
             with open(input_text_path, 'rb') as file:
                 input_text = pickle.load(file)  # Load the phoneme sequence from the file
                 if input_text[-1] == 'space':

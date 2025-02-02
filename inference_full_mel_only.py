@@ -169,7 +169,7 @@ def sampling(net, diffusion_hyperparams,
                         inputs = x.detach().requires_grad_(True), length_input
                         targets = tokens, torch.tensor([tokens.shape[1]]).cuda()
                         asr_guidance_net.device = torch.device("cuda")
-                        batch_losses = asr_guidance_net.forward_model(inputs, diffusion_steps_asr_linear, targets, compute_metrics=True, verbose=0)[0] #batch_losses, batch_metrics, batch_truths, batch_preds
+                        batch_losses = asr_guidance_net.forward_model(inputs, diffusion_steps_asr_linear, targets, compute_metrics=False, verbose=0)[0] #batch_losses, batch_metrics, batch_truths, batch_preds
                         asr_grad = torch.autograd.grad(batch_losses["loss"], inputs[0])[0]
                         if torch.sum(asr_grad) == 0 and type_input_guidance == 'phoneme':
                             print("Zero grad")
@@ -192,7 +192,7 @@ def sampling(net, diffusion_hyperparams,
             # x = x.clip(-1, 1.5)
             
             if t % 10 == 0:
-                if (asr_guidance_net is not None) and (t <= asr_start) and (type_input_guidance == 'text'):
+                if (asr_guidance_net is not None) and (t <= asr_start):
                     inputs = x, length_input
                     outputs_ao = asr_guidance_net(inputs, diffusion_steps_asr_linear)["outputs"]
                     preds_ao = decoder(outputs_ao)[0]
@@ -344,8 +344,8 @@ def generate(
         pipeline_asr = InferencePipeline(config_filename_asr_cond, device='cuda')
         
         for i in tqdm(range(n_samples_test)):
-            # if i == 0:
-            #     continue
+            if i == 1:
+                continue
             os.makedirs(os.path.join(_output_directory, f'sample_{i}'), exist_ok=True)
             input_text = None
             if dataset_type == 'explosion_speech_inpainting':
@@ -436,26 +436,31 @@ def generate(
                 masked_melspec = masked_melspec.unsqueeze(0).cuda()
                 mask = mask.unsqueeze(0).cuda()
                 
-            text = 'None'
+
+            text = true_text[0]
             if apply_asr_guidance:
-                if mel_text:
-                    text = true_text[0]
-                    print(f"The transcript is: {text}")
-                    text = preprocess_text(text)
-                    print(f"The normalized transcript is: {text}")
-                else:
-                    # Create a temporary file
-                    audio4text = masked_audio_time4text
-                    sample_rate = 16000  # Example value
-                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_wav:
-                        # Save the masked audio array as a WAV file in the temporary file
-                        write(temp_wav.name, sample_rate, audio4text.numpy().astype(np.float32)) # TODO maybe we need to do something more clever here
-                        # Send the temporary WAV file to the pipeline
-                        transcript_from_condition = pipeline_asr(temp_wav.name)
-                        text = transcript_from_condition
+                if type_input_guidance == 'text':
+                    if mel_text: # use the true text of the sentence
                         print(f"The transcript is: {text}")
                         text = preprocess_text(text)
                         print(f"The normalized transcript is: {text}")
+                    else: # predict the text from the masked audio
+                        # Create a temporary file
+                        audio4text = masked_audio_time4text
+                        sample_rate = 16000  # Example value
+                        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_wav:
+                            # Save the masked audio array as a WAV file in the temporary file
+                            write(temp_wav.name, sample_rate, audio4text.numpy().astype(np.float32)) # TODO maybe we need to do something more clever here
+                            # Send the temporary WAV file to the pipeline
+                            transcript_from_condition = pipeline_asr(temp_wav.name)
+                            text = transcript_from_condition
+                            print(f"The transcript is: {text}")
+                            text = preprocess_text(text)
+                            print(f"The normalized transcript is: {text}")
+                        
+                elif type_input_guidance == 'phoneme':
+                    print(f"The Ground thruth phoneme is: {input_text[0]}")
+
         
             
             if dataset_type == 'explosion_speech_inpainting':
@@ -526,8 +531,13 @@ def generate(
             # save text
             text_filename = os.path.join(_output_directory, f'sample_{i}', 'asr_text.txt')
             with open(text_filename, 'w') as f:
-                f.write("asr_condition       :  " +text+"\n")
-                f.write("asr_generated_signal:  " + preds_ao)
+                if type_input_guidance == 'text':
+                    f.write("asr_condition       :  " +text+"\n")
+                    f.write("asr_generated_signal:  " + preds_ao)
+                elif type_input_guidance == 'phoneme':
+                    f.write("asr_generated_signal:  " + text + "\n")
+                    f.write("asr_condition       :  " +" ".join(input_text[0])+"\n")
+                    f.write("asr_generated_signal:  " + " ".join(preds_ao))
             
             # plcmos_masked_init = compute_metrics.compute_plcmos(masked_audio_time.squeeze().cpu().numpy())
             # row_dict.update({'plcmos_masked_init': plcmos_masked_init})
