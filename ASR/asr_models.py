@@ -39,7 +39,9 @@ def get_models(dataset, type_input_guidance='text'):
         vocab_size = len(phoneme_to_number_loaded)
         tokenizer = phoneme_to_number_loaded
         asr_guidance_net = AudioEfficientConformerInterCTC(vocab_size=vocab_size, interctc_blocks=[], T=400, beta_0=0.0001, beta_T=0.02, strides_subsampling=1)
-        checkpoint_ao = "/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_9_step_9285.ckpt"
+        # checkpoint_ao = "/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_9_step_9285.ckpt" no-space
+        # checkpoint_ao = '/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space/checkpoints_epoch_3_step_4127.ckpt' # with-space
+        checkpoint_ao = '/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space/checkpoints_epoch_5_step_6878.ckpt' # with-space 
         decoder = CTCGreedySearchDecoder(tokenizer_path=tokenizer_path, custom_tokenizer=True, num_to_phoneme=num_to_phoneme)
         metric = PhonemeErrorRate()
     

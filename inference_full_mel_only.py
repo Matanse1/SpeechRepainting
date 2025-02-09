@@ -38,7 +38,7 @@ from scipy.io.wavfile import write
 import tempfile
 # from my_utils.compute_metrics import Metrics
 import ASR.asr_models as asr_models
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 from utils import mask_time_all_frequencies_mask, mask_time_specific_frequencies_mask, mask_specific_frequencies_all_time_mask, mask_combined_mask, mask_with_shape_mask
 print("finished imports")
 
@@ -93,7 +93,8 @@ def sampling(net, diffusion_hyperparams,
             masked_audio_time_mask=None,
             text=None, 
             input_text=None,
-            type_input_guidance='text'
+            type_input_guidance='text',
+            skip_step=1,
             ):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
@@ -114,7 +115,7 @@ def sampling(net, diffusion_hyperparams,
     assert len(Sigma) == T
     preds_ao = 'None'
 
-    torch.set_anomaly_enabled(True)
+    # torch.set_anomaly_enabled(True)
     # tokenize text
     if asr_guidance_net is not None:
         if type_input_guidance == 'text':
@@ -133,7 +134,9 @@ def sampling(net, diffusion_hyperparams,
     repeat_asr = 1
     asr_finish = -1
     with torch.no_grad():
-        for t in tqdm(range(T-1, -1, -1)):
+        for t in tqdm(range(T - 1, -1, -skip_step)):
+            if t < skip_step:  # Ensure the last step is exactly zero
+                t = 0
             if _dh["name"] == "cosine":
                 t_linear_asr = linear_t_given_cosine_t(t)
             else:
@@ -164,7 +167,7 @@ def sampling(net, diffusion_hyperparams,
                             noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps_asr_linear.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps_asr_linear.int()]) * z
                             x = noisy_masked_melspec * mask + x * (1 - mask)
                     with torch.enable_grad():
-                        torch.set_anomaly_enabled(True)
+                        # torch.set_anomaly_enabled(True)
                         length_input = torch.tensor([x.shape[2]]).cuda()
                         inputs = x.detach().requires_grad_(True), length_input
                         targets = tokens, torch.tensor([tokens.shape[1]]).cuda()
@@ -226,6 +229,7 @@ def generate(
         on_masked_melspec=False,
         mask_info=None,
         mel_text=None,
+        skip_step=1,
         **kwargs
     ):
 
@@ -315,8 +319,9 @@ def generate(
     asr_start_list = asr_start
     w_mel_cond_list = w_mel_cond
     for w_asr, asr_start, w_mel_cond in product(w_asr_list, asr_start_list, w_mel_cond_list):
-
-        dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=True, return_true_text=True)
+        if w_mel_cond ==2 and w_asr == 0.8 and asr_start == 320:
+            continue
+        dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=True, return_true_text=True, return_target_time=True)
         guidance_dir_name = f'w1={w_mel_cond}'
         guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}' #_asr_finish=80'
         guidance_dir_name += f'_mask={on_masked_melspec}' #_repeat=5_same-theta_-mel'
@@ -384,10 +389,10 @@ def generate(
             elif dataset_cfg.dataset_type == 'speech_inpainting_anechoic':
                 #melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks
                 if dataset_cfg.speech_inpainting_anechoic.use_input_text != 'none':
-                    gt_melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, true_text, input_text = dataset[i]
+                    audio_time, gt_melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, true_text, input_text = dataset[i]
                     input_text = [input_text]
                 else:
-                    gt_melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, true_text = dataset[i]
+                    audio_time, gt_melspec, masked_melspec, masked_audio_time, mask, block_size_list, num_blocks, true_text = dataset[i]
                 csv_writer.writerow([i, block_size_list, num_blocks])
                 gt_melspec = gt_melspec.unsqueeze(0)
                 mask = mask.unsqueeze(0).cuda()
@@ -415,23 +420,24 @@ def generate(
                 masked_audio_time_mask=None
             
             if mask_info['mask_type'] == 'repeat_all_freq':
-                masked_melspec, mask = mask_time_all_frequencies_mask(gt_melspec[0], mask_info['repeat_all_freq']['length'], mask_info['repeat_all_freq']['skip'])
+                masked_melspec, masked_audio_time, mask, _ = mask_time_all_frequencies_mask(gt_melspec[0], audio_time, mask_info['repeat_all_freq']['length'], mask_info['repeat_all_freq']['skip'], noise_type=mask_info['noise_type'], hop_length=dataset_cfg[dataset_type]["audio_stft_hop"])
                 masked_melspec = masked_melspec.unsqueeze(0).cuda()
                 mask = mask.unsqueeze(0).cuda()
+                masked_audio_time = masked_audio_time.unsqueeze(0).cuda()
                 masked_cond = [masked_melspec, masked_audio_time]
             elif mask_info['mask_type'] == 'repeat_specific_freq':
-                masked_melspec, mask = mask_time_specific_frequencies_mask(gt_melspec[0], mask_info['repeat_specific_freq']['length'], mask_info['repeat_specific_freq']['skip'], mask_info['repeat_specific_freq']['freq'])
+                masked_melspec, mask = mask_time_specific_frequencies_mask(gt_melspec[0], mask_info['repeat_specific_freq']['length'], mask_info['repeat_specific_freq']['skip'], mask_info['repeat_specific_freq']['freq'], noise_type=mask_info['noise_type'])
                 masked_melspec = gt_melspec[0] * mask
                 masked_melspec = masked_melspec.unsqueeze(0).cuda()
                 mask = mask.unsqueeze(0).cuda()
                 masked_cond = [masked_melspec, masked_audio_time]
             elif mask_info['mask_type'] == 'by_number':
-                masked_melspec, mask = mask_with_shape_mask(gt_melspec[0], mask_info['by_number']['number'])
+                masked_melspec, mask = mask_with_shape_mask(gt_melspec[0], mask_info['by_number']['number'], noise_type=mask_info['noise_type'])
                 masked_melspec = masked_melspec.unsqueeze(0).cuda()
                 mask = mask.unsqueeze(0).cuda()
                 masked_cond = [masked_melspec, masked_audio_time]
             elif mask_info['mask_type'] == 'all_time_specific_freq':
-                masked_melspec, mask = mask_specific_frequencies_all_time_mask(gt_melspec[0], mask_info['all_time_specific_freq']['freq'])
+                masked_melspec, mask = mask_specific_frequencies_all_time_mask(gt_melspec[0], mask_info['all_time_specific_freq']['freq'], noise_type=mask_info['noise_type'])
                 masked_melspec = gt_melspec[0] * mask
                 masked_melspec = masked_melspec.unsqueeze(0).cuda()
                 mask = mask.unsqueeze(0).cuda()
@@ -521,7 +527,8 @@ def generate(
                             masked_audio_time_mask=masked_audio_time_mask,
                             text=true_text, 
                             input_text=input_text,
-                            type_input_guidance=type_input_guidance
+                            type_input_guidance=type_input_guidance,
+                            skip_step=skip_step
                             )
             melspec = denormalise_mel(melspec)
             end.record()

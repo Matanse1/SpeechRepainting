@@ -456,7 +456,7 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
     """
     def __init__(self, split, sampling_rate, csv_loc, min_block_size, max_block_size, min_spacing,
                  audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties, return_target_time=False,
-                 return_true_text=False, use_input_text=False):
+                 return_true_text=False, use_input_text=False, remove_space=False):
         split = split.capitalize()
         self.return_target_time = return_target_time
         self.return_mask_properties = return_mask_properties
@@ -470,6 +470,7 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
         self.audio_stft_hop = audio_stft_hop
         self.return_true_text = return_true_text
         self.use_input_text = use_input_text
+        self.remove_space = remove_space
         try:
             float(num4empty_str)
             is_number = True  # Conversion succeeded, it's a number
@@ -514,13 +515,15 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
         if self.use_input_text == 'phoneme':
             Path(self.base_data_dir)
             input_text_path = audio_path.with_suffix('.phonemes')
-            input_text_path = Path(self.base_data_dir) / 'phoneme_seq' / (Path(input_text_path).relative_to(Path(self.base_data_dir).joinpath('data')))
+            input_text_path = Path(self.base_data_dir) / 'phoneme_seq2' / (Path(input_text_path).relative_to(Path(self.base_data_dir).joinpath('data')))
             with open(input_text_path, 'rb') as file:
                 input_text = pickle.load(file)  # Load the phoneme sequence from the file
                 if input_text[-1] == 'space':
                     input_text = input_text[:-1]
                 if 'spn' in input_text:
                     input_text = list(filter(lambda x: x != 'spn', input_text))
+                if self.remove_space:
+                    input_text = [x for x in input_text if x != 'space'] # for example for stype_speech tts the phoneme does not contain space
         elif self.use_input_text == 'text':
             lab_path = audio_path.with_suffix('.lab')
             # Read and return the content of the .lab file
@@ -632,7 +635,10 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
             if start_pos + block_size > shape[-1]:
                 block_size = shape[-1] - start_pos
             if self.num4empty_str == 'randn' and block_size > 0:
-                self.num4empty = torch.randn((shape[0], block_size), generator=self.torch_rng)
+                num4empty_np = self.rng.standard_normal((shape[0], block_size), dtype=np.float32)
+                # Convert to a PyTorch tensor
+                self.num4empty = torch.tensor(num4empty_np)
+                # self.num4empty = torch.randn((shape[0], block_size), generator=self.torch_rng)
                 # print("num4empty is randn")
             if block_size > 0:
                 melspec[:, start_pos:start_pos + block_size] = self.num4empty

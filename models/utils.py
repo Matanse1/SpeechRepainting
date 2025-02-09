@@ -190,4 +190,12 @@ def list_str_to_idx(
     return text
     
   
+def get_StyleSpeech(config, checkpoint_path):
+    
+    model = StyleSpeech(config)
+    model.load_state_dict(torch.load(checkpoint_path)['model'])
+    model.eval()
+    num_params = sum(p.numel() for p in model.parameters())
+    print(f'Total number of parameters: {num_params}')
+    return model
   

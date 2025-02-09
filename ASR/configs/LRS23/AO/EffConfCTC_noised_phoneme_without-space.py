@@ -29,7 +29,7 @@ grad_max_norm= None
 eval_training = False
 precision = torch.float32
 recompute_metrics = True
-callback_path = "/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space-con" # where to save logs and model checkpoints
+callback_path = "/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_without-space" # where to save logs and model checkpoints
 
 # Beam Search
 beam_search = False
@@ -84,7 +84,8 @@ training_dataset = nnet.datasets.LibriSpeechPhoneme(
                     batch_size=batch_size,
                     collate_fn=collate_fn,
                     vocab_char_map=vocab_char_map,
-                    use_input_text='phoneme'
+                    use_input_text='phoneme',
+                    remove_space=True
                     )
 
 evaluation_dataset = [
@@ -96,6 +97,7 @@ evaluation_dataset = [
                     batch_size=batch_size,
                     collate_fn=collate_fn,
                     vocab_char_map=vocab_char_map,
-                    use_input_text='phoneme'
+                    use_input_text='phoneme',
+                    remove_space=True
                     )
 ]

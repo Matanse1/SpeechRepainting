@@ -563,31 +563,127 @@ def plot_masked_melspec_and_spec_with_activity(masked_melspec, frame_mask, melsp
     
     
 # Method for creating masks for zero regions in audio signals
-def mask_time_all_frequencies_mask(mel_spec, x, y):
+def mask_time_all_frequencies_mask(mel_spec, audio, x_ratio, y_ratio, hop_length, noise_type='zeros'):
     """
-    Creates a mask for every X samples and skips Y samples along the time axis for all frequencies.
+    Creates a mask for a fraction of X_ratio of total time steps and skips Y_ratio of total time steps for both 
+    mel spectrogram and audio (time domain) signals.
     """
-    noise = torch.randn_like(mel_spec) 
-    mask = torch.ones_like(mel_spec)
-    for i in range(0, mask.shape[1], x + y):
-        mask[:, i:i + x] = 0  # Mask X samples
-    return mel_spec * mask + noise * (1 - mask), mask
+    # Mel spectrogram masking
+    length = mel_spec.shape[1]
+    if x_ratio > 1 or y_ratio > 1:
+        x = x_ratio
+        y = y_ratio
+    else:
+        x = int(x_ratio * length)
+        y = int(y_ratio * length)
 
-def mask_time_specific_frequencies_mask(mel_spec, x, y, freq_range):
+    mel_mask = torch.ones_like(mel_spec)
+    for i in range(0, length, x + y):
+        mel_mask[:, i + y:i + x + y] = 0  # Mask X samples
+
+    # Audio (time domain) masking
+    audio_length = len(audio)
+    audio_mask = torch.ones_like(audio)
+    for i in range(0, audio_length, hop_length * (x + y)):
+        audio_mask[i + hop_length * y:i + hop_length * (x + y)] = 0  # Mask X samples
+
+    # Apply noise (zeros for audio, optional for mel spectrogram)
+    if noise_type == 'randn':
+        mel_noise = torch.randn_like(mel_spec)
+    else:
+        mel_noise = noise_type * torch.ones_like(mel_spec)
+
+    audio_noise = torch.zeros_like(audio)
+
+    masked_mel_spec = mel_spec * mel_mask + mel_noise * (1 - mel_mask)
+    masked_audio = audio * audio_mask + audio_noise * (1 - audio_mask)
+
+    return masked_mel_spec, masked_audio, mel_mask, audio_mask
+
+
+def mask_time_specific_frequencies_mask(mel_spec, audio, x_ratio, y_ratio, hop_length, freq_range, noise_type='zeros'):
     """
-    Creates a mask for every X samples and skips Y samples along the time axis for specific frequencies.
-    freq_range is a tuple (start_freq, end_freq) specifying the frequency range to mask.
+    Creates a mask for a fraction of X_ratio of total time steps and skips Y_ratio of total time steps for specific frequencies 
+    and applies the same masking to both mel spectrogram and audio (time domain) signals.
     """
-    noise = torch.randn_like(mel_spec) 
-    mask = torch.ones_like(mel_spec)
-    for i in range(0, mask.shape[1], x + y):
-        for f in freq_range:
-            start_freq, end_freq = f
-            mask[start_freq:end_freq, i:i + x] = 0
-    return mel_spec * mask + noise * (1 - mask), mask
+    # Mel spectrogram masking
+    length = mel_spec.shape[1]
+    x = int(x_ratio * length)
+    y = int(y_ratio * length)
+
+    mel_mask = torch.ones_like(mel_spec)
+    for i in range(0, length, x + y):
+        for start_freq, end_freq in freq_range:
+            mel_mask[start_freq:end_freq, i:i + x] = 0  # Mask specific frequencies
+
+    # Audio (time domain) masking
+    audio_length = len(audio)
+    audio_mask = torch.ones_like(audio)
+    for i in range(0, audio_length, hop_length * (x + y)):
+        audio_mask[i + hop_length * y:i + hop_length * (x + y)] = 0  # Mask X samples
+
+    # Apply noise (zeros for audio, optional for mel spectrogram)
+    if noise_type == 'randn':
+        mel_noise = torch.randn_like(mel_spec)
+    else:
+        mel_noise = noise_type * torch.ones_like(mel_spec)
+    audio_noise = torch.zeros_like(audio)
+
+    masked_mel_spec = mel_spec * mel_mask + mel_noise * (1 - mel_mask)
+    masked_audio = audio * audio_mask + audio_noise * (1 - audio_mask)
+
+    return masked_mel_spec, masked_audio, mel_mask, audio_mask
 
 
+def mask_specific_frequencies_all_time_mask(mel_spec, audio, freq_range, noise_type='zeros'):
+    """
+    Creates a mask for specific frequency ranges for all time steps in both mel spectrogram and audio (time domain) signals.
+    """
+    mel_mask = torch.ones_like(mel_spec)
+    for start_freq, end_freq in freq_range:
+        mel_mask[start_freq:end_freq, :] = 0  # Mask the frequency bands for all time steps
+    
+    audio_mask = torch.ones_like(audio)
+    audio_mask[:] = 0  # Mask all of the audio (adjust as needed for specific logic)
 
+    # Apply noise (zeros for audio, optional for mel spectrogram)
+    if noise_type == 'randn':
+        mel_noise = torch.randn_like(mel_spec)
+    else:
+        mel_noise = noise_type * torch.ones_like(mel_spec)
+    audio_noise = torch.zeros_like(audio)
+
+    masked_mel_spec = mel_spec * mel_mask + mel_noise * (1 - mel_mask)
+    masked_audio = audio * audio_mask + audio_noise * (1 - audio_mask)
+
+    return masked_mel_spec, masked_audio, mel_mask, audio_mask
+
+
+def mask_combined_mask(mel_spec, audio, x_ratio, y_ratio, hop_length, freq_range, noise_type='zeros'):
+    """
+    Creates a combined mask for specific frequencies and periodic time masking for both mel spectrogram and audio (time domain).
+    """
+    masked_mel_spec_time, masked_audio_time, mel_mask_time, audio_mask_time = mask_time_all_frequencies_mask(
+        mel_spec, audio, x_ratio, y_ratio, hop_length, noise_type)
+    
+    masked_mel_spec_freq, masked_audio_freq, mel_mask_freq, audio_mask_freq = mask_specific_frequencies_all_time_mask(
+        mel_spec, audio, freq_range, noise_type)
+
+    combined_mel_mask = mel_mask_time * mel_mask_freq
+    combined_audio_mask = audio_mask_time * audio_mask_freq
+
+    # Apply combined masking
+    if noise_type == 'randn':
+        mel_noise = torch.randn_like(mel_spec)
+    else:
+        mel_noise = noise_type * torch.ones_like(mel_spec)
+    masked_mel_spec_combined = masked_mel_spec_time * combined_mel_mask + mel_noise * (1 - combined_mel_mask)
+    masked_audio_combined = masked_audio_time * combined_audio_mask + (torch.zeros_like(audio)) * (1 - combined_audio_mask)
+
+    return masked_mel_spec_combined, masked_audio_combined, combined_mel_mask, combined_audio_mask
+
+
+    
 def mask_with_shape_mask(mel_spec, number):
     """
     Creates a binary mask for the mel spectrogram based on a drawn number using matplotlib.
@@ -628,29 +724,3 @@ def mask_with_shape_mask(mel_spec, number):
     # Add random noise to the masked regions
     noise = torch.randn_like(mel_spec)
     return mel_spec * mask + noise * (1 - mask), mask
-
-
-
-def mask_specific_frequencies_all_time_mask(mel_spec, freq_range):
-    """
-    Creates a mask for a specific range of frequencies for all time steps.
-    freq_range is a tuple (start_freq, end_freq) specifying the frequency range to mask.
-    """
-    noise = torch.randn_like(mel_spec) 
-    mask = torch.ones_like(mel_spec)
-    for f in freq_range:
-        start_freq, end_freq = f
-        mask[start_freq:end_freq, :] = 0
-    return mel_spec * mask + noise * (1 - mask), mask
-
-
-def mask_combined_mask(mel_spec, x, y, freq_range):
-    """
-    Creates a combined mask for specific frequencies and periodic time masking.
-    """
-    noise = torch.randn_like(mel_spec) 
-    time_mask = mask_time_all_frequencies_mask(mel_spec, x, y)
-    freq_mask = mask_specific_frequencies_all_time_mask(mel_spec, freq_range)
-    mask = time_mask * freq_mask
-    return mel_spec * mask + noise * (1 - mask), mask
-    

@@ -618,11 +618,12 @@ class LibriSpeechPhoneme(Dataset):
     spectrogram, audio pair.
     """              
     def __init__(self, split, sampling_rate, csv_loc, vocab_char_map, base_data_dir, batch_size,
-                    collate_fn=collate_fn, use_input_text=False):
+                    collate_fn=collate_fn, use_input_text=False, remove_space=False):
         super(LibriSpeechPhoneme, self).__init__(batch_size=batch_size, collate_fn=collate_fn)
         split = split.capitalize()
         self.base_data_dir = base_data_dir
         self.use_input_text = use_input_text
+        self.remove_space = remove_space
         self.test = True if split=='Test' else False
         # seed = 1234
         # set_seed(seed)
@@ -657,6 +658,8 @@ class LibriSpeechPhoneme(Dataset):
                 input_text = pickle.load(file)  # Load the phoneme sequence from the file
                 if input_text[-1] == 'space':
                     input_text = input_text[:-1]
+                if self.remove_space:
+                    input_text = [x for x in input_text if x != 'space']
             input_text_tensor = list_str_to_idx([input_text], self.vocab_char_map)[0]
         elif self.use_input_text == 'text':
             lab_path = audio_path.with_suffix('.lab')

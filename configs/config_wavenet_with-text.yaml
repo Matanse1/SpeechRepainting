@@ -1,7 +1,7 @@
 
 g_model:
-  null_type: 'zeros' # randn, learn, zeros
-melgen: dit #unet, wavenet
+  null_type: 'randn' # randn, learn, zeros
+melgen: wavenet #unet, wavenet
 wavenet:
   _name_: wavenet
   in_channels: 80
@@ -17,7 +17,7 @@ wavenet:
   cond_feat_size: 80
   unconditional: False
   text_embed_prop: 
-    use_text_embed_rep: True
+    use_text_embed_rep: False
     dim: 64
     text_dim: 512
     conv_layers: 4
@@ -26,7 +26,7 @@ wavenet:
     tokenizer: 'phoneme' #phoneme
     tokenizer_path: /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json # none #  /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json
   wavlm:
-    use_wavlm_rep: False
+    use_wavlm_rep: True
     use_weighted_sum_wavlm: True # if False use the last hidden states
     use_all_hidden_states: True
     specific_indices:
@@ -98,17 +98,6 @@ dit:
     text_num_embeds: 256
     tokenizer: phoneme #'byte' #phoneme
     tokenizer_path: /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json #none #  /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json
-  tts_kw:
-    use_tts: False
-      filter_length: 1024
-      hop_length: 256
-      win_length: 1024
-      n_mel_channels: 80
-      sampling_rate: 16000
-      mel_fmin: 0.0
-      mel_fmax: 8000.0
-      style_speech_ch_path: /dsi/gannot-lab1/users/mordehay/style-speech_weights/stylespeech.pth.tar
-      style_speech_config_path: /dsi/gannot-lab1/users/mordehay/style-speech_weights/config.json
 
 
 diffusion:
@@ -166,7 +155,6 @@ dataset:
     audio_stft_hop: ${audio.hop_length}
     num4empty_str: 0 #or -12, 0, min, randn
     use_input_text: phoneme # text (for byte), none, phoneme (for phoneme)
-    remove_space: False
   explosion_speech_inpainting:
     base_data_dir: /dsi/gannot-lab1/datasets/speech_with_explosions
     sampling_rate: ${audio.sampling_rate}
@@ -222,25 +210,23 @@ generate:
   n_samples: 2        # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
   n_samples_test: 10 #1000 # used in full inference mel only
   video_path: null      # generate audio for a given silent video file
-  skip_step: 1
-  w_mel_cond: [0.5, 2, 3]            # w1 in the paper
-  w_asr: [0.8, 1, 1.2] #1.5            # w2 in the paper
-  asr_start: [320, 270] #270        # t_asr
+  w_mel_cond: [2]            # w1 in the paper
+  w_asr: [0.8] #1.5            # w2 in the paper
+  asr_start: [320] #270        # t_asr
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02 #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
-  inference_mel_only_name_dir: repeat_all_freq-length=100_skip=150_cp=76000_mel_text=True_withoutLM_asr #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
+  inference_mel_only_name_dir: gap-as-train_cp=76000_mel_text=True_withoutLM_phoneme-with-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
   without_condtion: False
   config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
   apply_asr_guidance: True
-  type_input_guidance: 'text' # text , phoneme
+  type_input_guidance: 'phoneme' # text , phoneme
   lipread_text_dir: null # directory with predicted text for generating test samples of benchmark dataset 
   on_masked_melspec: True # whether to input the model the masked noisy melspec or noisy melspec(in inference only)
   mel_text: True # or masked_text
   mask_info:
-    mask_type: repeat_all_freq
-    noise_type: 0 # randn
+    mask_type: none
     repeat_all_freq:
-      length: 100
-      skip: 150
+      length: 5
+      skip: 20
     repeat_specific_freq:
       length: 15
       skip: 30

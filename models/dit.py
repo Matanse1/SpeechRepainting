@@ -13,7 +13,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 import torch.nn.functional as F
-
+from dataloaders.stft import TacotronSTFT
 from x_transformers.x_transformers import RotaryEmbedding
 from models import utils
 from models.modules import (
@@ -107,6 +107,42 @@ class InputEmbedding1(nn.Module):
 
 
 
+class StyleSpeechWrapper(nn.Module):
+    def __init__(self, , tts_kw):
+        super().__init__()
+        _stft = TacotronSTFT(
+                tts_kw.filter_length,
+                tts_kw.hop_length,
+                tts_kw.win_length,
+                tts_kw.n_mel_channels,
+                tts_kw.sampling_rate,
+                tts_kw.mel_fmin,
+                tts_kw.mel_fmax)
+        style_speech_ch_path = tts_kw["style_speech_ch_path"]
+        style_speech_config_path = tts_kw["style_speech_config_path"]
+        self.style_speech = style_speech
+        # preprocess audio and text
+        ref_mel = preprocess_audio(args.ref_audio, _stft).transpose(0,1).unsqueeze(0)
+        src = preprocess_english(args.text, args.lexicon_path).unsqueeze(0)
+        src_len = torch.from_numpy(np.array([src.shape[1]])).to(device=device)
+        
+        save_path = args.save_path
+        if not os.path.exists(save_path):
+            os.makedirs(save_path, exist_ok=True)
+
+        # Extract style vector
+        style_vector = model.get_style_vector(ref_mel)
+
+        # Forward
+        masked_frame_number = ref_mel.shape[-2]
+        mel_output = model.inference(style_vector, src, src_len, masked_frame_number=None)[0]
+        
+        mel_ref_ = ref_mel.cpu().squeeze().transpose(0, 1).detach()
+        mel_ = mel_output.cpu().squeeze().transpose(0, 1).detach()
+
+    def forward(self, phoneme_seq_ints, masked_audio_time):
+        return self.style_speech(x, t)
+
 # Transformer backbone using DiT blocks
 
 @utils.register_model(name='dit')
@@ -125,10 +161,12 @@ class DiT(nn.Module):
         checkpoint_activations=False,
         text_embed_prop=None,
         unconditional=False,
+        use_tts=False,
     ):
         super().__init__()
         self.unconditional = unconditional
         self.text_embed_prop = text_embed_prop
+        self.use_tts = use_tts
         self.use_text_embed_rep = self.text_embed_prop["use_text_embed_rep"]
         if self.unconditional is False:
             if self.use_text_embed_rep:
@@ -162,6 +200,10 @@ class DiT(nn.Module):
         self.proj_out = nn.Linear(dim, mel_dim)
 
         self.checkpoint_activations = checkpoint_activations
+        if use_tts:
+            self.style_speech_tts
+            
+        
 
     def ckpt_wrapper(self, module):
         # https://github.com/chuanyangjin/fast-DiT/blob/main/models.py
