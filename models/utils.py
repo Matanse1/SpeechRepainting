@@ -4,7 +4,8 @@ import torch
 import json
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
-
+from StyleSpeech.models.StyleSpeech import StyleSpeech
+from StyleSpeech.text import text_to_sequence
 
 _MODELS = {}
 
@@ -188,12 +189,26 @@ def list_str_to_idx(
     list_idx_tensors = [torch.tensor([vocab_char_map.get(c, 0) for c in t]) for t in text] 
     text = pad_sequence(list_idx_tensors, padding_value=padding_value, batch_first=True)
     return text
-    
+
+def list_str_to_idx_tts(
+    text: list[str] | list[list[str]],
+    padding_value=0,
+) -> int["b nt"]:  # noqa: F722
+
+    list_idx_tensors = [torch.tensor(text_to_sequence("{" + " ".join(t) + "}", [])) for t in text] 
+    src_length = torch.tensor([t.shape[-1] for t in list_idx_tensors])
+    text = pad_sequence(list_idx_tensors, padding_value=padding_value, batch_first=True)
+    return text, src_length
   
 def get_StyleSpeech(config, checkpoint_path):
-    
     model = StyleSpeech(config)
-    model.load_state_dict(torch.load(checkpoint_path)['model'])
+    state_dict = torch.load(checkpoint_path)['model']
+    keys_to_remove = ['encoder.position_enc', 'variance_adaptor.length_regulator.position_enc', 'decoder.position_enc'] # in my case the audio can be much longer than 1000 frames, so i dont wwant each batch the position encoding to be created again
+    for key in keys_to_remove:
+        if key in state_dict:
+            del state_dict[key]
+    model.load_state_dict(state_dict, strict=False)
+    # model.load_state_dict(torch.load(checkpoint_path)['model'], strict=False)
     model.eval()
     num_params = sum(p.numel() for p in model.parameters())
     print(f'Total number of parameters: {num_params}')

@@ -1,6 +1,6 @@
-import models.Constants
-import models.Modules
-import models.StyleSpeech
-import models.VarianceAdaptor
-import models.Discriminators
-import models.Loss
+from . import Constants
+from . import Modules
+from . import StyleSpeech
+from . import VarianceAdaptor
+from . import Discriminators
+from . import Loss

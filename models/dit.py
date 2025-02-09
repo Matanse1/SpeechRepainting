@@ -25,7 +25,7 @@ from models.modules import (
     precompute_freqs_cis,
     get_pos_embed_indices,
 )
-from models.utils import print_modle_size, WeightedSum, get_tokenizer, list_str_to_tensor, list_str_to_idx
+from models.utils import print_modle_size, WeightedSum, get_tokenizer, list_str_to_tensor, list_str_to_idx, list_str_to_idx_tts, get_StyleSpeech
 
 # Text embedding
 
@@ -105,12 +105,23 @@ class InputEmbedding1(nn.Module):
         x = self.conv_pos_embed(x) + x
         return x
 
+class CrossAttention(nn.Module):
+    def __init__(self, embed_dim, num_heads=8):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
 
+    def forward(self, noisy_feats, clean_feats):
+        """
+        noisy_feats: (B, T1, D) - Noisy Mel embeddings (Queries)
+        clean_feats: (B, T2, D) - Clean Mel embeddings (Keys, Values)
+        """
+        attn_output, _ = self.attn(noisy_feats, clean_feats, clean_feats)
+        return attn_output
 
 class StyleSpeechWrapper(nn.Module):
-    def __init__(self, , tts_kw):
+    def __init__(self, tts_kw):
         super().__init__()
-        _stft = TacotronSTFT(
+        self.stft = TacotronSTFT(
                 tts_kw.filter_length,
                 tts_kw.hop_length,
                 tts_kw.win_length,
@@ -118,30 +129,46 @@ class StyleSpeechWrapper(nn.Module):
                 tts_kw.sampling_rate,
                 tts_kw.mel_fmin,
                 tts_kw.mel_fmax)
+        self.filter_length = tts_kw.filter_length
+        self.hop_length = tts_kw.hop_length
         style_speech_ch_path = tts_kw["style_speech_ch_path"]
         style_speech_config_path = tts_kw["style_speech_config_path"]
-        self.style_speech = style_speech
-        # preprocess audio and text
-        ref_mel = preprocess_audio(args.ref_audio, _stft).transpose(0,1).unsqueeze(0)
-        src = preprocess_english(args.text, args.lexicon_path).unsqueeze(0)
-        src_len = torch.from_numpy(np.array([src.shape[1]])).to(device=device)
+        self.style_speech_model = get_StyleSpeech(style_speech_ch_path, style_speech_config_path)
+
+
+        self.encoder_noisy = nn.Conv1d(tts_kw.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
+        self.encoder_clean = nn.Conv1d(tts_kw.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
+        self.cross_attention = CrossAttention(tts_kw.embed_dim, tts_kw.num_heads)
+
+    def forward(self, masked_audio_time, input_text, noisy_mel, mask_padding_time):
+        """_summary_
+
+        Args:
+            masked_audio_time (_type_): _description_
+            input_text (_type_): _description_
+            noisy_mel (_type_): [B, T, F]
+            mask_padding_time (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        length_masked_time = torch.sum(mask_padding_time, dim=-1)
+        num_frames = length_masked_time + 2 * self.filter_length // self.hop_length #[B, R] where is the number of frames in the ref_masked_mel
+        device = masked_audio_time.device
+        input_text, phoneme_length = list_str_to_idx_tts(input_text) # already padded with zeros (zero = '_')
+        input_text = input_text.to(device)
+        phoneme_length = phoneme_length.to(device)
+        ref_masked_mel = self.stft(masked_audio_time)
+         # Extract style vector
+        style_vector = self.style_speech_model.get_style_vector(ref_masked_mel, mel_len=num_frames) # the input ref_masked_mel is [B, T, F]
+        mel_output = self.style_speech_model.inference(style_vector, input_text, phoneme_length, masked_frame_number=None)[0]
         
-        save_path = args.save_path
-        if not os.path.exists(save_path):
-            os.makedirs(save_path, exist_ok=True)
+        noisy_feats = self.encoder_noisy(noisy_mel).transpose(1, 2)  # (B, T1, D)
+        mel_output = self.encoder_clean(mel_output).transpose(1, 2)  # (B, T2, D)
 
-        # Extract style vector
-        style_vector = model.get_style_vector(ref_mel)
-
-        # Forward
-        masked_frame_number = ref_mel.shape[-2]
-        mel_output = model.inference(style_vector, src, src_len, masked_frame_number=None)[0]
-        
-        mel_ref_ = ref_mel.cpu().squeeze().transpose(0, 1).detach()
-        mel_ = mel_output.cpu().squeeze().transpose(0, 1).detach()
-
-    def forward(self, phoneme_seq_ints, masked_audio_time):
-        return self.style_speech(x, t)
+        # Apply Cross-Attention once at the input
+        combined_feats = self.cross_attention(noisy_feats, mel_output)  # (B, T1, D)
+        return combined_feats
 
 # Transformer backbone using DiT blocks
 
@@ -161,15 +188,17 @@ class DiT(nn.Module):
         checkpoint_activations=False,
         text_embed_prop=None,
         unconditional=False,
-        use_tts=False,
+        tts_kw=None,
     ):
         super().__init__()
         self.unconditional = unconditional
         self.text_embed_prop = text_embed_prop
-        self.use_tts = use_tts
+        self.use_tts = tts_kw["use_tts"]
         self.use_text_embed_rep = self.text_embed_prop["use_text_embed_rep"]
         if self.unconditional is False:
-            if self.use_text_embed_rep:
+            if self.use_tts:
+                self.sp_tts = StyleSpeechWrapper(tts_kw)
+            elif self.use_text_embed_rep:
                 if self.text_embed_prop["text_dim"] is None:
                     text_dim = mel_dim
                 else:
@@ -200,8 +229,6 @@ class DiT(nn.Module):
         self.proj_out = nn.Linear(dim, mel_dim)
 
         self.checkpoint_activations = checkpoint_activations
-        if use_tts:
-            self.style_speech_tts
             
         
 
@@ -243,7 +270,10 @@ class DiT(nn.Module):
         t = self.time_embed(time)
         # t: conditioning time, c: context (text + masked cond audio), x: noised input audio
         if self.unconditional is False:
-            if self.use_text_embed_rep:
+            if self.use_tts:
+                x = self.sp_tts(masked_audio_time, input_text, x, mask_padding_time)
+
+            elif self.use_text_embed_rep:
                 if self.vocab_char_map is not None:
                     input_text = list_str_to_idx(input_text, self.vocab_char_map).to(device)
                 else:

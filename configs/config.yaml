@@ -100,15 +100,15 @@ dit:
     tokenizer_path: /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json #none #  /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json
   tts_kw:
     use_tts: False
-      filter_length: 1024
-      hop_length: 256
-      win_length: 1024
-      n_mel_channels: 80
-      sampling_rate: 16000
-      mel_fmin: 0.0
-      mel_fmax: 8000.0
-      style_speech_ch_path: /dsi/gannot-lab1/users/mordehay/style-speech_weights/stylespeech.pth.tar
-      style_speech_config_path: /dsi/gannot-lab1/users/mordehay/style-speech_weights/config.json
+    filter_length: 1024
+    hop_length: 256
+    win_length: 1024
+    n_mel_channels: 80
+    sampling_rate: 16000
+    mel_fmin: 0.0
+    mel_fmax: 8000.0
+    style_speech_ch_path: /dsi/gannot-lab1/users/mordehay/style-speech_weights/stylespeech.pth.tar
+    style_speech_config_path: /dsi/gannot-lab1/users/mordehay/style-speech_weights/config.json
 
 
 diffusion:

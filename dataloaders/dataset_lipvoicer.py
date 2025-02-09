@@ -27,7 +27,7 @@ import ast
 from torchaudio.transforms import Resample
 from dataloaders.wav2mel import STFT, load_wav_to_torch
 from collections import Counter
-
+from StyleSpeech.text import text_to_sequence
 def set_seed(seed):
     # Set the seed for Python's built-in random module
     random.seed(seed)
@@ -456,7 +456,7 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
     """
     def __init__(self, split, sampling_rate, csv_loc, min_block_size, max_block_size, min_spacing,
                  audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties, return_target_time=False,
-                 return_true_text=False, use_input_text=False, remove_space=False):
+                 return_true_text=False, use_input_text=False, remove_space=False, use_tts=False):
         split = split.capitalize()
         self.return_target_time = return_target_time
         self.return_mask_properties = return_mask_properties
@@ -471,6 +471,7 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
         self.return_true_text = return_true_text
         self.use_input_text = use_input_text
         self.remove_space = remove_space
+        self.use_tts = use_tts
         try:
             float(num4empty_str)
             is_number = True  # Conversion succeeded, it's a number
@@ -524,6 +525,9 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
                     input_text = list(filter(lambda x: x != 'spn', input_text))
                 if self.remove_space:
                     input_text = [x for x in input_text if x != 'space'] # for example for stype_speech tts the phoneme does not contain space
+                if self.use_tts:
+                    phoneme_string = "{" + " ".join(input_text) + "}"
+                    tts_phoneme_input = text_to_sequence(phoneme_string, []) 
         elif self.use_input_text == 'text':
             lab_path = audio_path.with_suffix('.lab')
             # Read and return the content of the .lab file
