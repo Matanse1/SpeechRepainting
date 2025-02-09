@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from text.symbols import symbols
-import models.Constants as Constants
-from models.Modules import Mish, LinearNorm, ConvNorm, Conv1dGLU, \
+from StyleSpeech.text.symbols import symbols
+import StyleSpeech.models.Constants as Constants
+from StyleSpeech.models.Modules import Mish, LinearNorm, ConvNorm, Conv1dGLU, \
                     MultiHeadAttention, StyleAdaptiveLayerNorm, get_sinusoid_encoding_table
-from models.VarianceAdaptor import VarianceAdaptor
-from models.Loss import StyleSpeechLoss
-from utils import get_mask_from_lengths
+from StyleSpeech.models.VarianceAdaptor import VarianceAdaptor
+from StyleSpeech.models.Loss import StyleSpeechLoss
+from StyleSpeech.utils import get_mask_from_lengths
 
 
 class StyleSpeech(nn.Module):

@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 from StyleSpeech.models.StyleSpeech import StyleSpeech
 from StyleSpeech.text import text_to_sequence
-
+from StyleSpeech import utils 
 _MODELS = {}
 
 
@@ -200,7 +200,11 @@ def list_str_to_idx_tts(
     text = pad_sequence(list_idx_tensors, padding_value=padding_value, batch_first=True)
     return text, src_length
   
-def get_StyleSpeech(config, checkpoint_path):
+def get_StyleSpeech(config_path, checkpoint_path):
+    with open(config_path) as f:
+        data = f.read()
+    json_config = json.loads(data)
+    config = utils.AttrDict(json_config)
     model = StyleSpeech(config)
     state_dict = torch.load(checkpoint_path)['model']
     keys_to_remove = ['encoder.position_enc', 'variance_adaptor.length_regulator.position_enc', 'decoder.position_enc'] # in my case the audio can be much longer than 1000 frames, so i dont wwant each batch the position encoding to be created again

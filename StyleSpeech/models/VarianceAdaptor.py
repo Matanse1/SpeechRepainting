@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from models.Modules import LinearNorm, ConvNorm, get_sinusoid_encoding_table
-import utils
+from StyleSpeech.models.Modules import LinearNorm, ConvNorm, get_sinusoid_encoding_table
+import StyleSpeech.utils as utils
 
 
 class VarianceAdaptor(nn.Module):

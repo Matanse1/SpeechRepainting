@@ -3,7 +3,7 @@
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,2,4,5,7'
+os.environ['CUDA_VISIBLE_DEVICES'] = '6'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -117,7 +117,7 @@ def train(
         inputs_params = [{"axis": 0, "end_number": 0, 'max_length':max_num_frame}, {"axis": 1, "end_number": 0, 'max_length':max_num_frame},
                                             {"axis": 3, "end_number": 1, 'max_length':max_num_frame},
                                             {"axis": 2, "end_number": 0, 'max_length':time_samples}, {"axis": 4, "text":True}]
-        if model_cfg.text_embed_prop.use_text_embed_rep:
+        if model_cfg.text_embed_prop.use_text_embed_rep or model_cfg.tts_kw.use_tts:
             inputs_params.append({"axis": 5, "text":True})
             #melspec, masked_melspec, masked_audio_time, mask, text, input_text
         collate_fn = CollateFn(inputs_params=inputs_params,
@@ -205,7 +205,7 @@ def train(
                 #     masked_cond[i] = masked_cond[i].cuda()
             elif dataset_type == 'speech_inpainting_anechoic':
                 data_list, mask_list = data["inputs"]
-                if model_cfg.text_embed_prop.use_text_embed_rep:
+                if model_cfg.text_embed_prop.use_text_embed_rep or model_cfg.tts_kw.use_tts:
                     input_text = data_list[5]
                 text = data_list[4]
                 melspec, masked_melspec, mask, masked_audio_time = data_list[0].cuda(), data_list[1].cuda(), data_list[2].cuda(), data_list[3].cuda()
@@ -308,7 +308,7 @@ def train(
                     mask_mask = frame_mask_mask
                 elif dataset_type == 'speech_inpainting_anechoic':
                     data_list, mask_list = data["inputs"]
-                    if model_cfg.text_embed_prop.use_text_embed_rep:
+                    if model_cfg.text_embed_prop.use_text_embed_rep or model_cfg.tts_kw.use_tts:
                         input_text = data_list[5]
                     text = data_list[4]
                     melspec, masked_melspec, mask, masked_audio_time = data_list[0].cuda(), data_list[1].cuda(), data_list[2].cuda(), data_list[3].cuda()

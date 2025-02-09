@@ -156,7 +156,7 @@ def generate(
             _masked_cond = [_masked_cond[i].unsqueeze(0).cuda() for i in range(len(_masked_cond))]
         elif dataset_cfg.dataset_type == 'speech_inpainting_anechoic':
         #melspec, masked_melspec, mask, masked_audio_time
-            if model_cfg.text_embed_prop.use_text_embed_rep:
+            if model_cfg.text_embed_prop.use_text_embed_rep or model_cfg.tts_kw.use_tts:
                 _gt_melspec, masked_melspec, masked_audio_time, _mask, text, input_text = dataset[i]
                 input_text = [input_text]
             else:

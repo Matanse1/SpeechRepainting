@@ -133,7 +133,7 @@ class StyleSpeechWrapper(nn.Module):
         self.hop_length = tts_kw.hop_length
         style_speech_ch_path = tts_kw["style_speech_ch_path"]
         style_speech_config_path = tts_kw["style_speech_config_path"]
-        self.style_speech_model = get_StyleSpeech(style_speech_ch_path, style_speech_config_path)
+        self.style_speech_model = get_StyleSpeech(style_speech_config_path, style_speech_ch_path)
 
 
         self.encoder_noisy = nn.Conv1d(tts_kw.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
@@ -152,19 +152,19 @@ class StyleSpeechWrapper(nn.Module):
         Returns:
             _type_: _description_
         """
-        length_masked_time = torch.sum(mask_padding_time, dim=-1)
-        num_frames = length_masked_time + 2 * self.filter_length // self.hop_length #[B, R] where is the number of frames in the ref_masked_mel
+        length_masked_time = torch.sum(mask_padding_time, dim=-1, dtype=torch.int32)
+        num_frames = (length_masked_time + 2 * self.filter_length) // self.hop_length #[B, R] where is the number of frames in the ref_masked_mel
         device = masked_audio_time.device
         input_text, phoneme_length = list_str_to_idx_tts(input_text) # already padded with zeros (zero = '_')
         input_text = input_text.to(device)
         phoneme_length = phoneme_length.to(device)
-        ref_masked_mel = self.stft(masked_audio_time)
+        ref_masked_mel = self.stft.mel_spectrogram(masked_audio_time)
          # Extract style vector
-        style_vector = self.style_speech_model.get_style_vector(ref_masked_mel, mel_len=num_frames) # the input ref_masked_mel is [B, T, F]
-        mel_output = self.style_speech_model.inference(style_vector, input_text, phoneme_length, masked_frame_number=None)[0]
+        style_vector = self.style_speech_model.get_style_vector(ref_masked_mel.transpose(1, 2), mel_len=num_frames) # the input ref_masked_mel is [B, T, F]
+        mel_output = self.style_speech_model.inference(style_vector, input_text, phoneme_length, masked_frame_number=None)[0] # [B, T, F]
         
-        noisy_feats = self.encoder_noisy(noisy_mel).transpose(1, 2)  # (B, T1, D)
-        mel_output = self.encoder_clean(mel_output).transpose(1, 2)  # (B, T2, D)
+        noisy_feats = self.encoder_noisy(noisy_mel.transpose(1, 2)).transpose(1, 2)  # (B, T1, D)
+        mel_output = self.encoder_clean(mel_output.transpose(1, 2)).transpose(1, 2)  # (B, T2, D)
 
         # Apply Cross-Attention once at the input
         combined_feats = self.cross_attention(noisy_feats, mel_output)  # (B, T1, D)
