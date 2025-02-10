@@ -525,9 +525,6 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
                     input_text = list(filter(lambda x: x != 'spn', input_text))
                 if self.remove_space:
                     input_text = [x for x in input_text if x != 'space'] # for example for stype_speech tts the phoneme does not contain space
-                if self.use_tts:
-                    phoneme_string = "{" + " ".join(input_text) + "}"
-                    tts_phoneme_input = text_to_sequence(phoneme_string, []) 
         elif self.use_input_text == 'text':
             lab_path = audio_path.with_suffix('.lab')
             # Read and return the content of the .lab file

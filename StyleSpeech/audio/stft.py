@@ -7,15 +7,14 @@ from scipy.signal import get_window
 from librosa.util import pad_center, tiny
 from librosa.filters import mel as librosa_mel_fn
 import librosa
-from audio.audio_processing import dynamic_range_compression
-from audio.audio_processing import dynamic_range_decompression
-from audio.audio_processing import window_sumsquare
+from StyleSpeech.audio.audio_processing import dynamic_range_compression
+from StyleSpeech.audio.audio_processing import dynamic_range_decompression
+from StyleSpeech.audio.audio_processing import window_sumsquare
 
 
 class STFT(torch.nn.Module):
     """adapted from Prem Seetharaman's https://github.com/pseeth/pytorch-stft"""
-
-    def __init__(self, filter_length, hop_length, win_length,
+    def __init__(self, filter_length=800, hop_length=200, win_length=800,
                  window='hann'):
         super(STFT, self).__init__()
         self.filter_length = filter_length
@@ -38,7 +37,7 @@ class STFT(torch.nn.Module):
             assert(filter_length >= win_length)
             # get window and zero center pad it to filter_length
             fft_window = get_window(window, win_length, fftbins=True)
-            fft_window = pad_center(fft_window, size=filter_length)
+            fft_window = librosa.util.pad_center(fft_window, size=filter_length)
             fft_window = torch.from_numpy(fft_window).float()
 
             # window the bases
@@ -63,10 +62,10 @@ class STFT(torch.nn.Module):
         input_data = input_data.squeeze(1)
 
         forward_transform = F.conv1d(
-            input_data.cuda(),
-            Variable(self.forward_basis, requires_grad=False).cuda(),
+            input_data,
+            self.forward_basis, # requires_grad=False,
             stride=self.hop_length,
-            padding=0).cpu()
+            padding=0)
 
         cutoff = int((self.filter_length / 2) + 1)
         real_part = forward_transform[:, :cutoff, :]
@@ -95,19 +94,17 @@ class STFT(torch.nn.Module):
                 dtype=np.float32)
             # remove modulation effects
             approx_nonzero_indices = torch.from_numpy(
-                np.where(window_sum > tiny(window_sum))[0])
+                np.where(window_sum > librosa.util.tiny(window_sum))[0])
             window_sum = torch.autograd.Variable(
                 torch.from_numpy(window_sum), requires_grad=False)
             window_sum = window_sum.cuda() if magnitude.is_cuda else window_sum
-            inverse_transform[:, :,
-                              approx_nonzero_indices] /= window_sum[approx_nonzero_indices]
+            inverse_transform[:, :, approx_nonzero_indices] /= window_sum[approx_nonzero_indices]
 
             # scale by hop ratio
             inverse_transform *= float(self.filter_length) / self.hop_length
 
         inverse_transform = inverse_transform[:, :, int(self.filter_length/2):]
-        inverse_transform = inverse_transform[:,
-                                              :, :-int(self.filter_length/2):]
+        inverse_transform = inverse_transform[:, :, :-int(self.filter_length/2):]
 
         return inverse_transform
 
@@ -116,10 +113,9 @@ class STFT(torch.nn.Module):
         reconstruction = self.inverse(self.magnitude, self.phase)
         return reconstruction
 
-
 class TacotronSTFT(torch.nn.Module):
-    def __init__(self, filter_length, hop_length, win_length,
-                 n_mel_channels, sampling_rate, mel_fmin=0.0,
+    def __init__(self, filter_length=1024, hop_length=256, win_length=1024,
+                 n_mel_channels=80, sampling_rate=22050, mel_fmin=0.0,
                  mel_fmax=8000.0):
         super(TacotronSTFT, self).__init__()
         self.n_mel_channels = n_mel_channels
@@ -161,5 +157,4 @@ class TacotronSTFT(torch.nn.Module):
         mel_output = torch.matmul(self.mel_basis, magnitudes)
         mel_output = self.spectral_normalize(mel_output)
         energy = torch.norm(magnitudes, dim=1)
-         
         return mel_output, energy

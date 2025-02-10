@@ -70,7 +70,7 @@ class StyleSpeech(nn.Module):
         return mel_output, src_embedded, d_prediction, p_prediction, e_prediction, src_mask, mel_mask, mel_len
 
     def get_style_vector(self, mel_target, mel_len=None):
-        mel_mask = get_mask_from_lengths(mel_len) if mel_len is not None else None
+        mel_mask = get_mask_from_lengths(mel_len, max_len=mel_target.shape[-2]) if mel_len is not None else None
         style_vector = self.style_encoder(mel_target, mel_mask)
 
         return style_vector

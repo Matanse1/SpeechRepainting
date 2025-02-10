@@ -168,7 +168,7 @@ dataset:
     audio_stft_hop: ${audio.hop_length}
     num4empty_str: 0 #or -12, 0, min, randn
     use_input_text: phoneme # text (for byte), none, phoneme (for phoneme)
-    remove_space: False
+    remove_space: True
   explosion_speech_inpainting:
     base_data_dir: /dsi/gannot-lab1/datasets/speech_with_explosions
     sampling_rate: ${audio.sampling_rate}

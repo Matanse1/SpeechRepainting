@@ -96,8 +96,8 @@ def train(
     diffusion_hyperparams = get_diffusion_hyperparams(diffusion_cfg)
     # load training data
         # load training data
-    max_num_frame = 1701
-    time_samples = 16000 * 17
+    max_num_frame = 1701 #989 # 1701
+    time_samples = 16000 * 17#251200 # 16000 * 17
     if model_cfg._name_ == 'unet':
         new_max_num_frame = fix_len_compatibility(max_num_frame)
         time_samples = time_samples + (new_max_num_frame - max_num_frame) * dataset_cfg[dataset_type]["audio_stft_hop"]
@@ -360,7 +360,7 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion
         transformed_X = melspec * torch.unsqueeze(mask, dim=1) + transformed_X * (1-torch.unsqueeze(mask, dim=1))
     else:
         transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
-    cond_drop_prob = 0.2
+    cond_drop_prob = 0.0 # 0.2
     epsilon_theta = net(transformed_X, masked_cond, diffusion_steps.view(B,1), cond_drop_prob, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask, mask_padding_frames=mask_mask)
     loss = loss_fn(epsilon_theta, z) #[B, F, T]    
     loss = loss * mask_mask

@@ -13,7 +13,8 @@ from __future__ import annotations
 import torch
 from torch import nn
 import torch.nn.functional as F
-from dataloaders.stft import TacotronSTFT
+from StyleSpeech.audio.stft import TacotronSTFT
+# from dataloaders.stft import TacotronSTFT
 from x_transformers.x_transformers import RotaryEmbedding
 from models import utils
 from models.modules import (
@@ -109,14 +110,48 @@ class CrossAttention(nn.Module):
     def __init__(self, embed_dim, num_heads=8):
         super().__init__()
         self.attn = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
-
-    def forward(self, noisy_feats, clean_feats):
+    
+    def create_padding_mask(self, max_len, actual_lengths):
         """
-        noisy_feats: (B, T1, D) - Noisy Mel embeddings (Queries)
-        clean_feats: (B, T2, D) - Clean Mel embeddings (Keys, Values)
+        Creates attention padding mask
+        Args:
+            max_len: Maximum length in the batch
+            actual_lengths: List/tensor of actual sequence lengths
+        Returns:
+            mask: Boolean mask with False at valid positions and True at padding positions
         """
-        attn_output, _ = self.attn(noisy_feats, clean_feats, clean_feats)
-        return attn_output
+        batch_size = len(actual_lengths)
+        mask = torch.arange(max_len)[None, :] >= actual_lengths[:, None]  # [B, max_len]
+        return mask
+    
+    def forward(self, noisy_feats, clean_feats, noisy_lengths, clean_lengths):
+        """
+        Args:
+            noisy_feats: (B, T1, D) - Noisy Mel embeddings (Queries)
+            clean_feats: (B, T2, D) - Clean Mel embeddings (Keys, Values)
+            noisy_lengths: List[int] - Actual lengths of noisy sequences
+            clean_lengths: List[int] - Actual lengths of clean sequences
+        """
+        # Create masks for both sequences
+        noisy_key_padding_mask = self.create_padding_mask(noisy_feats.size(1), noisy_lengths)  # [B, T1]
+        clean_key_padding_mask = self.create_padding_mask(clean_feats.size(1), clean_lengths)  # [B, T2]
+        
+        # The attn_mask should be of shape (T1, T2)
+        # We don't need to create it as we only want to mask padding tokens
+        
+        attn_output, attn_weights = self.attn(
+            noisy_feats,  # queries
+            clean_feats,  # keys
+            clean_feats,  # values
+            key_padding_mask=clean_key_padding_mask,  # mask for keys/values (clean)
+            need_weights=True
+        )
+        
+        # Apply query mask after attention (zero out padding positions in output)
+        noisy_mask = ~noisy_key_padding_mask.unsqueeze(-1)  # [B, T1, 1]
+        attn_output = attn_output * noisy_mask
+        
+        return attn_output, attn_weights
 
 class StyleSpeechWrapper(nn.Module):
     def __init__(self, tts_kw):
@@ -153,16 +188,18 @@ class StyleSpeechWrapper(nn.Module):
             _type_: _description_
         """
         length_masked_time = torch.sum(mask_padding_time, dim=-1, dtype=torch.int32)
-        num_frames = (length_masked_time + 2 * self.filter_length) // self.hop_length #[B, R] where is the number of frames in the ref_masked_mel
+        num_frames = (length_masked_time) // self.hop_length + 1 #[B, R] where is the number of frames in the ref_masked_mel
         device = masked_audio_time.device
         input_text, phoneme_length = list_str_to_idx_tts(input_text) # already padded with zeros (zero = '_')
         input_text = input_text.to(device)
         phoneme_length = phoneme_length.to(device)
-        ref_masked_mel = self.stft.mel_spectrogram(masked_audio_time)
+        ref_masked_mel, _ = self.stft.mel_spectrogram(masked_audio_time) #[B, F, T]
          # Extract style vector
-        style_vector = self.style_speech_model.get_style_vector(ref_masked_mel.transpose(1, 2), mel_len=num_frames) # the input ref_masked_mel is [B, T, F]
+        style_vector = self.style_speech_model.get_style_vector(ref_masked_mel.transpose(1, 2), mel_len=num_frames) # the input ref_masked_mel is [B, T, F], style_vector shape is [B, D=128]
         mel_output = self.style_speech_model.inference(style_vector, input_text, phoneme_length, masked_frame_number=None)[0] # [B, T, F]
-        
+        # from StypleSpeech import utils
+        # utils.plot_data([mel_output[0].transpose(1,0).cpu().numpy()], 
+        #     ['Ref Spectrogram'], filename='/home/dsi/moradim/SpeechRepainting/plot.png')
         noisy_feats = self.encoder_noisy(noisy_mel.transpose(1, 2)).transpose(1, 2)  # (B, T1, D)
         mel_output = self.encoder_clean(mel_output.transpose(1, 2)).transpose(1, 2)  # (B, T2, D)
 
@@ -271,7 +308,8 @@ class DiT(nn.Module):
         # t: conditioning time, c: context (text + masked cond audio), x: noised input audio
         if self.unconditional is False:
             if self.use_tts:
-                x = self.sp_tts(masked_audio_time, input_text, x, mask_padding_time)
+                with torch.no_grad():
+                    x = self.sp_tts(masked_audio_time, input_text, x, mask_padding_time)
 
             elif self.use_text_embed_rep:
                 if self.vocab_char_map is not None:
