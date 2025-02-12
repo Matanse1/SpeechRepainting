@@ -1,8 +1,11 @@
 import os
 import argparse
 import random
-import preprocessors.libritts as libritts
-
+import sys
+sys.path.append('/home/dsi/moradim/SpeechRepainting/')
+from preprocessors.libritts import Preprocessor
+import json
+from pathlib import Path
 
 def make_train_files(out_dir, datas):
     random.shuffle(datas)
@@ -32,17 +35,22 @@ def make_folders(out_dir):
         os.makedirs(energy_out_dir, exist_ok=True)
 
 
-def main(data_dir, out_dir):
-    libritts.write_metadata(data_dir, out_dir)
+def main(data_dir, out_dir, config_path):
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    p = Preprocessor(config)
+    p.write_metadata(data_dir, out_dir)
     make_folders(out_dir)
-    datas = libritts.build_from_path(data_dir, out_dir)
+    datas = p.build_from_path(Path(data_dir).parent, out_dir)
     make_train_files(out_dir, datas)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_path', type=str, default='dataset/')
-    parser.add_argument('--output_path', type=str, default='dataset/')
+    parser.add_argument('--data_path', type=str, default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/wav16')
+    parser.add_argument('--output_path', type=str, default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed')
+    parser.add_argument('--config_path', type=str, default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config.json')
     args = parser.parse_args()
 
-    main(args.data_path, args.output_path)
+    main(args.data_path, args.output_path, args.config_path)

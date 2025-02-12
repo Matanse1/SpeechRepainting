@@ -3,7 +3,7 @@
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '6'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,5,0,3,7'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -71,6 +71,7 @@ def train(
     
 
     dataset_type = dataset_cfg.dataset_type
+    ignore_keys = ['wavlm_model', 'style_speech_model']
     local_path, checkpoint_directory = local_directory(name, model_cfg, diffusion_cfg, save_dir, 'checkpoint')
     
     if rank == 0:
@@ -159,9 +160,9 @@ def train(
 
             # feed model dict and optimizer state
             model_weights = checkpoint['model_state_dict']
-            model_weights = {k: v for k, v in model_weights.items() if 'wavlm_model' not in k}
+            model_weights = {k: v for k, v in model_weights.items() if k not in ignore_keys}
             missing_keys , _ = net.load_state_dict(model_weights, strict=False)
-            filtered_missing_keys = [key for key in missing_keys if 'wavlm_model' not in key]
+            filtered_missing_keys = [key for key in missing_keys if key not in ignore_keys]
             if not filtered_missing_keys:
                 print('All keys loaded successfully')
             else:
@@ -245,7 +246,7 @@ def train(
             if n_iter % iters_per_ckpt == 0 and rank == 0:
                 checkpoint_name = '{}.pkl'.format(n_iter)
                 model_weights = net.state_dict()
-                model_weights = {k: v for k, v in model_weights.items() if 'wavlm_model' not in k}
+                model_weights = {k: v for k, v in model_weights.items() if k not in ignore_keys}
                 torch.save({'model_state_dict': model_weights,
                             'optimizer_state_dict': optimizer.state_dict()},
                            os.path.join(checkpoint_directory, checkpoint_name))
@@ -360,7 +361,7 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion
         transformed_X = melspec * torch.unsqueeze(mask, dim=1) + transformed_X * (1-torch.unsqueeze(mask, dim=1))
     else:
         transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
-    cond_drop_prob = 0.0 # 0.2
+    cond_drop_prob = 0.2 # 0.2
     epsilon_theta = net(transformed_X, masked_cond, diffusion_steps.view(B,1), cond_drop_prob, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask, mask_padding_frames=mask_mask)
     loss = loss_fn(epsilon_theta, z) #[B, F, T]    
     loss = loss * mask_mask

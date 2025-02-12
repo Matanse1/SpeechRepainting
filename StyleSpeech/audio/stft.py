@@ -31,7 +31,9 @@ class STFT(torch.nn.Module):
 
         forward_basis = torch.FloatTensor(fourier_basis[:, None, :])
         inverse_basis = torch.FloatTensor(
-            np.linalg.pinv(scale * fourier_basis).T[:, None, :])
+            np.linalg.pinv(scale * fourier_basis)).T.unsqueeze(1).contiguous()
+        # inverse_basis = torch.FloatTensor(
+        #     np.linalg.pinv(scale * fourier_basis).T[:, None, :])
 
         if window is not None:
             assert(filter_length >= win_length)

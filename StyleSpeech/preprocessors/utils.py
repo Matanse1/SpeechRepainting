@@ -47,10 +47,12 @@ def remove_outlier(x, p_bottom: int = 25, p_top: int = 75):
     for ind, value in enumerate(x):
         if is_outlier(value, p_bottom, p_top):
             indices_of_outliers.append(ind)
-
+    
+    x = np.array(x) 
     x[indices_of_outliers] = 0.0
     x[indices_of_outliers] = np.max(x)
-    return 
+    x.tolist()
+    return x
     
 def average_by_duration(x, durs):
     length = sum(durs)

@@ -103,7 +103,13 @@ def apply_gradient_allreduce(module):
         module.warn_on_half = True
     else:
         module.warn_on_half = True if dist._backend == dist.dist_backend.GLOO else False
-
+    print("start checking")
+    for name, p in module.state_dict().items():
+        if not torch.is_tensor(p):
+            continue
+        if not p.is_contiguous():
+            print(f"!!!!!!! Non-contiguous parameter: {name} - {p.shape} !!!!!!!!")
+    print("end checking")
     for p in module.state_dict().values():
         if not torch.is_tensor(p):
             continue

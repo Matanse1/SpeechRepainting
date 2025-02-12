@@ -183,11 +183,14 @@ class ConvPositionEmbedding(nn.Module):
             nn.Mish(),
         )
 
-    def forward(self, x: float["b n d"], mask: bool["b n"] | None = None):  # noqa: F722
+    def forward(self, x: float["b n d"], mask: bool["b n"] | None = None, true_length=None):  # noqa: F722
         if mask is not None:
             mask = mask[..., None]
             x = x.masked_fill(~mask, 0.0)
-
+        if true_length is not None:
+            mask = self.create_padding_mask(x.size(1), true_length)
+            x = x.masked_fill(~mask, 0.0)
+            
         x = x.permute(0, 2, 1)
         x = self.conv1d(x)
         out = x.permute(0, 2, 1)
@@ -196,6 +199,20 @@ class ConvPositionEmbedding(nn.Module):
             out = out.masked_fill(~mask, 0.0)
 
         return out
+    
+    def create_padding_mask(self, max_len, actual_lengths):
+        """
+        Creates attention padding mask
+        Args:
+            max_len: Maximum length in the batch
+            actual_lengths: List/tensor of actual sequence lengths
+        Returns:
+            mask: Boolean mask with False at valid positions and True at padding positions
+        """
+        batch_size = len(actual_lengths)
+        mask = torch.arange(max_len)[None, :].cuda() >= actual_lengths[:, None]  # [B, max_len]
+        mask = mask.unsqueeze(-1)  # [B, max_len, 1]
+        return ~mask
 
 
 # rotary positional embedding related

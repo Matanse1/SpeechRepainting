@@ -1,4 +1,6 @@
 # Speech Repainting
+to run mfa align pleas run:
+ /home/dsi/moradim/anaconda3/envs/mfa_tool/bin/mfa align /dsi/gannot-lab1/datasets/libri_tts/LibriTTS/wav16/ english_us_arpa english_us_arpa /dsi/gannot-lab1/datasets/libri_tts/LibriTTS/TextGrid/ -j 10 -v
 
 <div align="center">
 

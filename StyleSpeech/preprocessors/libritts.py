@@ -1,4 +1,6 @@
-import audio as Audio
+# import audio as Audio
+from audio import stft 
+from audio import tools 
 from text import _clean_text
 import numpy as np
 import librosa
@@ -11,6 +13,7 @@ import pyworld as pw
 from preprocessors.utils import remove_outlier, get_alignment, average_by_duration
 from scipy.interpolate import interp1d
 import json
+from tqdm import tqdm
 
 
 def write_single(output_folder, wav_fname, text, resample_rate, top_db=None):
@@ -21,7 +24,7 @@ def write_single(output_folder, wav_fname, text, resample_rate, top_db=None):
     else:
         trimmed = data
     # resample audio
-    resampled = librosa.resample(trimmed, sample_rate, resample_rate)
+    resampled = librosa.resample(trimmed, orig_sr=sample_rate, target_sr=resample_rate)
     y = (resampled * 32767.0).astype(np.int16)
     wav_fname = wav_fname.split('/')[-1]
     target_wav_fname = os.path.join(output_folder, wav_fname)
@@ -37,18 +40,18 @@ def write_single(output_folder, wav_fname, text, resample_rate, top_db=None):
 
 
 def prepare_align_and_resample(data_dir, sr):
-    wav_foder_names = ['train-clean-100', 'train-clean-360']
+    wav_foder_names = ['train-clean-360'] #['train-clean-100']#, ['train-clean-360']
     wavs = []
     for wav_folder in wav_foder_names:
         wav_folder = os.path.join(data_dir, wav_folder)
         wav_fname_list = [str(f) for f in list(Path(wav_folder).rglob('*.wav'))]
 
-        output_wavs_folder_name = 'wav{}'.format(sr//1000)
+        output_wavs_folder_name = 'wav{}_360h'.format(sr//1000)
         output_wavs_folder = os.path.join(data_dir, output_wavs_folder_name)
         if not os.path.exists(output_wavs_folder):
             os.mkdir(output_wavs_folder)
 
-        for wav_fname in wav_fname_list:
+        for wav_fname in tqdm(wav_fname_list):
             _sid = wav_fname.split('/')[-3]
             output_folder = os.path.join(output_wavs_folder, _sid)
             txt_fname = wav_fname.replace('.wav','.normalized.txt')
@@ -56,8 +59,8 @@ def prepare_align_and_resample(data_dir, sr):
                 text = f.readline().strip()
             text = _clean_text(text, ['english_cleaners'])
             wavs.append((output_folder, wav_fname, text))
-
-    lengths = Parallel(n_jobs=10, verbose=1)(
+    print(F"Start processing {len(wavs)} wavs")
+    lengths = Parallel(n_jobs=40, verbose=1)(
         delayed(write_single)(wav[0], wav[1], wav[2], sr) for wav in wavs
     )
 
@@ -76,23 +79,22 @@ class Preprocessor:
         self.mel_fmax= config["mel_fmax"]
 
         self.max_seq_len = config["max_seq_len"]
-
-        self.STFT = Audio.stft.TacotronSTFT(
-            config["preprocessing"]["stft"]["filter_length"],
-            config["preprocessing"]["stft"]["hop_length"],
-            config["preprocessing"]["stft"]["win_length"],
-            config["preprocessing"]["mel"]["n_mel_channels"],
-            config["preprocessing"]["audio"]["sampling_rate"],
-            config["preprocessing"]["mel"]["mel_fmin"],
-            config["preprocessing"]["mel"]["mel_fmax"],
-        )
+        self.min_seq_len = config["min_seq_len"]
+        self.STFT = stft.TacotronSTFT(
+            self.filter_length,
+            self.hop_length,
+            self.win_length,
+            self.n_mel_channels,
+            self.sampling_rate,
+            self.mel_fmin,
+            self.mel_fmax)
 
     def write_metadata(self, data_dir, out_dir):
         metadata = os.path.join(out_dir, 'metadata.csv')
         if not os.path.exists(metadata):
             wav_fname_list = [str(f) for f in list(Path(data_dir).rglob('*.wav'))]
             lines = []
-            for wav_fname in wav_fname_list:
+            for wav_fname in tqdm(wav_fname_list):
                 basename = wav_fname.split('/')[-1].replace('.wav', '')
                 sid = wav_fname.split('/')[-2]
                 assert sid in basename
@@ -110,19 +112,23 @@ class Preprocessor:
         f0 = list()
         energy = list()
         n_frames = 0
+        i = 0
         with open(os.path.join(out_dir, 'metadata.csv'), encoding='utf-8') as f:
             basenames = []
             for line in f:
                 parts = line.strip().split('|')
                 basename = parts[0]
                 basenames.append(basename)
+                if i > 20:
+                    break
+                i += 1
 
-        results = Parallel(n_jobs=10, verbose=1)(
+        results = Parallel(n_jobs=1, verbose=1)(
                 delayed(self.process_utterance)(data_dir, out_dir, basename) for basename in basenames
             )
         results = [ r for r in results if r is not None ]
         for r in results:
-            datas.extend(r[0])
+            datas.append(r[0])
             f0.extend(r[1])
             energy.extend(r[2])
             n_frames += r[3]
@@ -130,14 +136,14 @@ class Preprocessor:
         f0 = remove_outlier(f0)
         energy = remove_outlier(energy)
 
-        f0_max = np.max(f0)
-        f0_min = np.min(f0)
-        f0_mean = np.mean(f0)
-        f0_std = np.std(f0)
-        energy_max = np.max(energy)
-        energy_min = np.min(energy)
-        energy_mean = np.mean(energy)
-        energy_std = np.std(energy)
+        f0_max = float(np.max(f0))
+        f0_min = float(np.min(f0))
+        f0_mean = float(np.mean(f0))
+        f0_std = float(np.std(f0))
+        energy_max = float(np.max(energy))
+        energy_min = float(np.min(energy))
+        energy_mean = float(np.mean(energy))
+        energy_std = float(np.std(energy))
 
         total_time = n_frames*self.hop_length/self.sampling_rate/3600
         f_json = {
@@ -154,8 +160,8 @@ class Preprocessor:
 
     def process_utterance(self, in_dir, out_dir, basename, dataset='libritts'):
         sid = basename.split('_')[0]
-        wav_path = os.path.join(in_dir, 'wav{}', sid, '{}.wav'.format(self.sampling_rate//1000, basename))
-        tg_path = os.path.join(out_dir, 'TextGrid', sid, '{}.TextGrid'.format(basename)) 
+        wav_path = os.path.join(in_dir, f'wav{self.sampling_rate//1000}', sid, f'{basename}.wav')
+        tg_path = os.path.join(in_dir, 'TextGrid', sid, f'{basename}.TextGrid') 
 
         if not os.path.exists(wav_path) or not os.path.exists(tg_path):
             return None
@@ -180,11 +186,11 @@ class Preprocessor:
         f0 = f0[:sum(duration)]
 
         # Compute mel-scale spectrogram and energy
-        mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
+        mel_spectrogram, energy = tools.get_mel_from_wav(wav, self.STFT)
         mel_spectrogram = mel_spectrogram[:, :sum(duration)]
         energy = energy[:sum(duration)]
 
-        if mel_spectrogram.shape[1] >= self.max_seq_len:
+        if mel_spectrogram.shape[1] >= self.max_seq_len or mel_spectrogram.shape[1] <= self.min_seq_len:
             return None
 
         # Pitch perform linear interpolation
@@ -203,7 +209,7 @@ class Preprocessor:
         # Energy phoneme-level average
         energy = average_by_duration(np.array(energy), np.array(duration))
 
-        if len([f for f in f0 if f != 0]) ==0 or len([e for e in energy if e != 0]):
+        if len([f for f in f0 if f != 0]) ==0 or len([e for e in energy if e != 0])==0:
             return None
 
         # Save alignment

@@ -97,14 +97,18 @@ class InputEmbedding2(nn.Module):
         return x
 
 class InputEmbedding1(nn.Module):
-    def __init__(self, mel_dim, text_dim, out_dim):
+    def __init__(self, mel_dim, out_dim):
         super().__init__()
         self.proj = nn.Linear(mel_dim, out_dim)
         self.conv_pos_embed = ConvPositionEmbedding(dim=out_dim)
 
-    def forward(self, x: float["b n d"]):  # noqa: F722
-        x = self.conv_pos_embed(x) + x
+    def forward(self, x: float["b d n"], mask=None, true_length=None):  # noqa: F722
+        x = x.transpose(1, 2)
+        x = self.proj(x)
+        x = self.conv_pos_embed(x, mask, true_length) + x
         return x
+    
+
 
 class CrossAttention(nn.Module):
     def __init__(self, embed_dim, num_heads=8):
@@ -121,7 +125,7 @@ class CrossAttention(nn.Module):
             mask: Boolean mask with False at valid positions and True at padding positions
         """
         batch_size = len(actual_lengths)
-        mask = torch.arange(max_len)[None, :] >= actual_lengths[:, None]  # [B, max_len]
+        mask = torch.arange(max_len)[None, :].cuda() >= actual_lengths[:, None]  # [B, max_len]
         return mask
     
     def forward(self, noisy_feats, clean_feats, noisy_lengths, clean_lengths):
@@ -138,20 +142,27 @@ class CrossAttention(nn.Module):
         
         # The attn_mask should be of shape (T1, T2)
         # We don't need to create it as we only want to mask padding tokens
-        
-        attn_output, attn_weights = self.attn(
+        # for infernce
+        # attn_output, attn_weights = self.attn(
+        #     noisy_feats,  # queries
+        #     clean_feats,  # keys
+        #     clean_feats,  # values
+        #     key_padding_mask=clean_key_padding_mask,  # mask for keys/values (clean)
+        #     need_weights=True
+        # )
+        attn_output = self.attn(
             noisy_feats,  # queries
             clean_feats,  # keys
             clean_feats,  # values
             key_padding_mask=clean_key_padding_mask,  # mask for keys/values (clean)
-            need_weights=True
-        )
+            need_weights=False
+        )[0]
         
         # Apply query mask after attention (zero out padding positions in output)
         noisy_mask = ~noisy_key_padding_mask.unsqueeze(-1)  # [B, T1, 1]
         attn_output = attn_output * noisy_mask
         
-        return attn_output, attn_weights
+        return attn_output#, attn_weights
 
 class StyleSpeechWrapper(nn.Module):
     def __init__(self, tts_kw):
@@ -166,16 +177,22 @@ class StyleSpeechWrapper(nn.Module):
                 tts_kw.mel_fmax)
         self.filter_length = tts_kw.filter_length
         self.hop_length = tts_kw.hop_length
+        self.positional_emd = tts_kw.positional_emd
         style_speech_ch_path = tts_kw["style_speech_ch_path"]
         style_speech_config_path = tts_kw["style_speech_config_path"]
         self.style_speech_model = get_StyleSpeech(style_speech_config_path, style_speech_ch_path)
 
 
-        self.encoder_noisy = nn.Conv1d(tts_kw.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
-        self.encoder_clean = nn.Conv1d(tts_kw.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
+        if tts_kw.positional_emd == 'none':
+            self.encoder_noisy = nn.Conv1d(tts_kw.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
+            self.encoder_clean = nn.Conv1d(tts_kw.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
+        elif tts_kw.positional_emd == 'InputEmbedding1':
+            self.encoder_noisy = InputEmbedding1(tts_kw.n_mel_channels, tts_kw.embed_dim)
+            self.encoder_clean = InputEmbedding1(tts_kw.n_mel_channels, tts_kw.embed_dim)
+            
         self.cross_attention = CrossAttention(tts_kw.embed_dim, tts_kw.num_heads)
 
-    def forward(self, masked_audio_time, input_text, noisy_mel, mask_padding_time):
+    def forward(self, masked_audio_time, input_text, noisy_mel, mask_padding_time, mask_padding_frames):
         """_summary_
 
         Args:
@@ -187,6 +204,11 @@ class StyleSpeechWrapper(nn.Module):
         Returns:
             _type_: _description_
         """
+        if mask_padding_time is None:
+            mask_padding_time = torch.ones_like(masked_audio_time, dtype=torch.bool).cuda()
+        if mask_padding_frames is None:
+            B, T, F = noisy_mel.shape
+            mask_padding_frames = torch.ones((B, 1, T), dtype=torch.bool).cuda()
         length_masked_time = torch.sum(mask_padding_time, dim=-1, dtype=torch.int32)
         num_frames = (length_masked_time) // self.hop_length + 1 #[B, R] where is the number of frames in the ref_masked_mel
         device = masked_audio_time.device
@@ -194,17 +216,26 @@ class StyleSpeechWrapper(nn.Module):
         input_text = input_text.to(device)
         phoneme_length = phoneme_length.to(device)
         ref_masked_mel, _ = self.stft.mel_spectrogram(masked_audio_time) #[B, F, T]
-         # Extract style vector
-        style_vector = self.style_speech_model.get_style_vector(ref_masked_mel.transpose(1, 2), mel_len=num_frames) # the input ref_masked_mel is [B, T, F], style_vector shape is [B, D=128]
-        mel_output = self.style_speech_model.inference(style_vector, input_text, phoneme_length, masked_frame_number=None)[0] # [B, T, F]
-        # from StypleSpeech import utils
+        with torch.no_grad():
+            # Extract style vector
+            style_vector = self.style_speech_model.get_style_vector(ref_masked_mel.transpose(1, 2), mel_len=num_frames) # the input ref_masked_mel is [B, T, F], style_vector shape is [B, D=128]
+            outputs = self.style_speech_model.inference(style_vector, input_text, phoneme_length, masked_frame_number=None) # [B, T, F]
+        mel_output = outputs[0].detach()
+        generated_mel_len = outputs[-1].detach()
+        noisy_mel_len = torch.sum(mask_padding_frames, dim=-1, keepdim=False, dtype=torch.int32).squeeze(1)
+        # from StyleSpeech import utils
         # utils.plot_data([mel_output[0].transpose(1,0).cpu().numpy()], 
         #     ['Ref Spectrogram'], filename='/home/dsi/moradim/SpeechRepainting/plot.png')
-        noisy_feats = self.encoder_noisy(noisy_mel.transpose(1, 2)).transpose(1, 2)  # (B, T1, D)
-        mel_output = self.encoder_clean(mel_output.transpose(1, 2)).transpose(1, 2)  # (B, T2, D)
+        if self.positional_emd == 'none':
+            noisy_feats = self.encoder_noisy(noisy_mel.transpose(1, 2)).transpose(1, 2)  # (B, T1, D)
+            mel_output = self.encoder_clean(mel_output.transpose(1, 2)).transpose(1, 2)  # (B, T2, D)
+        if self.positional_emd == 'InputEmbedding1':
+            noisy_feats = self.encoder_noisy(noisy_mel.transpose(1, 2), true_length=noisy_mel_len)  # (B, T1, D)
+            mel_output = self.encoder_clean(mel_output.transpose(1, 2), true_length=generated_mel_len)  # (B, T2, D)
+
 
         # Apply Cross-Attention once at the input
-        combined_feats = self.cross_attention(noisy_feats, mel_output)  # (B, T1, D)
+        combined_feats = self.cross_attention(noisy_feats, mel_output, noisy_mel_len, generated_mel_len)  # (B, T1, D)
         return combined_feats
 
 # Transformer backbone using DiT blocks
@@ -308,8 +339,7 @@ class DiT(nn.Module):
         # t: conditioning time, c: context (text + masked cond audio), x: noised input audio
         if self.unconditional is False:
             if self.use_tts:
-                with torch.no_grad():
-                    x = self.sp_tts(masked_audio_time, input_text, x, mask_padding_time)
+                x = self.sp_tts(masked_audio_time, input_text, x, mask_padding_time, mask_padding_frames)
 
             elif self.use_text_embed_rep:
                 if self.vocab_char_map is not None:
@@ -321,7 +351,7 @@ class DiT(nn.Module):
             else:
                 x = self.input_embed(x, masked_melspec)
         else:
-            x = self.input_embed(x)
+            x = self.input_embed(x.transpose(1, 2), mask=mask)
 
         rope = self.rotary_embed.forward_from_seq_len(seq_len)
 
