@@ -5,3 +5,6 @@ temp_dir
 temp_dir_explosions
 temp_dir_wavlm_phoneme
 lossy_dir
+*.png
+StyleSpeech/results*
+files4plots

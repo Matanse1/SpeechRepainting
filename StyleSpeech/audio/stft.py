@@ -118,7 +118,7 @@ class STFT(torch.nn.Module):
 class TacotronSTFT(torch.nn.Module):
     def __init__(self, filter_length=1024, hop_length=256, win_length=1024,
                  n_mel_channels=80, sampling_rate=22050, mel_fmin=0.0,
-                 mel_fmax=8000.0):
+                 mel_fmax=8000.0, log='log10'):
         super(TacotronSTFT, self).__init__()
         self.n_mel_channels = n_mel_channels
         self.sampling_rate = sampling_rate
@@ -130,11 +130,12 @@ class TacotronSTFT(torch.nn.Module):
             fmin=mel_fmin,
             fmax=mel_fmax,
         )
+        self.log = log
         mel_basis = torch.from_numpy(mel_basis).float()
         self.register_buffer('mel_basis', mel_basis)
 
-    def spectral_normalize(self, magnitudes):
-        output = dynamic_range_compression(magnitudes)
+    def spectral_normalize(self, magnitudes, log='log10'):
+        output = dynamic_range_compression(magnitudes, log=log)
         return output
 
     def spectral_de_normalize(self, magnitudes):
@@ -157,6 +158,6 @@ class TacotronSTFT(torch.nn.Module):
         magnitudes, phases = self.stft_fn.transform(y)
         magnitudes = magnitudes.data
         mel_output = torch.matmul(self.mel_basis, magnitudes)
-        mel_output = self.spectral_normalize(mel_output)
+        mel_output = self.spectral_normalize(mel_output, self.log)
         energy = torch.norm(magnitudes, dim=1)
         return mel_output, energy

@@ -107,7 +107,7 @@ class CTCGreedySearchDecoder(nn.Module):
 
         # Argmax (B, T, V) -> (B, T)
         preds = logits.argmax(dim=-1)
-        print(f"preds: {preds}")
+        # print(f"preds: {preds}")
         # Batch Pred List
         batch_pred_list = []
 

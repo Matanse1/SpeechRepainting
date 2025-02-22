@@ -6,7 +6,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import glob
 import os
 import sys
-sys.path.append(".")
+
 import numpy as np
 import argparse
 import json
@@ -16,10 +16,8 @@ from BigVGAN.env import AttrDict
 from BigVGAN.meldataset import MAX_WAV_VALUE
 from BigVGAN.bigvgan import BigVGAN as Generator
 
-h = None
-device = None
-torch.backends.cudnn.benchmark = False
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+
 
 def load_checkpoint(filepath, device):
     assert os.path.isfile(filepath)
@@ -101,4 +99,9 @@ def main():
 
 
 if __name__ == "__main__":
+    h = None
+    device = None
+    torch.backends.cudnn.benchmark = False
+    sys.path.append(".")
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     main()

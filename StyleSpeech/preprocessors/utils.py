@@ -30,6 +30,65 @@ def get_alignment(tier, sampling_rate, hop_length):
     
     return phones, durations, start_time, end_time
 
+def my_get_alignment(textgrid, sampling_rate, hop_length):
+    """aligment with space betweeen words
+
+    Args:
+        textgrid (_type_): _description_
+        sampling_rate (_type_): _description_
+        hop_length (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    phoneme_tier = textgrid.get_tier_by_name('phones')
+    word_tier = textgrid.get_tier_by_name('words')
+    sil_phones = ['sil', 'sp', 'spn', '']
+    phones = []
+    durations = []
+    start_time = 0
+    end_time = 0
+    end_idx = 0
+    indx_word = 0
+    words_info = list(word_tier._objects)
+    for t in phoneme_tier._objects:
+        s, e, p = t.start_time, t.end_time, t.text
+        if s >= words_info[indx_word].end_time:
+            indx_word += 1
+            # print(words_info[indx_word].text)
+            if phones != []:
+                if (words_info[indx_word].text == '')  and (p == ''):
+                    phones.append('space')
+                    durations.append(round(e*sampling_rate/hop_length)-round(s*sampling_rate/hop_length))
+                    indx_word += 1
+                    continue
+                elif p not in sil_phones:
+                    # phones.append(p)
+                    # durations.append(round(e*sampling_rate/hop_length)-round(s*sampling_rate/hop_length))
+                    phones.append('space')
+                    durations.append(0)
+                    # continue
+
+        # Trimming leading silences
+        if phones == []:
+            if p in sil_phones:
+                continue
+            else:
+                start_time = s
+        if p not in sil_phones:
+            phones.append(p)
+            end_time = e
+            end_idx = len(phones)
+        else:
+            continue
+        durations.append(round(e*sampling_rate/hop_length)-round(s*sampling_rate/hop_length))
+
+    # Trimming tailing silences
+    phones = phones[:end_idx]
+    durations = durations[:end_idx]
+    
+    return phones, durations, start_time, end_time
+
 
 def is_outlier(x, p25, p75):
     """Check if value is an outlier."""

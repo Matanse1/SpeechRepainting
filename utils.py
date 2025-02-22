@@ -576,15 +576,20 @@ def mask_time_all_frequencies_mask(mel_spec, audio, x_ratio, y_ratio, hop_length
     else:
         x = int(x_ratio * length)
         y = int(y_ratio * length)
-
+    offset_frames = 1 * 16000 / hop_length #number of frames for one sec
     mel_mask = torch.ones_like(mel_spec)
     for i in range(0, length, x + y):
+        if i + x + y + offset_frames > length:
+            break
         mel_mask[:, i + y:i + x + y] = 0  # Mask X samples
 
     # Audio (time domain) masking
     audio_length = len(audio)
     audio_mask = torch.ones_like(audio)
+    offset_samples = 1 * 16000
     for i in range(0, audio_length, hop_length * (x + y)):
+        if i + hop_length * (x + y) + offset_samples > audio_length:
+            break
         audio_mask[i + hop_length * y:i + hop_length * (x + y)] = 0  # Mask X samples
 
     # Apply noise (zeros for audio, optional for mel spectrogram)

@@ -4,8 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from typing import List, Tuple
-
-
+import matplotlib.pyplot as plt
+import numpy as np
 """
 ein notation:
 b - batch
@@ -559,7 +559,217 @@ class JointAttnProcessor:
             # c = c.masked_fill(~mask, 0.)  # no mask for c (text)
 
         return x, c
+class Swish(nn.Module):
+    def __init__(self):
+        super(Swish, self).__init__()
 
+    def forward(self, x):
+        return x * x.sigmoid()
+    
+class ScaledDotProductAttention(nn.Module):
+    ''' Scaled Dot-Product Attention '''
+
+    def __init__(self, temperature, dropout):
+        super().__init__()
+        self.temperature = temperature
+        self.softmax = nn.Softmax(dim=2)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, q, k, v, mask=None):
+
+        attn = torch.bmm(q, k.transpose(1, 2))
+        attn = attn / self.temperature
+
+        if mask is not None:
+            attn = attn.masked_fill(mask, -np.inf)
+                        # Ensure no row is entirely masked (NaN issue)
+            all_inf_rows = attn == -np.inf
+            all_inf_mask = all_inf_rows.all(dim=-1, keepdim=True)  # (B, T1, 1)
+
+            # Replace fully masked rows with zeros before softmax
+            
+            attn = self.softmax(attn)
+                    # attn_weights_np = attn_weights.detach().cpu().numpy()
+            # plt.close()
+            # plt.imshow(attn_weights_np[0], cmap='viridis')
+            # plt.colorbar()
+            # plt.title('Attention Weights')
+            # plt.xlabel('Key Positions')
+            # plt.ylabel('Query Positions')
+            # plt.savefig("att_weights.png")
+            attn = attn.masked_fill(all_inf_mask, 0)
+        else:
+            attn = self.softmax(attn)
+            
+        p_attn = self.dropout(attn)
+
+        output = torch.bmm(p_attn, v)
+        return output, attn
+
+class CrossAttentionCustom(nn.Module):
+    ''' Cross Attention module with Conv layers for k, q, v '''
+    def __init__(self, n_head, d_model, d_k, d_v, kernel_size=13, dropout=0., spectral_norm=False):
+        super().__init__()
+
+        self.n_head = n_head
+        self.d_k = d_k
+        self.d_v = d_v
+
+        self.w_qs = nn.Conv1d(d_model, n_head * d_k, kernel_size, padding=kernel_size // 2, groups=n_head)
+        self.w_ks = nn.Conv1d(d_model, n_head * d_k, kernel_size, padding=kernel_size // 2, groups=n_head)
+        self.w_vs = nn.Conv1d(d_model, n_head * d_v, kernel_size, padding=kernel_size // 2, groups=n_head)
+        # Normalization & Activation after Conv1d
+        # self.norm_q = nn.LayerNorm(n_head * d_k)
+        # self.norm_k = nn.LayerNorm(n_head * d_k)
+        # self.norm_v = nn.LayerNorm(n_head * d_v)
+
+        # self.activation = Swish()
+        
+        self.attention = ScaledDotProductAttention(temperature=np.power(d_k, 0.5), dropout=dropout)
+
+        self.fc = nn.Linear(n_head * d_v, d_model)
+        self.dropout = nn.Dropout(dropout)
+
+        if spectral_norm:
+            self.w_qs = nn.utils.spectral_norm(self.w_qs)
+            self.w_ks = nn.utils.spectral_norm(self.w_ks)
+            self.w_vs = nn.utils.spectral_norm(self.w_vs)
+            self.fc = nn.utils.spectral_norm(self.fc)
+            
+        # Initialize weights
+        self._init_weights()
+    def _init_weights(self):
+        for layer in [self.w_qs, self.w_ks, self.w_vs, self.fc]:
+            nn.init.xavier_uniform_(layer.weight)
+            if layer.bias is not None:
+                nn.init.zeros_(layer.bias)
+
+    def forward(self, query, context, query_mask=None, context_mask=None):
+        d_k, d_v, n_head = self.d_k, self.d_v, self.n_head
+        sz_b, len_q, _ = query.size()
+        sz_b, len_k, _ = context.size()
+        residual = query
+        
+        # Transpose to match Conv1d input format (batch, channels, sequence_length)
+        query = query.permute(0, 2, 1)  # (batch, d_model, len_q)
+        context = context.permute(0, 2, 1)  # (batch, d_model, len_k)
+        
+        q = self.w_qs(query).permute(0, 2, 1).view(sz_b, len_q, n_head, d_k)
+        k = self.w_ks(context).permute(0, 2, 1).view(sz_b, len_k, n_head, d_k)
+        v = self.w_vs(context).permute(0, 2, 1).view(sz_b, len_k, n_head, d_v)
+        
+        q = q.permute(2, 0, 1, 3).contiguous().view(-1, len_q, d_k)  # (n*b) x lq x dk
+        k = k.permute(2, 0, 1, 3).contiguous().view(-1, len_k, d_k)  # (n*b) x lk x dk
+        v = v.permute(2, 0, 1, 3).contiguous().view(-1, len_k, d_v)  # (n*b) x lv x dv
+
+        if query_mask is not None and context_mask is not None:
+            attn_mask = query_mask.unsqueeze(2) | context_mask.unsqueeze(1)  # [B, T1, T2]
+            attn_mask = attn_mask.unsqueeze(1).expand(-1, n_head, -1, -1)  # [B, n_head, T1, T2]
+            attn_mask = attn_mask.permute(1, 0, 2, 3).contiguous().view(-1, len_q, len_k)  # Flatten batch & heads: [(B*n_head), T1, T2]
+        else:
+            attn_mask = None
+        output, attn = self.attention(q, k, v, mask=attn_mask)
+
+        output = output.view(n_head, sz_b, len_q, d_v)
+        output = output.permute(1, 2, 0, 3).contiguous().view(sz_b, len_q, -1)  # b x lq x (n*dv)
+
+        output = self.fc(output)
+        output = self.dropout(output) + residual
+        return output, attn
+
+
+class CrossAttention_noise(nn.Module):
+    def __init__(self, dim, heads, dim_head, ff_mult=4, dropout=0.1, norm='LayerNorm', custom_multi_att=False):
+        super().__init__()
+        self.norm = norm
+        self.custom_multi_att = custom_multi_att
+        if custom_multi_att:  
+            self.attn = CrossAttentionCustom(heads, dim_head, d_k=int(dim/heads), d_v=int(dim/heads), dropout=dropout) #n_head, d_model, d_k, d_v
+        else:
+            self.attn = nn.MultiheadAttention(dim_head, heads, batch_first=True)
+        if norm == 'LayerNorm':
+            self.norm_clean = nn.LayerNorm(dim_head)
+            self.norm_noisy = nn.LayerNorm(dim_head)
+            
+        self.attn_norm = AdaLayerNormZero(dim)
+
+
+        self.ff_norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+        self.ff = FeedForward(dim=dim, mult=ff_mult, dropout=dropout, approximate="tanh")
+
+    def forward(self, noisy_feats, clean_feats, noisy_lengths, clean_lengths, t):  # x: noised input, t: time embedding
+        """
+        Args:
+            noisy_feats: (B, T1, D) - Noisy Mel embeddings (Queries)
+            clean_feats: (B, T2, D) - Clean Mel embeddings (Keys, Values)
+            noisy_lengths: List[int] - Actual lengths of noisy sequences
+            clean_lengths: List[int] - Actual lengths of clean sequences
+        """
+        if self.norm == 'LayerNorm':
+            noisy_feats = self.norm_noisy(noisy_feats)
+            clean_feats = self.norm_clean(clean_feats)
+        # pre-norm & modulation for attention input
+        norm, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.attn_norm(noisy_feats, emb=t)
+        # Create masks for both sequences
+        noisy_key_padding_mask = self.create_padding_mask(noisy_feats.size(1), noisy_lengths)  # [B, T1]
+        clean_key_padding_mask = self.create_padding_mask(clean_feats.size(1), clean_lengths)  # [B, T2]
+        
+        # The attn_mask should be of shape (T1, T2)
+        # We don't need to create it as we only want to mask padding tokens
+        # for infernce
+
+        # attn_output, attn_weights = self.attn(
+        #     norm,  # queries [B, T1, D] should be norm
+        #     clean_feats,  # keys [B, T2, F]
+        #     clean_feats,  # values [B, T2, F]
+        #     key_padding_mask=clean_key_padding_mask,  # mask for keys/values (clean)
+        #     need_weights=True
+        # )
+        # attn_weights_np = attn_weights.detach().cpu().numpy()
+        # plt.close()
+        # plt.imshow(attn_weights_np[0], cmap='viridis')
+        # plt.colorbar()
+        # plt.title('Attention Weights')
+        # plt.xlabel('Key Positions')
+        # plt.ylabel('Query Positions')
+        # plt.savefig("att_weights.png")
+        if self.custom_multi_att:
+            attn_output, attn_weights = self.attn(query=norm, context=clean_feats, query_mask=noisy_key_padding_mask, context_mask=clean_key_padding_mask)
+        else:
+            attn_output = self.attn(
+                norm,  # queries
+                clean_feats,  # keys
+                clean_feats,  # values
+                key_padding_mask=clean_key_padding_mask,  # mask for keys/values (clean)
+                need_weights=False
+            )[0]
+        
+            # Apply query mask after attention (zero out padding positions in output)
+            noisy_mask = ~noisy_key_padding_mask.unsqueeze(-1)  # [B, T1, 1]
+            attn_output = attn_output * noisy_mask
+
+        # process attention output for input x
+        noisy_feats = noisy_feats + gate_msa.unsqueeze(1) * attn_output
+
+        norm = self.ff_norm(noisy_feats) * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        ff_output = self.ff(norm)
+        noisy_feats = noisy_feats + gate_mlp.unsqueeze(1) * ff_output
+
+        return noisy_feats
+    
+    def create_padding_mask(self, max_len, actual_lengths):
+        """
+        Creates attention padding mask
+        Args:
+            max_len: Maximum length in the batch
+            actual_lengths: List/tensor of actual sequence lengths
+        Returns:
+            mask: Boolean mask with False at valid positions and True at padding positions
+        """
+        batch_size = len(actual_lengths)
+        mask = torch.arange(max_len)[None, :].cuda() >= actual_lengths[:, None]  # [B, max_len]
+        return mask
+    
 
 # DiT Block
 

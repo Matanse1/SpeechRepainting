@@ -99,7 +99,7 @@ dit:
     tokenizer: phoneme #'byte' #phoneme
     tokenizer_path: /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json #none #  /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json
   tts_kw:
-    use_tts: False
+    use_tts: True
     filter_length: 1024
     hop_length: 256
     win_length: 1024
@@ -168,7 +168,7 @@ dataset:
     # return_mask_properties: False #for train set this to False, for inference set to True
     audio_stft_hop: ${audio.hop_length}
     num4empty_str: 0 #or -12, 0, min, randn
-    use_input_text: none # text (for byte), none, phoneme (for phoneme)
+    use_input_text: phoneme # text (for byte), none, phoneme (for phoneme)
     remove_space: True
   explosion_speech_inpainting:
     base_data_dir: /dsi/gannot-lab1/datasets/speech_with_explosions
@@ -200,7 +200,7 @@ audio:
 # Unet_Anechoic_LibSp_conditional-masked-melspec-text_w-masked-pix=${train.w_masked_pix}_tokenizer=${unet.text_embed_prop.tokenizer}_num4empty_str=${dataset.speech_inpainting_anechoic.num4empty_str}
 # Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=${train.w_masked_pix}_diffusion-name=${diffusion.name}
 train:  # Not used in generate.py
-  name: DiT_Anechoic_LibSp_conditional-tts-melspec_positional_emd=InputEmbedding1_w-masked-pix=1  # DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1  # Wavenet_Anechoic_LibSp_unconditional #2delete_Anechoic_LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${wavenet.wavlm.two_branch}_specific_hidden_states_randn-filled #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
+  name: DiT_Anechoic_LibSp_conditional-tts-melspec_positional_emd=InputEmbedding1_w-masked-pix=0.5  # DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1  # Wavenet_Anechoic_LibSp_unconditional #2delete_Anechoic_LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${wavenet.wavlm.two_branch}_specific_hidden_states_randn-filled #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting    # where checkpoints will be saved
   ckpt_iter: max    # continue training from a specific iteration
 
@@ -215,7 +215,7 @@ train:  # Not used in generate.py
 
   learning_rate: 2e-04 #2e-4
   batch_size_per_gpu: 4 #32 #8 #128 #32 # 240
-  w_masked_pix: 1
+  w_masked_pix: 0.5
   on_masked_melspec: False
   
 
@@ -238,12 +238,22 @@ generate:
   lipread_text_dir: null # directory with predicted text for generating test samples of benchmark dataset 
   on_masked_melspec: True # whether to input the model the masked noisy melspec or noisy melspec(in inference only)
   mel_text: True # or masked_text
+  with_space: False
   mask_info:
     mask_type: repeat_all_freq
     noise_type: 0 # randn
+    minimum_length: 7 # in sec
     repeat_all_freq:
-      length: 100
-      skip: 150
+      #all the samples above 7s
+      #big
+      length: 100 #1sec for hop_length=160
+      skip: 150 # 1.5sec
+      # #medium
+      # length: 50 #1sec for hop_length=160
+      # skip: 150 # 1.5sec
+      # #small
+      # length: 25 #1sec for hop_length=160
+      # skip: 150 # 1.5sec
     repeat_specific_freq:
       length: 15
       skip: 30

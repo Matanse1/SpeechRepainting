@@ -39,7 +39,7 @@ def main(data_dir, out_dir, config_path):
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     with open(config_path, 'r') as f:
         config = json.load(f)
-    p = Preprocessor(config)
+    p = Preprocessor(config, log='log10', with_space_alignment=False) #change here
     p.write_metadata(data_dir, out_dir)
     make_folders(out_dir)
     datas = p.build_from_path(Path(data_dir).parent, out_dir)
@@ -49,8 +49,8 @@ def main(data_dir, out_dir, config_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/wav16')
-    parser.add_argument('--output_path', type=str, default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed')
-    parser.add_argument('--config_path', type=str, default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config.json')
+    parser.add_argument('--output_path', type=str, default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed_original')
+    parser.add_argument('--config_path', type=str, default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/config.json') #/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config_without-space.json
     args = parser.parse_args()
 
     main(args.data_path, args.output_path, args.config_path)

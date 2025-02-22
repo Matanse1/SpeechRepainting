@@ -1,12 +1,14 @@
 import torch
 import torch.nn as nn
 import numpy as np
+print("Before")
 from StyleSpeech.text.symbols import symbols
-import StyleSpeech.models.Constants as Constants
-from StyleSpeech.models.Modules import Mish, LinearNorm, ConvNorm, Conv1dGLU, \
+print("After ##########################")
+from . import Constants as Constants
+from .Modules import Mish, LinearNorm, ConvNorm, Conv1dGLU, \
                     MultiHeadAttention, StyleAdaptiveLayerNorm, get_sinusoid_encoding_table
-from StyleSpeech.models.VarianceAdaptor import VarianceAdaptor
-from StyleSpeech.models.Loss import StyleSpeechLoss
+from .VarianceAdaptor import VarianceAdaptor
+from .Loss import StyleSpeechLoss
 from StyleSpeech.utils import get_mask_from_lengths
 
 
@@ -51,7 +53,7 @@ class StyleSpeech(nn.Module):
 
         return mel_prediction, src_embedded, style_vector, d_prediction, p_prediction, e_prediction, src_mask, mel_mask, mel_len
 
-    def inference(self, style_vector, src_seq, src_len=None, masked_frame_number=None, max_src_len=None, return_attn=False):
+    def inference(self, style_vector, src_seq, src_len=None, max_src_len=None, return_attn=False, masked_frame_number=None):
         src_mask = get_mask_from_lengths(src_len, max_src_len)
         
         # Encoding

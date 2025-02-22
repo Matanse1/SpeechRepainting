@@ -6,8 +6,8 @@ from text import text_to_sequence
 from utils import pad_1D, pad_2D, process_meta
 
 
-def prepare_dataloader(data_path, filename, batch_size, shuffle=True, num_workers=2, meta_learning=False, seed=0):
-    dataset = TextMelDataset(data_path, filename)
+def prepare_dataloader(data_path, filename, batch_size, shuffle=True, num_workers=2, meta_learning=False, seed=0, remove_space=False):
+    dataset = TextMelDataset(data_path, filename, remove_space=remove_space)
     if meta_learning:
         sampler = MetaBatchSampler(dataset.sid_to_indexes, batch_size, seed=seed)
     else:
@@ -34,10 +34,10 @@ def norm_mean_std(x, mean, std):
 
 
 class TextMelDataset(Dataset):
-    def __init__(self, data_path, filename="train.txt",):
+    def __init__(self, data_path, filename="train.txt", remove_space=False):
         self.data_path = data_path
         self.basename, self.text, self.sid = process_meta(os.path.join(data_path, filename))
-
+        self.remove_space = remove_space
         self.sid_dict = self.create_speaker_table(self.sid)
 
         with open(os.path.join(data_path, 'stats.json')) as f:
@@ -70,7 +70,7 @@ class TextMelDataset(Dataset):
     def __getitem__(self, idx):
         basename = self.basename[idx]
         sid = self.sid_dict[self.sid[idx]]
-        phone = np.array(text_to_sequence(self.text[idx], []))
+        text_sample = self.text[idx].replace("space", "sp")
         mel_path = os.path.join(
             self.data_path, "mel", "libritts-mel-{}.npy".format(basename))
         mel_target = np.load(mel_path)
@@ -80,14 +80,22 @@ class TextMelDataset(Dataset):
         f0_path = os.path.join(
             self.data_path, "f0", "libritts-f0-{}.npy".format(basename))
         f0 = np.load(f0_path)
-        f0 = replace_outlier(f0,  self.f0_stat[0], self.f0_stat[1])
-        f0 = norm_mean_std(f0, self.f0_stat[2], self.f0_stat[3])
         energy_path = os.path.join(
             self.data_path, "energy", "libritts-energy-{}.npy".format(basename))
         energy = np.load(energy_path)
+
+        if self.remove_space:
+            underscore_positions = [i for i, char in enumerate(text_sample[1:-1].split(" ")) if char == "sp" and D[i] == 0]
+            text_sample = text_sample.replace("sp", "")
+            D = np.delete(D, underscore_positions)
+            f0 = np.delete(f0, underscore_positions)
+            energy = np.delete(energy, underscore_positions)
+        
+        f0 = replace_outlier(f0,  self.f0_stat[0], self.f0_stat[1])
+        f0 = norm_mean_std(f0, self.f0_stat[2], self.f0_stat[3])
         energy = replace_outlier(energy, self.energy_stat[0], self.energy_stat[1])
         energy = norm_mean_std(energy, self.energy_stat[2], self.energy_stat[3])
-        
+        phone = np.array(text_to_sequence(text_sample, []))
         sample = {"id": basename,
                 "sid": sid,
                 "text": phone,

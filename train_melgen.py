@@ -377,7 +377,7 @@ def test_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion_hyp
     return training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, text, input_text,
                   masked_audio_time_mask, on_masked_melspec, w_masked_pix)
 
-@hydra.main(version_base=None, config_path="configs/", config_name="config")
+@hydra.main(version_base=None, config_path="configs/4exp/", config_name="tts-dit_without-space")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     OmegaConf.set_struct(cfg, False)  # Allow writing keys

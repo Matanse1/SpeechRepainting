@@ -10,7 +10,7 @@ from scipy.io.wavfile import write
 from joblib import Parallel, delayed
 import tgt
 import pyworld as pw
-from preprocessors.utils import remove_outlier, get_alignment, average_by_duration
+from preprocessors.utils import remove_outlier, get_alignment, average_by_duration, my_get_alignment
 from scipy.interpolate import interp1d
 import json
 from tqdm import tqdm
@@ -66,7 +66,7 @@ def prepare_align_and_resample(data_dir, sr):
 
 
 class Preprocessor:
-    def __init__(self, config):
+    def __init__(self, config, log='log', with_space_alignment=False):
         self.config = config
         self.sampling_rate = config["sampling_rate"]
 
@@ -87,14 +87,16 @@ class Preprocessor:
             self.n_mel_channels,
             self.sampling_rate,
             self.mel_fmin,
-            self.mel_fmax)
+            self.mel_fmax,
+            log=log)
+        self.with_space_alignment = with_space_alignment
 
     def write_metadata(self, data_dir, out_dir):
         metadata = os.path.join(out_dir, 'metadata.csv')
         if not os.path.exists(metadata):
             wav_fname_list = [str(f) for f in list(Path(data_dir).rglob('*.wav'))]
             lines = []
-            for wav_fname in tqdm(wav_fname_list):
+            for idx, wav_fname in enumerate(tqdm(wav_fname_list)):
                 basename = wav_fname.split('/')[-1].replace('.wav', '')
                 sid = wav_fname.split('/')[-2]
                 assert sid in basename
@@ -103,6 +105,8 @@ class Preprocessor:
                     text = f.readline().strip()
                     f.close()
                 lines.append('{}|{}|{}'.format(basename, text, sid))
+                if idx > 2000: ######## WARNING: REMOVE THIS LINE
+                    break
             with open(metadata, 'wt') as f:
                 f.writelines('\n'.join(lines))
                 f.close()
@@ -119,11 +123,11 @@ class Preprocessor:
                 parts = line.strip().split('|')
                 basename = parts[0]
                 basenames.append(basename)
-                if i > 20:
-                    break
-                i += 1
+                # if i > 20: ######## WARNING: REMOVE THIS LINE
+                #     break
+                # i += 1
 
-        results = Parallel(n_jobs=1, verbose=1)(
+        results = Parallel(n_jobs=50, verbose=1)(
                 delayed(self.process_utterance)(data_dir, out_dir, basename) for basename in basenames
             )
         results = [ r for r in results if r is not None ]
@@ -150,7 +154,7 @@ class Preprocessor:
             "total_time": total_time,
             "n_frames": n_frames,
             "f0_stat": [f0_max, f0_min, f0_mean, f0_std],
-            "energy_state": [energy_max, energy_min, energy_mean, energy_std]
+            "energy_stat": [energy_max, energy_min, energy_mean, energy_std]
         }
         with open(os.path.join(out_dir, 'stats.json'), 'w') as f:
             json.dump(f_json, f)
@@ -167,11 +171,17 @@ class Preprocessor:
             return None
         
         # Get alignments
-        textgrid = tgt.io.read_textgrid(tg_path)
-        phone, duration, start, end = get_alignment(textgrid.get_tier_by_name('phones'), self.sampling_rate, self.hop_length)
-        text = '{'+ '}{'.join(phone) + '}' # '{A}{B}{$}{C}', $ represents silent phones
-        text = text.replace('{$}', ' ')    # '{A}{B} {C}'
-        text = text.replace('}{', ' ')     # '{A B} {C}'
+        textgrid = tgt.io.read_textgrid(tg_path, include_empty_intervals=True)
+        if self.with_space_alignment:
+            textgrid = tgt.io.read_textgrid(tg_path, include_empty_intervals=True)
+            phone, duration, start, end = my_get_alignment(textgrid, self.sampling_rate, self.hop_length)
+            text = '{' + " ".join(phone) + '}'
+        else:
+            textgrid = tgt.io.read_textgrid(tg_path, include_empty_intervals=False)
+            phone, duration, start, end = get_alignment(textgrid.get_tier_by_name('phones'), self.sampling_rate, self.hop_length)
+            text = '{'+ '}{'.join(phone) + '}' # '{A}{B}{$}{C}', $ represents silent phones
+            text = text.replace('{$}', ' ')    # '{A}{B} {C}'
+            text = text.replace('}{', ' ')     # '{A B} {C}'
 
         if start >= end:
             return None

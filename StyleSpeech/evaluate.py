@@ -2,9 +2,9 @@ import torch
 from dataloader import prepare_dataloader
 
 
-def evaluate(args, model, step):    
+def evaluate(args, model, step, remove_space=False):    
     # Get dataset
-    data_loader = prepare_dataloader(args.data_path, "val.txt", batch_size=50, shuffle=False) 
+    data_loader = prepare_dataloader(args.data_path, "val.txt", batch_size=50, shuffle=False, remove_space=remove_space) 
  
     # Get loss function
     Loss = model.get_criterion()

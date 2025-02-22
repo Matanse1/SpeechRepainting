@@ -31,8 +31,8 @@ class VarianceAdaptor(nn.Module):
         # Length regulator
         self.length_regulator = LengthRegulator(self.hidden_dim, config.max_seq_len)
     
-    def forward(self, x, src_mask, masked_frame_number=None, mel_len=None, mel_mask=None, 
-                        duration_target=None, pitch_target=None, energy_target=None, max_len=None):
+    def forward(self, x, src_mask, mel_len=None, mel_mask=None, 
+                        duration_target=None, pitch_target=None, energy_target=None, max_len=None, masked_frame_number=None):
         # Duration
         log_duration_prediction = self.duration_predictor(x, src_mask)
 
@@ -70,9 +70,9 @@ class VarianceAdaptor(nn.Module):
             #     total_duration = torch.sum(duration_rounded, dim=-1, keepdim=True)# [B, 1]
                   
 
-            duration_rounded = duration_rounded.masked_fill(src_mask, 0).long()
-            output, pe, mel_len = self.length_regulator(x, duration_rounded, max_len=masked_frame_number)
-            mel_mask = utils.get_mask_from_lengths(mel_len)
+            # duration_rounded = duration_rounded.masked_fill(src_mask, 0).long()
+            # output, pe, mel_len = self.length_regulator(x, duration_rounded, max_len=masked_frame_number)
+            # mel_mask = utils.get_mask_from_lengths(mel_len)
 
         # Phoneme-wise positional encoding
         output = output + pe

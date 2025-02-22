@@ -13,6 +13,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 from StyleSpeech.audio.stft import TacotronSTFT
 # from dataloaders.stft import TacotronSTFT
 from x_transformers.x_transformers import RotaryEmbedding
@@ -25,8 +26,12 @@ from models.modules import (
     AdaLayerNormZero_Final,
     precompute_freqs_cis,
     get_pos_embed_indices,
+    CrossAttention_noise
 )
 from models.utils import print_modle_size, WeightedSum, get_tokenizer, list_str_to_tensor, list_str_to_idx, list_str_to_idx_tts, get_StyleSpeech
+
+
+
 
 # Text embedding
 
@@ -102,18 +107,33 @@ class InputEmbedding1(nn.Module):
         self.proj = nn.Linear(mel_dim, out_dim)
         self.conv_pos_embed = ConvPositionEmbedding(dim=out_dim)
 
-    def forward(self, x: float["b d n"], mask=None, true_length=None):  # noqa: F722
+    def forward(self, x: float["b f t"], mask=None, true_length=None):  # noqa: F722
         x = x.transpose(1, 2)
         x = self.proj(x)
         x = self.conv_pos_embed(x, mask, true_length) + x
         return x
     
+class InputEmbeddingConv(nn.Module):
+    def __init__(self, mel_dim, out_dim):
+        super().__init__()
+        kernel_size = 13
+        self.proj = nn.Conv1d(mel_dim, out_dim, kernel_size=kernel_size, padding=kernel_size // 2)
+        self.conv_pos_embed = ConvPositionEmbedding(dim=out_dim)
 
+    def forward(self, x: float["b f t"], mask=None, true_length=None):  # noqa: F722
+        x = self.proj(x)
+        x = x.transpose(1, 2)
+        x = self.conv_pos_embed(x, mask, true_length) + x
+        return x
 
 class CrossAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads=8):
+    def __init__(self, embed_dim, num_heads=8, norm='none'):
         super().__init__()
+        self.norm = norm
         self.attn = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
+        if norm == 'LayerNorm':
+            self.norm_clean = nn.LayerNorm(embed_dim)
+            self.norm_noisy = nn.LayerNorm(embed_dim)
     
     def create_padding_mask(self, max_len, actual_lengths):
         """
@@ -143,25 +163,44 @@ class CrossAttention(nn.Module):
         # The attn_mask should be of shape (T1, T2)
         # We don't need to create it as we only want to mask padding tokens
         # for infernce
-        # attn_output, attn_weights = self.attn(
+        if self.norm == 'LayerNorm':
+            noisy_feats = self.norm_noisy(noisy_feats)
+            clean_feats = self.norm_clean(clean_feats)
+        attn_output, attn_weights = self.attn(
+            noisy_feats,  # queries [B, T1, D]
+            clean_feats,  # keys [B, T2, F]
+            clean_feats,  # values [B, T2, F]
+            key_padding_mask=clean_key_padding_mask,  # mask for keys/values (clean)
+            need_weights=True
+        )
+        attn_weights_np = attn_weights.detach().cpu().numpy()
+        
+        plt.imshow(attn_weights_np[0], cmap='viridis')
+        plt.colorbar()
+        plt.title('Attention Weights')
+        plt.xlabel('Key Positions')
+        plt.ylabel('Query Positions')
+        plt.savefig("att_weights.png")
+        # attn_output = self.attn(
         #     noisy_feats,  # queries
         #     clean_feats,  # keys
         #     clean_feats,  # values
         #     key_padding_mask=clean_key_padding_mask,  # mask for keys/values (clean)
-        #     need_weights=True
-        # )
-        attn_output = self.attn(
-            noisy_feats,  # queries
-            clean_feats,  # keys
-            clean_feats,  # values
-            key_padding_mask=clean_key_padding_mask,  # mask for keys/values (clean)
-            need_weights=False
-        )[0]
+        #     need_weights=False
+        # )[0]
         
         # Apply query mask after attention (zero out padding positions in output)
         noisy_mask = ~noisy_key_padding_mask.unsqueeze(-1)  # [B, T1, 1]
         attn_output = attn_output * noisy_mask
         
+        attn_output_np = attn_output.detach().cpu().numpy()
+        
+        plt.imshow(attn_output_np[0], cmap='viridis')
+        plt.colorbar()
+        plt.title('Attention Weights')
+        plt.xlabel('Key Positions')
+        plt.ylabel('Query Positions')
+        plt.savefig("attn_output.png")
         return attn_output#, attn_weights
 
 class StyleSpeechWrapper(nn.Module):
@@ -178,6 +217,7 @@ class StyleSpeechWrapper(nn.Module):
         self.filter_length = tts_kw.filter_length
         self.hop_length = tts_kw.hop_length
         self.positional_emd = tts_kw.positional_emd
+        self.cross_attn_type = tts_kw.cross_attn_type
         style_speech_ch_path = tts_kw["style_speech_ch_path"]
         style_speech_config_path = tts_kw["style_speech_config_path"]
         self.style_speech_model = get_StyleSpeech(style_speech_config_path, style_speech_ch_path)
@@ -189,10 +229,15 @@ class StyleSpeechWrapper(nn.Module):
         elif tts_kw.positional_emd == 'InputEmbedding1':
             self.encoder_noisy = InputEmbedding1(tts_kw.n_mel_channels, tts_kw.embed_dim)
             self.encoder_clean = InputEmbedding1(tts_kw.n_mel_channels, tts_kw.embed_dim)
-            
-        self.cross_attention = CrossAttention(tts_kw.embed_dim, tts_kw.num_heads)
+        elif tts_kw.positional_emd == 'InputEmbeddingConv':
+            self.encoder_noisy = InputEmbeddingConv(tts_kw.n_mel_channels, tts_kw.embed_dim)
+            self.encoder_clean = InputEmbeddingConv(tts_kw.n_mel_channels, tts_kw.embed_dim)
+        if tts_kw.cross_attn_type == 'CrossAttention_noise':
+            self.cross_attention = CrossAttention_noise(tts_kw.embed_dim, tts_kw.num_heads, tts_kw.embed_dim, norm=tts_kw.norm, custom_multi_att=tts_kw.custom_multi_att)
+        else:
+            self.cross_attention = CrossAttention(tts_kw.embed_dim, tts_kw.num_heads, tts_kw.norm)
 
-    def forward(self, masked_audio_time, input_text, noisy_mel, mask_padding_time, mask_padding_frames):
+    def forward(self, masked_audio_time, input_text, noisy_mel, mask_padding_time, mask_padding_frames, t):
         """_summary_
 
         Args:
@@ -229,13 +274,16 @@ class StyleSpeechWrapper(nn.Module):
         if self.positional_emd == 'none':
             noisy_feats = self.encoder_noisy(noisy_mel.transpose(1, 2)).transpose(1, 2)  # (B, T1, D)
             mel_output = self.encoder_clean(mel_output.transpose(1, 2)).transpose(1, 2)  # (B, T2, D)
-        if self.positional_emd == 'InputEmbedding1':
+        if self.positional_emd == 'InputEmbedding1' or self.positional_emd == 'InputEmbeddingConv':
             noisy_feats = self.encoder_noisy(noisy_mel.transpose(1, 2), true_length=noisy_mel_len)  # (B, T1, D)
             mel_output = self.encoder_clean(mel_output.transpose(1, 2), true_length=generated_mel_len)  # (B, T2, D)
 
 
         # Apply Cross-Attention once at the input
-        combined_feats = self.cross_attention(noisy_feats, mel_output, noisy_mel_len, generated_mel_len)  # (B, T1, D)
+        if self.cross_attn_type == 'CrossAttention_noise':
+            combined_feats = self.cross_attention(noisy_feats, mel_output, noisy_mel_len, generated_mel_len, t)  # (B, T1, D)
+        else:
+            combined_feats = self.cross_attention(noisy_feats, mel_output, noisy_mel_len, generated_mel_len)  # (B, T1, D)
         return combined_feats
 
 # Transformer backbone using DiT blocks
@@ -339,7 +387,7 @@ class DiT(nn.Module):
         # t: conditioning time, c: context (text + masked cond audio), x: noised input audio
         if self.unconditional is False:
             if self.use_tts:
-                x = self.sp_tts(masked_audio_time, input_text, x, mask_padding_time, mask_padding_frames)
+                x = self.sp_tts(masked_audio_time, input_text, x, mask_padding_time, mask_padding_frames, t)
 
             elif self.use_text_embed_rep:
                 if self.vocab_char_map is not None:

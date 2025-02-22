@@ -3,19 +3,32 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 import argparse
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 import json
+import sys
+sys.path.append("..")
 from models.StyleSpeech import StyleSpeech
 from dataloader import prepare_dataloader
 from optimizer import ScheduledOptim
 from evaluate import evaluate
 import utils
 
+
 def load_checkpoint(checkpoint_path, model, optimizer):
     assert os.path.isfile(checkpoint_path)
     print("Starting model from checkpoint '{}'".format(checkpoint_path))
     checkpoint_dict = torch.load(checkpoint_path)
     if 'model' in checkpoint_dict:
-        model.load_state_dict(checkpoint_dict['model'])
+        weigth_model = checkpoint_dict['model']
+        exclude_keys = ['encoder.position_enc', 'variance_adaptor.length_regulator.position_enc', 'decoder.position_enc']
+        model_dict = {k: v for k, v in weigth_model.items() if k not in exclude_keys}
+        missing_keys , _ = model.load_state_dict(model_dict, strict=False)
+        filtered_missing_keys = [key for key in missing_keys if key not in exclude_keys]
+        if not filtered_missing_keys:
+            print('All keys loaded successfully')
+        else:
+            raise Exception(f'The following keys were not loaded: {filtered_missing_keys}')
+        
         print('Model is loaded!')
     if 'optimizer' in checkpoint_dict:
         optimizer.load_state_dict(checkpoint_dict['optimizer'])
@@ -41,7 +54,7 @@ def main(args, c):
     print("Optimizer and Loss Function Defined.")
 
     # Get dataset
-    data_loader = prepare_dataloader(args.data_path, "train.txt", shuffle=True, batch_size=c.batch_size) 
+    data_loader = prepare_dataloader(args.data_path, "train.txt", shuffle=True, batch_size=c.batch_size, remove_space=c.remove_space) 
     print("Data Loader is Prepared.")
 
     # Load checkpoint if exists
@@ -91,6 +104,16 @@ def main(args, c):
 
             # Total loss
             total_loss = mel_loss + d_loss + f_loss + e_loss
+            # t_l = total_loss.item()
+            # m_l = mel_loss.item()
+            # d_l = d_loss.item()
+            # f_l = f_loss.item()
+            # e_l = e_loss.item()
+            # str2 = "Total Loss: {:.4f}\nMel Loss: {:.4f},\n" \
+            #             "Duration Loss: {:.4f}, F0 Loss: {:.4f}, Energy Loss: {:.4f} ;" \
+            #             .format(t_l, m_l, d_l, f_l, e_l)
+            # print(str2 +"\n")
+            
             # Backward
             total_loss.backward()
             # Clipping gradients to avoid gradient explosion
@@ -139,7 +162,7 @@ def main(args, c):
             if current_step % args.eval_step == 0 and current_step != 0:
                 model.eval()
                 with torch.no_grad():
-                    m_l, d_l, f_l, e_l = evaluate(args, model, current_step)
+                    m_l, d_l, f_l, e_l = evaluate(args, model, current_step, remove_space=c.remove_space)
                     str_v = "*** Validation ***\n" \
                             "StyleSpeech Step {},\n" \
                             "Mel Loss: {}\nDuration Loss:{}\nF0 Loss: {}\nEnergy Loss: {}" \
@@ -162,15 +185,22 @@ def main(args, c):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_path', default='dataset/LibriTTS/preprocessed')
-    parser.add_argument('--save_path', default='exp_stylespeech')
-    parser.add_argument('--config', default='configs/config.json')
-    parser.add_argument('--max_iter', default=100000, type=int)
-    parser.add_argument('--save_step', default=5000, type=int)
+    
+    #Original
+    # parser.add_argument('--data_path', default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed_original')
+    # parser.add_argument('--save_path', default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/orignal') #'/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space'
+    # parser.add_argument('--config', default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/config.json')
+    
+    parser.add_argument('--data_path', default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed')
+    parser.add_argument('--save_path', default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space') 
+    parser.add_argument('--config', default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config_with-space.json') 
+    
+    parser.add_argument('--max_iter', default=200000, type=int)
+    parser.add_argument('--save_step', default=500, type=int)
     parser.add_argument('--synth_step', default=1000, type=int)
-    parser.add_argument('--eval_step', default=5000, type=int)
-    parser.add_argument('--log_step', default=100, type=int)
-    parser.add_argument('--checkpoint_path', default=None, type=str, help='Path to the pretrained model') 
+    parser.add_argument('--eval_step', default=1000, type=int)
+    parser.add_argument('--log_step', default=10, type=int)
+    parser.add_argument('--checkpoint_path', default='/dsi/gannot-lab1/users/mordehay/style-speech_weights/stylespeech.pth.tar', type=str, help='Path to the pretrained model') 
 
     args = parser.parse_args()
 

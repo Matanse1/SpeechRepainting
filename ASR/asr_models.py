@@ -3,7 +3,7 @@ from .nnet import CTCLoss, CTCBeamSearchDecoder, CTCGreedySearchDecoder
 import sentencepiece as spm
 import json
 
-def get_models(dataset, type_input_guidance='text'):
+def get_models(dataset, type_input_guidance='text', with_space=False):
 
         
     assert dataset.lower() in ['lrs3', 'lrs2'], 'Dataset must be LRS3 or LRS2'
@@ -40,8 +40,11 @@ def get_models(dataset, type_input_guidance='text'):
         tokenizer = phoneme_to_number_loaded
         asr_guidance_net = AudioEfficientConformerInterCTC(vocab_size=vocab_size, interctc_blocks=[], T=400, beta_0=0.0001, beta_T=0.02, strides_subsampling=1)
         # checkpoint_ao = "/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_9_step_9285.ckpt" no-space
-        # checkpoint_ao = '/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space/checkpoints_epoch_3_step_4127.ckpt' # with-space
-        checkpoint_ao = '/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space/checkpoints_epoch_5_step_6878.ckpt' # with-space 
+        if with_space:
+            checkpoint_ao = '/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space-con/checkpoints_epoch_32_step_44024.ckpt' # with-space 
+        else:
+            checkpoint_ao = '/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_without-space/checkpoints_epoch_38_step_52278.ckpt'
+
         decoder = CTCGreedySearchDecoder(tokenizer_path=tokenizer_path, custom_tokenizer=True, num_to_phoneme=num_to_phoneme)
         metric = PhonemeErrorRate()
     
