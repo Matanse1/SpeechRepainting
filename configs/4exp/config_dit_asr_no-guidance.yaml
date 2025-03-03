@@ -1,6 +1,7 @@
 
 g_model:
   null_type: 'zeros' # randn, learn, zeros
+  predict_type: 'noise' # speech
 melgen: dit #unet, wavenet
 wavenet:
   _name_: wavenet

@@ -69,6 +69,11 @@ class Preprocessor:
     def __init__(self, config, log='log', with_space_alignment=False):
         self.config = config
         self.sampling_rate = config["sampling_rate"]
+        self.min_block_size = config["min_block_size"]
+        self.max_block_size = config["max_block_size"]
+        self.min_spacing = config["min_spacing"]
+        self.rand_num_blocks = config["rand_num_blocks"]
+        self.numpy_rng_seed = config["numpy_rng_seed"]
 
         self.n_mel_channels = config["n_mel_channels"]
         self.filter_length = config["filter_length"]
@@ -105,8 +110,8 @@ class Preprocessor:
                     text = f.readline().strip()
                     f.close()
                 lines.append('{}|{}|{}'.format(basename, text, sid))
-                if idx > 2000: ######## WARNING: REMOVE THIS LINE
-                    break
+                # if idx > 20: ######## WARNING: REMOVE THIS LINE
+                #     break
             with open(metadata, 'wt') as f:
                 f.writelines('\n'.join(lines))
                 f.close()
@@ -237,5 +242,60 @@ class Preprocessor:
         # Save spectrogram
         mel_filename = '{}-mel-{}.npy'.format(dataset, basename)
         np.save(os.path.join(out_dir, 'mel', mel_filename), mel_spectrogram.T, allow_pickle=False)
-
+        
+        masked_wav = self.create_masked_audio(mel_spectrogram, wav)
+        masked_mel_spectrogram, _ = tools.get_mel_from_wav(masked_wav, self.STFT)
+        masked_mel_spectrogram = masked_mel_spectrogram[:, :sum(duration)]
+        # Save Masked spectrogram
+        masked_mel_filename = '{}-masked-mel-{}.npy'.format(dataset, basename)
+        np.save(os.path.join(out_dir, 'masked-mel', masked_mel_filename), masked_mel_spectrogram.T, allow_pickle=False)
+        
         return '|'.join([basename, text, sid]), list(f0), list(energy), mel_spectrogram.shape[1]
+
+    def create_masked_audio(self, melspec, audio_time):
+        rng = np.random.default_rng(self.numpy_rng_seed)
+        melspec = melspec.copy()
+        audio_time = audio_time.copy()
+        # print(audio_time.shape)
+        hop_length = self.hop_length
+        edge = int(0.5*self.sampling_rate/self.hop_length) # 0.5sec of edge
+
+        shape = melspec.shape
+        # Determine the number of blocks
+        if self.rand_num_blocks:
+            # self.num_blocks = torch.randint(2, (shape[1] - self.min_block_size) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
+            if (shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1 <= 1:
+                    return audio_time
+                
+            else:
+                # self.num_blocks = torch.randint(max(((shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1),
+                #                             (shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1, (1,)).item()
+                self.num_blocks = rng.integers(max(((shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1),
+                                            (shape[-1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1)
+                # print(f"num_blocks is {self.num_blocks}. /t from {max(((shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing))//2, 1)} to {(shape[1] - 2 * edge) // (self.max_block_size + self.min_spacing) + 1}")
+        # print(num_blocks)
+        # Keep track of the end position of the last block to ensure spacing
+        
+        # edge = int(0.5*16000/hop_length) # 0.5sec of edge
+        last_block_end = -self.min_spacing + edge
+        for i in range(self.num_blocks):
+            #print(i)
+            # Random block size
+            block_size =  rng.integers(self.min_block_size, self.max_block_size + 1, (1,))
+            
+            # Ensure valid start_pos to avoid overlapping
+            if last_block_end + self.min_spacing + block_size >= shape[-1]-edge:
+                # print("break")
+                break
+            if i == self.num_blocks-1:
+                # start_pos = torch.randint(last_block_end + self.min_spacing, last_block_end + self.min_spacing + shape[1]//self.num_blocks - block_size - edge + 1, (1,)).item()
+                start_pos =  rng.integers(last_block_end + self.min_spacing, last_block_end + self.min_spacing + (shape[-1] - 2 * edge)//self.num_blocks - block_size + 1)
+            else:
+                start_pos =  rng.integers(last_block_end + self.min_spacing, last_block_end + self.min_spacing + (shape[-1] - 2 * edge)//self.num_blocks - block_size + 1)
+
+            if start_pos + block_size > shape[-1]:
+                block_size = shape[-1] - start_pos
+
+            audio_time[int(start_pos*hop_length):int((start_pos + block_size)*hop_length)] = 0
+            last_block_end = start_pos + block_size
+        return audio_time

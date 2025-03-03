@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-
+# This code was adapated from https://github.com/keonlee9420/Stepwise_Monotonic_Multihead_Attention/tree/main with some modifiction for my purpose
 
 """
 You may change these hyperparameters depending on the task.
@@ -14,7 +14,7 @@ class AttrDict(dict):
         super(AttrDict, self).__init__(*args, **kwargs)
         self.__dict__ = self
 # If True, the stepwise monotonice multihead attention is activated. Else, it is a normal multihead attention just like in Transformer.
-hp = AttrDict({"sma_head": 4, "sma_dropout": 0.1, "sma_tunable": False})
+hp = AttrDict({"sma_head": 3, "sma_dropout": 0.1, "sma_tunable": True})
 
 
 
@@ -103,21 +103,29 @@ class StepwiseMonotonicMultiheadAttention(nn.Module):
         """
         return mask.repeat(self.n_head, 1, 1)
 
-    def forward(self, q, k, v, mel_len, mask=None, query_mask=None, aw_prev=None):
+    def forward(self, q, k, v, mel_len, q_mask=None, k_mask=None, aw_prev=None):
         batch_size, qlen, klen = q.size(0), q.size(1), k.size(1)
-        if mask is not None:
-            mask = self.repeat_mask_multihead(mask)
+        
+        if q_mask is not None and k_mask is not None:
+            attn_mask = q_mask.unsqueeze(2) | k_mask.unsqueeze(1)  # [B, T1, T2]
+            attn_mask = attn_mask.unsqueeze(1).expand(-1, self.n_head, -1, -1)  # [B, n_head, T1, T2]
+            attn_mask = attn_mask.permute(1, 0, 2, 3).contiguous().view(-1, qlen, klen)  # Flatten batch & heads: [(B*n_head), T1, T2]
+        else:
+            attn_mask = None
+        # if mask is not None:
+        #     mask = self.repeat_mask_multihead(mask)
 
         # Calculate energy
-        e, v = self.energy(q, k, v, mask)  # [batch*n_head, qlen, klen], [batch*n_head, klen, d_v]
+        e, v, all_inf_mask = self.energy(q, k, v, attn_mask)  # [batch*n_head, qlen, klen], [batch*n_head, klen, d_v]
 
         # Get alpha
         alpha_cv = F.softmax(e, dim=-1) # [batch*n_head, qlen, klen]
 
         # Masking to ignore padding (query side)
-        if query_mask is not None:
-            query_mask = self.repeat_mask_multihead(query_mask.repeat(1, 1, klen))
-            alpha_cv = alpha_cv.masked_fill(query_mask, 0.)
+        if all_inf_mask is not None:
+            alpha_cv = alpha_cv.masked_fill(all_inf_mask, 0)
+            # query_mask = self.repeat_mask_multihead(query_mask.repeat(1, 1, klen))
+            # alpha_cv = alpha_cv.masked_fill(query_mask, 0.)
 
         # Get focused alpha
         alpha_fc, fr_max = self.focused_head(alpha_cv, mel_len) # [batch, qlen, klen]
@@ -138,7 +146,7 @@ class StepwiseMonotonicMultiheadAttention(nn.Module):
             cv = cv.reshape(batch_size, qlen, -1) # [batch, qlen, n_head*d_v]
 
         cv = self.dropout(self.last_layer(cv))
-        cv = self.layer_norm(cv)
+        # cv = self.layer_norm(cv) # maybe like the custon attention to de output = self.dropout(output) + residual without layer norm
         return cv, alpha_fc, fr_max
 
 
@@ -151,13 +159,25 @@ class MultiheadEnergy(nn.Module):
         self.n_head = n_head
         self.d_k = d_k
         self.d_v = d_v
-
-        self.w_qs = nn.Linear(d_model, n_head * d_k)
-        self.w_ks = nn.Linear(d_model, n_head * d_k)
-        self.w_vs = nn.Linear(d_model, n_head * d_v)
+        
+        kernel_size = 13
+        self.w_qs = nn.Conv1d(d_model, n_head * d_k, kernel_size, padding=kernel_size // 2, groups=n_head)
+        self.w_ks = nn.Conv1d(d_model, n_head * d_k, kernel_size, padding=kernel_size // 2, groups=n_head)
+        self.w_vs = nn.Conv1d(d_model, n_head * d_v, kernel_size, padding=kernel_size // 2, groups=n_head)
+        
+        # self.w_qs = nn.Linear(d_model, n_head * d_k)
+        # self.w_ks = nn.Linear(d_model, n_head * d_k)
+        # self.w_vs = nn.Linear(d_model, n_head * d_v)
 
         self.temperature = np.power(d_k, 0.5)
-
+        self._init_weights()
+        
+    def _init_weights(self):
+        for layer in [self.w_qs, self.w_ks, self.w_vs]:
+            nn.init.xavier_uniform_(layer.weight)
+            if layer.bias is not None:
+                nn.init.zeros_(layer.bias)
+                
     def scaled_dot_product(self, q, k):
         sdp = torch.bmm(q, k.transpose(1, 2)) # (n*b) x lq x lk
         sdp = sdp / self.temperature
@@ -171,9 +191,19 @@ class MultiheadEnergy(nn.Module):
         sz_b, len_k, _ = k.size()
         sz_b, len_v, _ = v.size()
 
-        q = self.w_qs(q).view(sz_b, len_q, n_head, d_k)
-        k = self.w_ks(k).view(sz_b, len_k, n_head, d_k)
-        v = self.w_vs(v).view(sz_b, len_v, n_head, d_v)
+        # q = self.w_qs(q).view(sz_b, len_q, n_head, d_k)
+        # k = self.w_ks(k).view(sz_b, len_k, n_head, d_k)
+        # v = self.w_vs(v).view(sz_b, len_v, n_head, d_v)
+        
+        # Transpose to match Conv1d input format (batch, channels, sequence_length)
+        q = q.permute(0, 2, 1)  # (batch, d_model, len_q)
+        k = k.permute(0, 2, 1)  # (batch, d_model, len_k)
+        v = v.permute(0, 2, 1)  # (batch, d_model, len_k)
+        
+        q = self.w_qs(q).permute(0, 2, 1).view(sz_b, len_q, n_head, d_k)
+        k = self.w_ks(k).permute(0, 2, 1).view(sz_b, len_k, n_head, d_k)
+        v = self.w_vs(v).permute(0, 2, 1).view(sz_b, len_k, n_head, d_v)
+        
         q = q.permute(2, 0, 1, 3).contiguous().view(-1,
                                                     len_q, d_k)  # (n*b) x lq x dk
         k = k.permute(2, 0, 1, 3).contiguous().view(-1,
@@ -186,7 +216,15 @@ class MultiheadEnergy(nn.Module):
 
         # Masking to ignore padding
         if mask is not None:
-            NEG_INF = float(np.finfo(torch.tensor(0, dtype=e.dtype).numpy().dtype).min)
-            e = e.masked_fill(mask, NEG_INF)
+            e = e.masked_fill(mask, -np.inf) # maybe float(np.finfo(torch.tensor(0, dtype=e.dtype).numpy().dtype).min)
+                        # Ensure no row is entirely masked (NaN issue)
+            all_inf_rows = e == -np.inf
+            all_inf_mask = all_inf_rows.all(dim=-1, keepdim=True)  # (B, T1, 1)
+        else:
+            all_inf_mask = None
+            
+        # if mask is not None:
+        #     NEG_INF = float(np.finfo(torch.tensor(0, dtype=e.dtype).numpy().dtype).min)
+        #     e = e.masked_fill(mask, NEG_INF)
 
-        return e, v
+        return e, v, all_inf_mask

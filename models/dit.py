@@ -203,35 +203,142 @@ class CrossAttention(nn.Module):
         plt.savefig("attn_output.png")
         return attn_output#, attn_weights
 
+
+class StyleSpeecEncoderPhonemehWrapper(nn.Module):
+    def __init__(self, tts_kw):
+        super().__init__()
+
+        self.positional_emd = tts_kw.positional_emd
+        self.cross_attn_type = tts_kw.cross_attn_type
+        self.inner_attention = tts_kw.inner_attention
+        style_speech_ch_path = tts_kw["style_speech_ch_path"] # checkpoint path
+        style_speech_config_path = tts_kw["style_speech_config_path"]
+        self.style_speech_model, config = get_StyleSpeech(style_speech_config_path, style_speech_ch_path)
+        self.stft = TacotronSTFT(
+            config.filter_length,
+            config.hop_length,
+            config.win_length,
+            config.n_mel_channels,
+            config.sampling_rate,
+            config.mel_fmin,
+            config.mel_fmax,
+            log=tts_kw.log)
+        
+        self.filter_length = config.filter_length
+        self.hop_length = config.hop_length
+        self.use_rope = tts_kw.use_rope
+        self.tts_output = tts_kw.tts_output
+        if self.use_rope:
+            self.rotary_embed = RotaryEmbedding(tts_kw.embed_dim // tts_kw.num_heads)
+        
+        self.encoder_phoneme = nn.Sequential(nn.Linear(256, tts_kw.embed_dim), nn.LayerNorm(tts_kw.embed_dim)) # 256 is the dim of the phoneme embedding
+        if tts_kw.positional_emd == 'none':
+            self.encoder_noisy = nn.Conv1d(config.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
+        elif tts_kw.positional_emd == 'InputEmbedding1':
+            self.encoder_noisy = InputEmbedding1(config.n_mel_channels, tts_kw.embed_dim)
+        elif tts_kw.positional_emd == 'InputEmbeddingConv':
+            self.encoder_noisy = InputEmbeddingConv(config.n_mel_channels, tts_kw.embed_dim)
+        if tts_kw.cross_attn_type == 'CrossAttention_noise':
+            self.cross_attention = CrossAttention_noise(tts_kw.embed_dim, tts_kw.num_heads, tts_kw.embed_dim, norm=tts_kw.norm, custom_multi_att=tts_kw.custom_multi_att, tts_output=tts_kw.tts_output)
+        else:
+            self.cross_attention = CrossAttention(tts_kw.embed_dim, tts_kw.num_heads, tts_kw.norm)
+
+    def forward(self, masked_audio_time, input_text, noisy_mel, mask_padding_time, mask_padding_frames, t):
+        """_summary_
+
+        Args:
+            masked_audio_time (_type_): _description_
+            input_text (_type_): _description_
+            noisy_mel (_type_): [B, T, F]
+            mask_padding_time (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        B, T, F = noisy_mel.shape
+        if mask_padding_time is None:
+            mask_padding_time = torch.ones_like(masked_audio_time, dtype=torch.bool).cuda()
+        if mask_padding_frames is None:
+            mask_padding_frames = torch.ones((B, 1, T), dtype=torch.bool).cuda()
+        length_masked_time = torch.sum(mask_padding_time, dim=-1, dtype=torch.int32)
+        num_frames = (length_masked_time) // self.hop_length + 1 #[B, R] where is the number of frames in the ref_masked_mel
+        device = masked_audio_time.device
+        input_text, phoneme_length = list_str_to_idx_tts(input_text) # already padded with zeros (zero = '_')
+        input_text = input_text.to(device)
+        phoneme_length = phoneme_length.to(device)
+        ref_masked_mel, _ = self.stft.mel_spectrogram(masked_audio_time) #[B, F, T1]
+        with torch.no_grad():
+            # Extract style vector
+            style_vector = self.style_speech_model.get_style_vector(ref_masked_mel.transpose(1, 2), mel_len=num_frames) # the input ref_masked_mel is [B, T, F], style_vector shape is [B, D=128]
+            if self.tts_output == 'phoneme_with_energy_pitch':
+                outputs = self.style_speech_model.inference_only_encoder_with_pitch_energy(style_vector, input_text, phoneme_length, masked_frame_number=None)
+            elif self.tts_output == 'phoneme':
+                outputs = self.style_speech_model.inference_only_encoder(style_vector, input_text, phoneme_length, masked_frame_number=None) # [B, T, F]
+        phoneme_output = outputs.detach() #[B, T2, 256]
+
+        
+
+        
+        noisy_mel_len = torch.sum(mask_padding_frames, dim=-1, keepdim=False, dtype=torch.int32).squeeze(1)
+        # from StyleSpeech import utils
+        # utils.plot_data([phoneme_output[0].transpose(1,0).cpu().numpy()], 
+        #     ['Ref Spectrogram'], filename='/home/dsi/moradim/SpeechRepainting/plot.png')
+        phoneme_output = self.encoder_phoneme(phoneme_output) # (B, T2, D)
+        if self.positional_emd == 'none':
+            noisy_feats = self.encoder_noisy(noisy_mel.transpose(1, 2)).transpose(1, 2)  # (B, T1, D)
+
+        if self.positional_emd == 'InputEmbedding1' or self.positional_emd == 'InputEmbeddingConv':
+            noisy_feats = self.encoder_noisy(noisy_mel.transpose(1, 2), true_length=noisy_mel_len)  # (B, T1, D)
+
+
+        if self.use_rope:
+            len_rope = max(T, max(phoneme_length))
+            rope = self.rotary_embed.forward_from_seq_len(len_rope)
+        else:
+            rope = None
+        # Apply Cross-Attention once at the input
+        if self.cross_attn_type == 'CrossAttention_noise':
+            combined_feats = self.cross_attention(noisy_feats, phoneme_output, noisy_mel_len, phoneme_length, t, rope=rope)  # (B, T1, D)
+        else:
+            combined_feats = self.cross_attention(noisy_feats, phoneme_output, noisy_mel_len, phoneme_length)  # (B, T1, D)
+        if self.inner_attention:
+            return combined_feats, rope, phoneme_output, phoneme_length, noisy_mel_len
+        return combined_feats, rope
+
 class StyleSpeechWrapper(nn.Module):
     def __init__(self, tts_kw):
         super().__init__()
-        self.stft = TacotronSTFT(
-                tts_kw.filter_length,
-                tts_kw.hop_length,
-                tts_kw.win_length,
-                tts_kw.n_mel_channels,
-                tts_kw.sampling_rate,
-                tts_kw.mel_fmin,
-                tts_kw.mel_fmax)
-        self.filter_length = tts_kw.filter_length
-        self.hop_length = tts_kw.hop_length
+
         self.positional_emd = tts_kw.positional_emd
         self.cross_attn_type = tts_kw.cross_attn_type
-        style_speech_ch_path = tts_kw["style_speech_ch_path"]
+        style_speech_ch_path = tts_kw["style_speech_ch_path"] # checkpoint path
         style_speech_config_path = tts_kw["style_speech_config_path"]
-        self.style_speech_model = get_StyleSpeech(style_speech_config_path, style_speech_ch_path)
-
-
+        self.style_speech_model, config = get_StyleSpeech(style_speech_config_path, style_speech_ch_path)
+        self.stft = TacotronSTFT(
+            config.filter_length,
+            config.hop_length,
+            config.win_length,
+            config.n_mel_channels,
+            config.sampling_rate,
+            config.mel_fmin,
+            config.mel_fmax,
+            log=tts_kw.log)
+        
+        self.filter_length = config.filter_length
+        self.hop_length = config.hop_length
+        self.use_rope = tts_kw.use_rope
+        if self.use_rope:
+            self.rotary_embed = RotaryEmbedding(tts_kw.embed_dim // tts_kw.num_heads)
+        
         if tts_kw.positional_emd == 'none':
-            self.encoder_noisy = nn.Conv1d(tts_kw.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
-            self.encoder_clean = nn.Conv1d(tts_kw.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
+            self.encoder_noisy = nn.Conv1d(config.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
+            self.encoder_clean = nn.Conv1d(config.n_mel_channels, tts_kw.embed_dim, kernel_size=3, padding=1)
         elif tts_kw.positional_emd == 'InputEmbedding1':
-            self.encoder_noisy = InputEmbedding1(tts_kw.n_mel_channels, tts_kw.embed_dim)
-            self.encoder_clean = InputEmbedding1(tts_kw.n_mel_channels, tts_kw.embed_dim)
+            self.encoder_noisy = InputEmbedding1(config.n_mel_channels, tts_kw.embed_dim)
+            self.encoder_clean = InputEmbedding1(config.n_mel_channels, tts_kw.embed_dim)
         elif tts_kw.positional_emd == 'InputEmbeddingConv':
-            self.encoder_noisy = InputEmbeddingConv(tts_kw.n_mel_channels, tts_kw.embed_dim)
-            self.encoder_clean = InputEmbeddingConv(tts_kw.n_mel_channels, tts_kw.embed_dim)
+            self.encoder_noisy = InputEmbeddingConv(config.n_mel_channels, tts_kw.embed_dim)
+            self.encoder_clean = InputEmbeddingConv(config.n_mel_channels, tts_kw.embed_dim)
         if tts_kw.cross_attn_type == 'CrossAttention_noise':
             self.cross_attention = CrossAttention_noise(tts_kw.embed_dim, tts_kw.num_heads, tts_kw.embed_dim, norm=tts_kw.norm, custom_multi_att=tts_kw.custom_multi_att)
         else:
@@ -249,10 +356,10 @@ class StyleSpeechWrapper(nn.Module):
         Returns:
             _type_: _description_
         """
+        B, T, F = noisy_mel.shape
         if mask_padding_time is None:
             mask_padding_time = torch.ones_like(masked_audio_time, dtype=torch.bool).cuda()
         if mask_padding_frames is None:
-            B, T, F = noisy_mel.shape
             mask_padding_frames = torch.ones((B, 1, T), dtype=torch.bool).cuda()
         length_masked_time = torch.sum(mask_padding_time, dim=-1, dtype=torch.int32)
         num_frames = (length_masked_time) // self.hop_length + 1 #[B, R] where is the number of frames in the ref_masked_mel
@@ -267,6 +374,14 @@ class StyleSpeechWrapper(nn.Module):
             outputs = self.style_speech_model.inference(style_vector, input_text, phoneme_length, masked_frame_number=None) # [B, T, F]
         mel_output = outputs[0].detach()
         generated_mel_len = outputs[-1].detach()
+        
+        zero_frame = torch.zeros((B, 1, F), device=mel_output.device, dtype=mel_output.dtype) - 10.
+        # Concatenate zero frames at the beginning and end
+        mel_output = torch.cat([zero_frame, mel_output, zero_frame], dim=1)
+        # Update generated_mel_len by adding 2
+        generated_mel_len = generated_mel_len + 2
+        max_generated_mel_len = torch.max(generated_mel_len).item()
+        
         noisy_mel_len = torch.sum(mask_padding_frames, dim=-1, keepdim=False, dtype=torch.int32).squeeze(1)
         # from StyleSpeech import utils
         # utils.plot_data([mel_output[0].transpose(1,0).cpu().numpy()], 
@@ -278,13 +393,17 @@ class StyleSpeechWrapper(nn.Module):
             noisy_feats = self.encoder_noisy(noisy_mel.transpose(1, 2), true_length=noisy_mel_len)  # (B, T1, D)
             mel_output = self.encoder_clean(mel_output.transpose(1, 2), true_length=generated_mel_len)  # (B, T2, D)
 
-
+        if self.use_rope:
+            len_rope = max(T, max_generated_mel_len)
+            rope = self.rotary_embed.forward_from_seq_len(len_rope)
+        else:
+            rope = None
         # Apply Cross-Attention once at the input
         if self.cross_attn_type == 'CrossAttention_noise':
-            combined_feats = self.cross_attention(noisy_feats, mel_output, noisy_mel_len, generated_mel_len, t)  # (B, T1, D)
+            combined_feats = self.cross_attention(noisy_feats, mel_output, noisy_mel_len, generated_mel_len, t, rope=rope)  # (B, T1, D)
         else:
             combined_feats = self.cross_attention(noisy_feats, mel_output, noisy_mel_len, generated_mel_len)  # (B, T1, D)
-        return combined_feats
+        return combined_feats, rope
 
 # Transformer backbone using DiT blocks
 
@@ -310,10 +429,17 @@ class DiT(nn.Module):
         self.unconditional = unconditional
         self.text_embed_prop = text_embed_prop
         self.use_tts = tts_kw["use_tts"]
+        self.tts_output = tts_kw["tts_output"]
+        self.use_rope = tts_kw["use_rope"]
+        self.inner_attention = tts_kw["inner_attention"]
         self.use_text_embed_rep = self.text_embed_prop["use_text_embed_rep"]
+        self.rotary_embed = RotaryEmbedding(dim_head)
         if self.unconditional is False:
             if self.use_tts:
-                self.sp_tts = StyleSpeechWrapper(tts_kw)
+                if self.tts_output == 'mel':
+                    self.sp_tts = StyleSpeechWrapper(tts_kw)
+                elif self.tts_output == 'phoneme' or self.tts_output == 'phoneme_with_energy_pitch':
+                    self.sp_tts = StyleSpeecEncoderPhonemehWrapper(tts_kw)
             elif self.use_text_embed_rep:
                 if self.text_embed_prop["text_dim"] is None:
                     text_dim = mel_dim
@@ -331,13 +457,13 @@ class DiT(nn.Module):
 
         self.time_embed = TimestepEmbedding(dim)
 
-        self.rotary_embed = RotaryEmbedding(dim_head)
+
 
         self.dim = dim
         self.depth = depth
 
         self.transformer_blocks = nn.ModuleList(
-            [DiTBlock(dim=dim, heads=heads, dim_head=dim_head, ff_mult=ff_mult, dropout=dropout) for _ in range(depth)]
+            [DiTBlock(dim=dim, heads=heads, dim_head=dim_head, ff_mult=ff_mult, dropout=dropout, inner_attention=self.inner_attention) for _ in range(depth)]
         )
         self.long_skip_connection = nn.Linear(dim * 2, dim, bias=False) if long_skip_connection else None
 
@@ -380,6 +506,7 @@ class DiT(nn.Module):
         masked_melspec, masked_audio_time = cond
         masked_melspec = masked_melspec.transpose(-1, -2) # [B, T, F]
         batch, seq_len = x.shape[0], x.shape[1]
+        rope = self.rotary_embed.forward_from_seq_len(seq_len)
         if time.ndim == 0:
             time = time.repeat(batch)
         
@@ -387,7 +514,9 @@ class DiT(nn.Module):
         # t: conditioning time, c: context (text + masked cond audio), x: noised input audio
         if self.unconditional is False:
             if self.use_tts:
-                x = self.sp_tts(masked_audio_time, input_text, x, mask_padding_time, mask_padding_frames, t)
+                x, rope2tts = self.sp_tts(masked_audio_time, input_text, x, mask_padding_time, mask_padding_frames, t)
+                # if self.use_rope:
+                #     rope = rope2tts
 
             elif self.use_text_embed_rep:
                 if self.vocab_char_map is not None:
@@ -401,7 +530,7 @@ class DiT(nn.Module):
         else:
             x = self.input_embed(x.transpose(1, 2), mask=mask)
 
-        rope = self.rotary_embed.forward_from_seq_len(seq_len)
+        
 
         if self.long_skip_connection is not None:
             residual = x

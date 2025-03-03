@@ -25,6 +25,12 @@ import numpy as np
 import onnxruntime as ort
 import soundfile as sf
 
+def is_number(value):
+    return isinstance(value, (int, float, np.number))
+
+
+INPUT_LENGTH = 9.01
+"""
 class ComputeScoreDNSMOS:
     def __init__(self, primary_model_path, p808_model_path) -> None:
         self.onnx_sess = ort.InferenceSession(primary_model_path)
@@ -70,6 +76,78 @@ class ComputeScoreDNSMOS:
             'SIG': mos_sig,
             'BAK': mos_bak,
             'P808_MOS': p808_mos
+        }
+"""
+
+class ComputeScoreDNSMOS:
+    def __init__(self, primary_model_path, p808_model_path) -> None:
+        self.onnx_sess = ort.InferenceSession(primary_model_path)
+        self.p808_onnx_sess = ort.InferenceSession(p808_model_path)
+    
+    def audio_melspec(self, audio, n_mels=120, frame_size=320, hop_length=160, sr=16000, to_db=True):
+        mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr, n_fft=frame_size+1, hop_length=hop_length, n_mels=n_mels)
+        if to_db:
+            mel_spec = (librosa.power_to_db(mel_spec, ref=np.max)+40)/40
+        return mel_spec.T
+
+    def get_polyfit_val(self, sig, bak, ovr, is_personalized_MOS):
+        if is_personalized_MOS:
+            p_ovr = np.poly1d([-0.00533021,  0.005101  ,  1.18058466, -0.11236046])
+            p_sig = np.poly1d([-0.01019296,  0.02751166,  1.19576786, -0.24348726])
+            p_bak = np.poly1d([-0.04976499,  0.44276479, -0.1644611 ,  0.96883132])
+        else:
+            p_ovr = np.poly1d([-0.06766283,  1.11546468,  0.04602535])
+            p_sig = np.poly1d([-0.08397278,  1.22083953,  0.0052439 ])
+            p_bak = np.poly1d([-0.13166888,  1.60915514, -0.39604546])
+
+        return p_sig(sig), p_bak(bak), p_ovr(ovr)
+
+    def compute_full_audio_score(self, audio_signal, sampling_rate=16000, is_personalized_MOS=False):
+        fs = sampling_rate
+        len_samples = int(INPUT_LENGTH * fs) 
+        
+        while len(audio_signal) < len_samples:
+            audio_signal = np.append(audio_signal, audio_signal)
+        
+        num_hops = int(np.floor(len(audio_signal)/fs) - INPUT_LENGTH) + 1
+        hop_len_samples = fs
+        predicted_mos_sig_seg_raw = []
+        predicted_mos_bak_seg_raw = []
+        predicted_mos_ovr_seg_raw = []
+        predicted_mos_sig_seg = []
+        predicted_mos_bak_seg = []
+        predicted_mos_ovr_seg = []
+        predicted_p808_mos = []
+
+        for idx in range(num_hops):
+            audio_seg = audio_signal[int(idx*hop_len_samples) : int((idx+INPUT_LENGTH)*hop_len_samples)]
+            if len(audio_seg) < len_samples:
+                continue
+
+            input_features = np.array(audio_seg).astype('float32')[np.newaxis,:]
+            p808_input_features = np.array(self.audio_melspec(audio=audio_seg[:-160])).astype('float32')[np.newaxis, :, :]
+            oi = {'input_1': input_features}
+            p808_oi = {'input_1': p808_input_features}
+            p808_mos = self.p808_onnx_sess.run(None, p808_oi)[0][0][0]
+            mos_sig_raw, mos_bak_raw, mos_ovr_raw = self.onnx_sess.run(None, oi)[0][0]
+            mos_sig, mos_bak, mos_ovr = self.get_polyfit_val(mos_sig_raw, mos_bak_raw, mos_ovr_raw, is_personalized_MOS)
+            predicted_mos_sig_seg_raw.append(mos_sig_raw)
+            predicted_mos_bak_seg_raw.append(mos_bak_raw)
+            predicted_mos_ovr_seg_raw.append(mos_ovr_raw)
+            predicted_mos_sig_seg.append(mos_sig)
+            predicted_mos_bak_seg.append(mos_bak)
+            predicted_mos_ovr_seg.append(mos_ovr)
+            predicted_p808_mos.append(p808_mos)
+
+        return {
+
+            'OVRL_raw': np.mean(predicted_mos_ovr_seg_raw),
+            'SIG_raw': np.mean(predicted_mos_sig_seg_raw),
+            'BAK_raw': np.mean(predicted_mos_bak_seg_raw),
+            'OVRL': np.mean(predicted_mos_ovr_seg),
+            'SIG': np.mean(predicted_mos_sig_seg),
+            'BAK': np.mean(predicted_mos_bak_seg),
+            'P808_MOS': np.mean(predicted_p808_mos)
         }
         
         
@@ -118,7 +196,7 @@ class Metrics:
         num_words_ref = len(reference_clean.split())
         wrong_words = int(wer * num_words_ref)
         wer = wer * 100
-        return wer, num_words_ref, wrong_words, reference_clean, hypo_clean
+        return round(wer, 4), num_words_ref, wrong_words, reference_clean, hypo_clean
     
     def compute_metrics(self, pred, tar_wav, target_text):
         if len(pred) < len(tar_wav):
@@ -194,7 +272,8 @@ def main():
     # pathes2data  =    ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/small-gap_cp=732000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True',
                 # '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/as-train-gap_cp=1256000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True']#,
     combine_dataframes = False
-    pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=25_skip=150_cp=112000_mel_text=True_ASR/w1=-1_w2=0.5_asr_start=270_mask=True']
+    pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=25_skip=150_cp=112000_mel_text=True_ASR/w1=-1_w2=0.5_asr_start=270_mask=True',
+                   '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=25_skip=150_cp=112000_mel_text=True_ASR/w1=-1_w2=0.5_asr_start=320_mask=True']
     for path2data in pathes2data:
     # path2data = '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/as-train-gap_cp=532000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True'
         num_dirs = count_directories(path2data)
@@ -203,7 +282,7 @@ def main():
         vocoder_names = ["bigvgan", "hifi_gan"] 
 
             
-        titles = ['masked_WER', 'masked_num_wrong_words', 'total_masked_num_words', 'true_trans', 'masked_trans', 'masked_plcmos',
+        titles = ['sample_path', 'masked_WER', 'masked_num_wrong_words', 'total_masked_num_words', 'true_trans', 'masked_trans', 'masked_plcmos',
                   'masked_OVRL_raw', 'masked_SIG_raw', 'masked_BAK_raw', 'masked_OVRL', 'masked_SIG', 'masked_BAK', 'masked_P808_MOS']
         titles = titles + [met + '_' + voc for met in ['target_OVRL_raw', 'target_SIG_raw', 'target_BAK_raw', 'target_OVRL', 'target_SIG', 'target_BAK', 'target_P808_MOS'] for voc in vocoder_names] + \
                     [met + '_' + voc for met in ['OVRL_raw', 'SIG_raw', 'BAK_raw', 'OVRL', 'SIG', 'BAK', 'P808_MOS'] for voc in vocoder_names] + \
@@ -218,7 +297,8 @@ def main():
             writer = csv.DictWriter(file, fieldnames=titles, delimiter="|")
             writer.writeheader()  # Write the header row
             samples_dir = Path(path2data).glob('sample_*')
-            for sample_path in tqdm(samples_dir):
+            for idx, sample_path in enumerate(tqdm(samples_dir)):
+                dict_row_results["sample_path"] = sample_path
                 sample = Path(sample_path).name.split('_')[-1]
                 with open(f'{path2data}/sample_{sample}/asr_text.txt', "r") as file:
                     lines = file.readlines()
@@ -227,10 +307,10 @@ def main():
                     estimated_text = lines[1].split(":")[1].strip()
                 masked_audio, sr = torchaudio.load(f'{path2data}/sample_{sample}/masked_audio_time.wav') #masked_audio_time, time_masking_audio
                 masked_audio = masked_audio[0].to(device)
-                dict_row_results['masked_WER'], dict_row_results["masked_num_wrong_words"], dict_row_results["total_masked_num_words"], \
+                dict_row_results['masked_WER'], dict_row_results["total_masked_num_words"], dict_row_results["masked_num_wrong_words"], \
                     dict_row_results["true_trans"], dict_row_results["masked_trans"] = compute_metrics.calc_wer(target_text, masked_audio)
-                dict_row_results['masked_plcmos'] = round(compute_metrics.calc_plcmos(masked_audio), 3)
-                dict_row_results.update({'masked_' + k: v for k, v in compute_metrics.calc_dnsmos(masked_audio).items()})
+                dict_row_results['masked_plcmos'] = round(compute_metrics.calc_plcmos(masked_audio), 4)
+                dict_row_results.update({'masked_' + k: round(v, 4) for k, v in compute_metrics.calc_dnsmos(masked_audio).items()})
                 for voc in vocoder_names:
                     
                     pred, sr = torchaudio.load(f'{path2data}/sample_{sample}/generated_audio_{voc}.wav')
@@ -241,24 +321,24 @@ def main():
                     
                     metrics = compute_metrics.compute_metrics(pred, tar_wav, target_text)
                     for key, value in metrics.items():
-                        dict_row_results[key + '_' + voc] = value
+                        dict_row_results[key + '_' + voc] = round(value, 4) if is_number(value) else value
                     # print(metrics)
                     metrics = compute_metrics.compute_init_metrics(masked_audio, tar_wav)
                     for key, value in metrics.items():
-                        dict_row_results[key + '_' + voc] = value
+                        dict_row_results[key + '_' + voc] = round(value, 4) if is_number(value) else value
                     
                     metrics = compute_metrics.calc_dnsmos(pred)
                     for key, value in metrics.items():
-                        dict_row_results[key + '_' + voc] = value
+                        dict_row_results[key + '_' + voc] = round(value, 4) if is_number(value) else value
                         
                     metrics = compute_metrics.calc_dnsmos(tar_wav)
                     for key, value in metrics.items():
-                        dict_row_results['target_' + key + '_' + voc] = value
+                        dict_row_results['target_' + key + '_' + voc] = round(value, 4) if is_number(value) else value
 
                 writer.writerow(dict_row_results)
                 print('-------------------')
-                # if sample == 2:
-                #     break
+                if idx == 3:
+                    break
         
         if combine_dataframes:
             output_csv = f"{path2data}/metric_results_and_samples_info.csv"

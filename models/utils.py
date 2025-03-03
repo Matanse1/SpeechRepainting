@@ -194,8 +194,7 @@ def list_str_to_idx_tts(
     text: list[str] | list[list[str]],
     padding_value=0,
 ) -> int["b nt"]:  # noqa: F722
-
-    list_idx_tensors = [torch.tensor(text_to_sequence("{" + " ".join(t) + "}", [])) for t in text] 
+    list_idx_tensors = [torch.tensor(text_to_sequence(("{" + " ".join(t) + "}").replace("space", "sp"), [])) for t in text] # the space of stylespeech (tts) is "sp", not "space"
     src_length = torch.tensor([t.shape[-1] for t in list_idx_tensors])
     text = pad_sequence(list_idx_tensors, padding_value=padding_value, batch_first=True)
     return text, src_length
@@ -216,5 +215,5 @@ def get_StyleSpeech(config_path, checkpoint_path):
     model.eval()
     num_params = sum(p.numel() for p in model.parameters())
     print(f'Total number of parameters: {num_params}')
-    return model
+    return model, config
   

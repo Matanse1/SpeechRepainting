@@ -108,7 +108,7 @@ def inference(
         print(f"rank {rank} {torch.cuda.device_count()} GPUs")
         torch.cuda.set_device(rank % torch.cuda.device_count())
 
-    phoneme_dict_path = "/home/dsi/moradim/Documents/MFA/models/inspect/english_us_arpa_acoustic/phones.txt"
+    phoneme_dict_path = "/home/dsi/moradim/SpeechRepainting/phones.txt"
     _, phoneme_dict_d2p = get_phones_dict(phoneme_dict_path)
 
     # map diffusion hyperparameters to gpu

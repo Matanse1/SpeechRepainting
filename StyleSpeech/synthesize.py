@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import argparse
@@ -112,6 +113,7 @@ def synthesize(args, model, _stft):
     outputs = model.inference(style_vector, src, src_len, masked_frame_number=None)
     mel_output, src_embedded, d_prediction, p_prediction, e_prediction, src_mask, mel_mask, mel_len = outputs[0], outputs[1], outputs[2], outputs[3], outputs[4], outputs[5], outputs[6], outputs[7]
     rounded_duration =  torch.clamp(torch.round(torch.exp(d_prediction)-1.0), min=0)    
+    print(f"Duraion prediction: {rounded_duration}")
     mel_ref_ = ref_mel.cpu().squeeze().transpose(0, 1).detach()
     mel_ = mel_output.cpu().squeeze().transpose(0, 1).detach()
 
@@ -145,7 +147,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     my_style_speech = True
     if my_style_speech:
-        parser.add_argument("--checkpoint_path", type=str, default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space/ckpt/checkpoint_159500.pth.tar',
+        parser.add_argument("--checkpoint_path", type=str, default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec/ckpt/checkpoint_204500.pth.tar',
             help="Path to the pretrained model")
         parser.add_argument('--config', default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space/config.json')
         parser.add_argument("--with_space", default=True, help="Use space token in phoneme sequence")
@@ -157,11 +159,11 @@ if __name__ == "__main__":
     
 
     
-    parser.add_argument("--save_path", type=str, default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_159500_sample=494_originalStyleSpeech/')
-    parser.add_argument("--ref_audio", type=str, default='/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_phoneme-with-space/w1=0.8_w2=1.2_asr_start=320_mask=True/sample_494/masked_audio_time.wav',
+    parser.add_argument("--save_path", type=str, default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_176500_sample=69_masked-ref_masked-model/')
+    parser.add_argument("--ref_audio", type=str, default='/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-my-tts-melspec_positional_emd=InputEmbedding1_cross-custom-attn-noise_w-masked-pix=0.5/dit-net_dim768_depth9_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_withoutLM_phoneme-with-space/w1=2_w2=0.8_asr_start=320_mask=True/sample_69/masked_audio_time.wav',
         help="path to an reference speech audio sample")
 
-    parser.add_argument("--text", type=str, default='THE IDEAS ALSO REMAIN BUT THEY HAVE BECOME TYPES IN NATURE FORMS OF MEN ANIMALS BIRDS FISHES',
+    parser.add_argument("--text", type=str, default='IN THE MODERN WELL CONSTRUCTED PLAY HE SIMPLY RINGS UP AN IMAGINARY CONFEDERATE AND TELLS HIM WHAT HE IS GOING TO DO COULD ANYTHING BE MORE NATURAL',
         help="raw text to synthesize")
     parser.add_argument("--lexicon_path", type=str, default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/lexicon/librispeech-lexicon.txt')
     args = parser.parse_args()

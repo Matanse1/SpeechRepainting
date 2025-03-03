@@ -6,6 +6,7 @@ from torch import Tensor
 from typing import List, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
+from .sma import StepwiseMonotonicMultiheadAttention
 """
 ein notation:
 b - batch
@@ -565,6 +566,36 @@ class Swish(nn.Module):
 
     def forward(self, x):
         return x * x.sigmoid()
+  
+  
+
+class TF_Attention(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.conv1d_t_1 = nn.Conv1d(1, 1, kernel_size=3, stride=1, padding=1, dilation=1)
+        self.conv1d_t_2 = nn.Conv1d(1, 1, kernel_size=3, stride=1, padding=2, dilation=2)
+        self.sigmoid_t = nn.Sigmoid()
+        self.prelu_t = nn.PReLU()
+        self.adapt_avrg_pooling_t = nn.AdaptiveAvgPool2d((1, None))
+        
+        self.conv1d_f_1 = nn.Conv1d(1, 1, kernel_size=3, stride=1, padding=1, dilation=1)
+        self.conv1d_f_2 = nn.Conv1d(1, 1, kernel_size=3, stride=1, padding=2, dilation=2)
+        self.sigmoid_f = nn.Sigmoid()
+        self.prelu_f = nn.PReLU()
+        self.adapt_avrg_pooling_f = nn.AdaptiveAvgPool2d((None, 1))
+        
+    def forward(self, input):
+        output_t = self.adapt_avrg_pooling_t(input) #[B, 1, T]
+        output_t = self.sigmoid_t(self.prelu_t(self.conv1d_t_2(self.conv1d_t_1(output_t))))
+        
+        output_f = self.adapt_avrg_pooling_f(input) #[B, F, 1]
+        output_f = torch.transpose(output_f, 1, 2) #[B, 1, F]
+        output_f = self.sigmoid_f(self.prelu_f(self.conv1d_f_2(self.conv1d_f_1(output_f))))
+        output_f = torch.transpose(output_f, 1, 2) #[B, F, 1]
+        
+        attention_w = output_f @ output_t #[B, F, T]
+        output = input * attention_w 
+        return output
     
 class ScaledDotProductAttention(nn.Module):
     ''' Scaled Dot-Product Attention '''
@@ -589,14 +620,14 @@ class ScaledDotProductAttention(nn.Module):
             # Replace fully masked rows with zeros before softmax
             
             attn = self.softmax(attn)
-                    # attn_weights_np = attn_weights.detach().cpu().numpy()
+            # attn_weights_np = attn_weights.detach().cpu().numpy()
             # plt.close()
             # plt.imshow(attn_weights_np[0], cmap='viridis')
             # plt.colorbar()
             # plt.title('Attention Weights')
             # plt.xlabel('Key Positions')
             # plt.ylabel('Query Positions')
-            # plt.savefig("att_weights.png")
+            # plt.savefig("/home/dsi/moradim/SpeechRepainting/attn_mask_plot_attn.png")
             attn = attn.masked_fill(all_inf_mask, 0)
         else:
             attn = self.softmax(attn)
@@ -608,16 +639,21 @@ class ScaledDotProductAttention(nn.Module):
 
 class CrossAttentionCustom(nn.Module):
     ''' Cross Attention module with Conv layers for k, q, v '''
-    def __init__(self, n_head, d_model, d_k, d_v, kernel_size=13, dropout=0., spectral_norm=False):
+    def __init__(self, n_head, d_model, d_k, d_v, kernel_size=13, dropout=0., spectral_norm=False, tts_output='mel'): #TODO add here the rope, in the init and remove from other locations
         super().__init__()
 
         self.n_head = n_head
         self.d_k = d_k
         self.d_v = d_v
-
-        self.w_qs = nn.Conv1d(d_model, n_head * d_k, kernel_size, padding=kernel_size // 2, groups=n_head)
-        self.w_ks = nn.Conv1d(d_model, n_head * d_k, kernel_size, padding=kernel_size // 2, groups=n_head)
-        self.w_vs = nn.Conv1d(d_model, n_head * d_v, kernel_size, padding=kernel_size // 2, groups=n_head)
+        
+        if tts_output == 'mel' or tts_output == 'phoneme': #TODO dont forget to remove this
+            self.w_qs = nn.Conv1d(d_model, n_head * d_k, kernel_size, padding=kernel_size // 2, groups=n_head)
+            self.w_ks = nn.Conv1d(d_model, n_head * d_k, kernel_size, padding=kernel_size // 2, groups=n_head)
+            self.w_vs = nn.Conv1d(d_model, n_head * d_v, kernel_size, padding=kernel_size // 2, groups=n_head)
+        elif tts_output == 'phoneme':
+            self.w_qs = nn.Linear(d_model, n_head * d_k)
+            self.w_ks = nn.Linear(d_model, n_head * d_k)
+            self.w_vs = nn.Linear(d_model, n_head * d_v)
         # Normalization & Activation after Conv1d
         # self.norm_q = nn.LayerNorm(n_head * d_k)
         # self.norm_k = nn.LayerNorm(n_head * d_k)
@@ -644,19 +680,31 @@ class CrossAttentionCustom(nn.Module):
             if layer.bias is not None:
                 nn.init.zeros_(layer.bias)
 
-    def forward(self, query, context, query_mask=None, context_mask=None):
+    def forward(self, query, context, query_mask=None, context_mask=None, rope=None):
         d_k, d_v, n_head = self.d_k, self.d_v, self.n_head
         sz_b, len_q, _ = query.size()
         sz_b, len_k, _ = context.size()
-        residual = query
         
         # Transpose to match Conv1d input format (batch, channels, sequence_length)
         query = query.permute(0, 2, 1)  # (batch, d_model, len_q)
         context = context.permute(0, 2, 1)  # (batch, d_model, len_k)
         
-        q = self.w_qs(query).permute(0, 2, 1).view(sz_b, len_q, n_head, d_k)
-        k = self.w_ks(context).permute(0, 2, 1).view(sz_b, len_k, n_head, d_k)
-        v = self.w_vs(context).permute(0, 2, 1).view(sz_b, len_k, n_head, d_v)
+        
+        q = self.w_qs(query).permute(0, 2, 1)
+        k = self.w_ks(context).permute(0, 2, 1)
+        v = self.w_vs(context).permute(0, 2, 1)
+        
+        # apply rotary position embedding
+        if rope is not None:
+            freqs, xpos_scale = rope
+            q_xpos_scale, k_xpos_scale = (xpos_scale, xpos_scale**-1.0) if xpos_scale is not None else (1.0, 1.0)
+
+            q = apply_rotary_pos_emb(q, freqs, q_xpos_scale)
+            k = apply_rotary_pos_emb(k, freqs, k_xpos_scale)
+        
+        q = q.view(sz_b, len_q, n_head, d_k)
+        k = k.view(sz_b, len_k, n_head, d_k)
+        v = v.view(sz_b, len_k, n_head, d_v)
         
         q = q.permute(2, 0, 1, 3).contiguous().view(-1, len_q, d_k)  # (n*b) x lq x dk
         k = k.permute(2, 0, 1, 3).contiguous().view(-1, len_k, d_k)  # (n*b) x lk x dk
@@ -668,23 +716,25 @@ class CrossAttentionCustom(nn.Module):
             attn_mask = attn_mask.permute(1, 0, 2, 3).contiguous().view(-1, len_q, len_k)  # Flatten batch & heads: [(B*n_head), T1, T2]
         else:
             attn_mask = None
-        output, attn = self.attention(q, k, v, mask=attn_mask)
+        output, attn = self.attention(q, k, v, mask=attn_mask) # output = [B*n_head,lq, d_v]
 
         output = output.view(n_head, sz_b, len_q, d_v)
         output = output.permute(1, 2, 0, 3).contiguous().view(sz_b, len_q, -1)  # b x lq x (n*dv)
-
+        output = output.to(query.dtype)
         output = self.fc(output)
-        output = self.dropout(output) + residual
+        output = self.dropout(output)
         return output, attn
 
 
 class CrossAttention_noise(nn.Module):
-    def __init__(self, dim, heads, dim_head, ff_mult=4, dropout=0.1, norm='LayerNorm', custom_multi_att=False):
+    def __init__(self, dim, heads, dim_head, ff_mult=4, dropout=0.0, norm='LayerNorm', custom_multi_att='custom_multi_att', tts_output='mel'):
         super().__init__()
         self.norm = norm
         self.custom_multi_att = custom_multi_att
-        if custom_multi_att:  
-            self.attn = CrossAttentionCustom(heads, dim_head, d_k=int(dim/heads), d_v=int(dim/heads), dropout=dropout) #n_head, d_model, d_k, d_v
+        if custom_multi_att == 'custom_multi_att':
+            self.attn = CrossAttentionCustom(heads, dim_head, d_k=int(dim/heads), d_v=int(dim/heads), dropout=dropout, tts_output=tts_output) #n_head, d_model, d_k, d_v
+        elif custom_multi_att == 'monotonic_custom_multi_att':
+            self.attn = StepwiseMonotonicMultiheadAttention(dim_head, d_k=int(dim/heads), d_v=int(dim/heads), n_head=heads, dropout=dropout, is_tunable=True)
         else:
             self.attn = nn.MultiheadAttention(dim_head, heads, batch_first=True)
         if norm == 'LayerNorm':
@@ -697,7 +747,7 @@ class CrossAttention_noise(nn.Module):
         self.ff_norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.ff = FeedForward(dim=dim, mult=ff_mult, dropout=dropout, approximate="tanh")
 
-    def forward(self, noisy_feats, clean_feats, noisy_lengths, clean_lengths, t):  # x: noised input, t: time embedding
+    def forward(self, noisy_feats, clean_feats, noisy_lengths, clean_lengths, t, rope=None):  # x: noised input, t: time embedding
         """
         Args:
             noisy_feats: (B, T1, D) - Noisy Mel embeddings (Queries)
@@ -733,8 +783,10 @@ class CrossAttention_noise(nn.Module):
         # plt.xlabel('Key Positions')
         # plt.ylabel('Query Positions')
         # plt.savefig("att_weights.png")
-        if self.custom_multi_att:
-            attn_output, attn_weights = self.attn(query=norm, context=clean_feats, query_mask=noisy_key_padding_mask, context_mask=clean_key_padding_mask)
+        if self.custom_multi_att == 'custom_multi_att':
+            attn_output, attn_weights = self.attn(query=norm, context=clean_feats, query_mask=noisy_key_padding_mask, context_mask=clean_key_padding_mask, rope=rope)
+        elif self.custom_multi_att == 'monotonic_custom_multi_att':
+            attn_output, attn_weights, _ = self.attn(q=norm, k=clean_feats, v=clean_feats, q_mask=noisy_key_padding_mask, k_mask=clean_key_padding_mask, mel_len=clean_lengths)
         else:
             attn_output = self.attn(
                 norm,  # queries
@@ -775,7 +827,7 @@ class CrossAttention_noise(nn.Module):
 
 
 class DiTBlock(nn.Module):
-    def __init__(self, dim, heads, dim_head, ff_mult=4, dropout=0.1):
+    def __init__(self, dim, heads, dim_head, ff_mult=4, dropout=0.1, inner_attention=False):
         super().__init__()
 
         self.attn_norm = AdaLayerNormZero(dim)
@@ -786,18 +838,23 @@ class DiTBlock(nn.Module):
             dim_head=dim_head,
             dropout=dropout,
         )
-
+        self.inner_attention = inner_attention
+        if inner_attention:
+            self.inner_attn_c = CrossAttentionCustom(heads, dim_head, d_k=int(dim/heads), d_v=int(dim/heads), dropout=dropout, spectral_norm=False, tts_output='phoneme')
         self.ff_norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.ff = FeedForward(dim=dim, mult=ff_mult, dropout=dropout, approximate="tanh")
 
-    def forward(self, x, t, mask=None, rope=None):  # x: noised input, t: time embedding
+    def forward(self, x, t, mask=None, rope=None, context=None):  # x: noised input, t: time embedding
         # pre-norm & modulation for attention input
         norm, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.attn_norm(x, emb=t)
 
         # attention
         attn_output = self.attn(x=norm, mask=mask, rope=rope)
-
+        if self.inner_attention:
+            attn_output_inner, attn_weights = self.inner_attn_c(query=norm, context=clean_feats, query_mask=noisy_key_padding_mask, context_mask=clean_key_padding_mask, rope=rope) #TODO did not finish this
+            attn_output = attn_output + attn_output_inner
         # process attention output for input x
+        
         x = x + gate_msa.unsqueeze(1) * attn_output
 
         norm = self.ff_norm(x) * (1 + scale_mlp[:, None]) + shift_mlp[:, None]

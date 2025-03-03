@@ -33,13 +33,14 @@ def plot_data(data, titles=None, filename=None):
         titles = [None for i in range(len(data))]
     for i in range(len(data)):
         spectrogram = data[i]
-        axes[i][0].imshow(spectrogram, origin='lower')
+        img = axes[i][0].imshow(spectrogram, origin='lower')
         axes[i][0].set_aspect(2.5, adjustable='box')
         axes[i][0].set_ylim(0, 80)
         axes[i][0].set_title(titles[i], fontsize='medium')
         axes[i][0].tick_params(labelsize='x-small', left=False, labelleft=False) 
         axes[i][0].set_anchor('W')
-    
+        # Add colorbar
+        fig.colorbar(img, ax=axes[i][0], aspect=10, pad=0.02)
     plt.savefig(filename, dpi=200)
     plt.close()
 

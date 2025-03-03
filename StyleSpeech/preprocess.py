@@ -24,6 +24,9 @@ def make_folders(out_dir):
     mel_out_dir = os.path.join(out_dir, "mel")
     if not os.path.exists(mel_out_dir):
         os.makedirs(mel_out_dir, exist_ok=True)
+    masked_mel_out_dir = os.path.join(out_dir, "masked-mel")
+    if not os.path.exists(masked_mel_out_dir):
+        os.makedirs(masked_mel_out_dir, exist_ok=True)
     ali_out_dir = os.path.join(out_dir, "alignment")
     if not os.path.exists(ali_out_dir):
         os.makedirs(ali_out_dir, exist_ok=True)
@@ -35,11 +38,14 @@ def make_folders(out_dir):
         os.makedirs(energy_out_dir, exist_ok=True)
 
 
-def main(data_dir, out_dir, config_path):
+def main(args):
+    out_dir = args.output_path
+    data_dir = args.data_path
+    config_path = args.config_path
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     with open(config_path, 'r') as f:
         config = json.load(f)
-    p = Preprocessor(config, log='log10', with_space_alignment=False) #change here
+    p = Preprocessor(config, log=args.log, with_space_alignment=args.with_space_alignment) #change here
     p.write_metadata(data_dir, out_dir)
     make_folders(out_dir)
     datas = p.build_from_path(Path(data_dir).parent, out_dir)
@@ -48,9 +54,15 @@ def main(data_dir, out_dir, config_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument('--log', type=str, default='log')
+    parser.add_argument('--with_space_alignment', type=bool, default=True)
+    
     parser.add_argument('--data_path', type=str, default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/wav16')
-    parser.add_argument('--output_path', type=str, default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed_original')
-    parser.add_argument('--config_path', type=str, default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/config.json') #/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config_without-space.json
+    parser.add_argument('--output_path', type=str, default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed_with-masked-mel')
+    #/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config_with-space.json
+    #'/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/config.json'
+    #/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config_without-space.json
+    parser.add_argument('--config_path', type=str, default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config_with-space.json') 
     args = parser.parse_args()
 
-    main(args.data_path, args.output_path, args.config_path)
+    main(args)

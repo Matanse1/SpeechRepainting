@@ -1,6 +1,7 @@
 
 g_model:
   null_type: 'zeros' # randn, learn, zeros
+  predict_type: 'noise' # speech
 melgen: dit #unet, wavenet
 wavenet:
   _name_: wavenet
@@ -230,7 +231,7 @@ generate:
   w_asr: [0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
   asr_start: [320, 270] #270        # t_asr
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02 #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
-  inference_mel_only_name_dir: repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_phoneme-with-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
+  inference_mel_only_name_dir: repeat_all_freq-length=25_skip=150_cp=112000_mel_text=True_phoneme-with-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
   without_condtion: False
   config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
   apply_asr_guidance: True
@@ -246,14 +247,14 @@ generate:
     repeat_all_freq:
     #all the samples above 7s
       #big
-      length: 100 #1sec for hop_length=160
-      skip: 150 # 1.5sec
+      # length: 100 #1sec for hop_length=160
+      # skip: 150 # 1.5sec
       # #medium
       # length: 50 #1sec for hop_length=160
       # skip: 150 # 1.5sec
       # #small
-      # length: 25 #1sec for hop_length=160
-      # skip: 150 # 1.5sec
+      length: 25 #1sec for hop_length=160
+      skip: 150 # 1.5sec
     repeat_specific_freq:
       length: 15
       skip: 30

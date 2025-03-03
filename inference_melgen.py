@@ -58,7 +58,11 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, ma
                 x = noisy_masked_melspec * mask + x * (1 - mask)
             
             epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
+            if net.g_model_cfg.predict_type =='speech':
+                epsilon_theta = (x - torch.sqrt(Alpha_bar[diffusion_steps.int()]) * epsilon_theta) / torch.sqrt(1-Alpha_bar[diffusion_steps.int()])
             epsilon_theta_uncond = net(x, conditions, diffusion_steps, cond_drop_prob=1, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
+            if net.g_model_cfg.predict_type =='speech':
+                epsilon_theta_uncond = (x - torch.sqrt(Alpha_bar[diffusion_steps.int()]) * epsilon_theta_uncond) / torch.sqrt(1-Alpha_bar[diffusion_steps.int()])
             epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
 
             x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)

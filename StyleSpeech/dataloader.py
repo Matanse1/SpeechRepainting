@@ -74,6 +74,9 @@ class TextMelDataset(Dataset):
         mel_path = os.path.join(
             self.data_path, "mel", "libritts-mel-{}.npy".format(basename))
         mel_target = np.load(mel_path)
+        masked_mel_path = os.path.join(
+            self.data_path, "masked-mel", "libritts-masked-mel-{}.npy".format(basename))
+        masked_mel = np.load(masked_mel_path)
         D_path = os.path.join(
             self.data_path, "alignment", "libritts-ali-{}.npy".format(basename))
         D = np.load(D_path)
@@ -100,6 +103,7 @@ class TextMelDataset(Dataset):
                 "sid": sid,
                 "text": phone,
                 "mel_target": mel_target,
+                "masked_mel": masked_mel,
                 "D": D,
                 "f0": f0,
                 "energy": energy}
@@ -111,6 +115,7 @@ class TextMelDataset(Dataset):
         sids = [batch[ind]["sid"] for ind in cut_list]
         texts = [batch[ind]["text"] for ind in cut_list]
         mel_targets = [batch[ind]["mel_target"] for ind in cut_list]
+        masked_mels = [batch[ind]["masked_mel"] for ind in cut_list]
         Ds = [batch[ind]["D"] for ind in cut_list]
         f0s = [batch[ind]["f0"] for ind in cut_list]
         energies = [batch[ind]["energy"] for ind in cut_list]
@@ -128,6 +133,7 @@ class TextMelDataset(Dataset):
         texts = pad_1D(texts)
         Ds = pad_1D(Ds)
         mel_targets = pad_2D(mel_targets)
+        masked_mels = pad_2D(masked_mels)
         f0s = pad_1D(f0s)
         energies = pad_1D(energies)
         log_Ds = np.log(Ds + 1.)
@@ -136,6 +142,7 @@ class TextMelDataset(Dataset):
                "sid": np.array(sids),
                "text": texts,
                "mel_target": mel_targets,
+               "masked_mel": masked_mels,
                "D": Ds,
                "log_D": log_Ds,
                "f0": f0s,
@@ -151,6 +158,8 @@ class TextMelDataset(Dataset):
         output = self.reprocess(batch, index_arr)
 
         return output
+    
+
 
 
 class MetaBatchSampler():

@@ -100,13 +100,14 @@ dit:
     tokenizer_path: /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json #none #  /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json
   tts_kw:
     use_tts: True
-    filter_length: 1024
-    hop_length: 256
-    win_length: 1024
-    n_mel_channels: 80
-    sampling_rate: 16000
-    mel_fmin: 0.0
-    mel_fmax: 8000.0
+    # filter_length: 1024
+    # hop_length: 256
+    # win_length: 1024
+    # n_mel_channels: 80
+    # sampling_rate: 16000
+    # mel_fmin: 0.0
+    # mel_fmax: 8000.0
+    log: 'log10'
     embed_dim: 768
     num_heads: 3
     norm: none # LayerNorm # none

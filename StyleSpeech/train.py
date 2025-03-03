@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 import argparse
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "6"
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 import json
 import sys
 sys.path.append("..")
@@ -91,13 +91,13 @@ def main(args, c):
                 break
                 
             # Get Data
-            sid, text, mel_target, D, log_D, f0, energy, \
+            sid, text, mel_target, masked_mel, D, log_D, f0, energy, \
                     src_len, mel_len, max_src_len, max_mel_len = model.parse_batch(batch)
                 
             # Forward
             scheduled_optim.zero_grad()
             mel_output, src_output, style_vector, log_duration_output, f0_output, energy_output, src_mask, mel_mask, _  = model(
-                    text, src_len, mel_target, mel_len, D, f0, energy, max_src_len, max_mel_len)
+                    text, src_len, mel_target, masked_mel, mel_len, D, f0, energy, max_src_len, max_mel_len)
 
             mel_loss, d_loss, f_loss, e_loss = Loss(mel_output, mel_target, 
                     log_duration_output, log_D, f0_output, f0, energy_output, energy, src_len, mel_len)
@@ -191,16 +191,16 @@ if __name__ == "__main__":
     # parser.add_argument('--save_path', default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/orignal') #'/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space'
     # parser.add_argument('--config', default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/config.json')
     
-    parser.add_argument('--data_path', default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed')
-    parser.add_argument('--save_path', default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space') 
+    parser.add_argument('--data_path', default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed_with-masked-mel') #preprocessed
+    parser.add_argument('--save_path', default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec') 
     parser.add_argument('--config', default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config_with-space.json') 
     
-    parser.add_argument('--max_iter', default=200000, type=int)
+    parser.add_argument('--max_iter', default=400000, type=int)
     parser.add_argument('--save_step', default=500, type=int)
     parser.add_argument('--synth_step', default=1000, type=int)
     parser.add_argument('--eval_step', default=1000, type=int)
     parser.add_argument('--log_step', default=10, type=int)
-    parser.add_argument('--checkpoint_path', default='/dsi/gannot-lab1/users/mordehay/style-speech_weights/stylespeech.pth.tar', type=str, help='Path to the pretrained model') 
+    parser.add_argument('--checkpoint_path', default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec/ckpt/checkpoint_200000.pth.tar', type=str, help='Path to the pretrained model') 
 
     args = parser.parse_args()
 

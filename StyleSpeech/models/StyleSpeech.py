@@ -25,6 +25,7 @@ class StyleSpeech(nn.Module):
         sid = torch.from_numpy(batch["sid"]).long().cuda()
         text = torch.from_numpy(batch["text"]).long().cuda()
         mel_target = torch.from_numpy(batch["mel_target"]).float().cuda()
+        masked_mel = torch.from_numpy(batch["masked_mel"]).float().cuda()
         D = torch.from_numpy(batch["D"]).long().cuda()
         log_D = torch.from_numpy(batch["log_D"]).float().cuda()
         f0 = torch.from_numpy(batch["f0"]).float().cuda()
@@ -33,15 +34,15 @@ class StyleSpeech(nn.Module):
         mel_len = torch.from_numpy(batch["mel_len"]).long().cuda()
         max_src_len = np.max(batch["src_len"]).astype(np.int32)
         max_mel_len = np.max(batch["mel_len"]).astype(np.int32)
-        return sid, text, mel_target, D, log_D, f0, energy, src_len, mel_len, max_src_len, max_mel_len
+        return sid, text, mel_target, masked_mel, D, log_D, f0, energy, src_len, mel_len, max_src_len, max_mel_len
 
-    def forward(self, src_seq, src_len, mel_target, mel_len=None, 
+    def forward(self, src_seq, src_len, mel_target, masked_mel, mel_len=None, 
                     d_target=None, p_target=None, e_target=None, max_src_len=None, max_mel_len=None):
         src_mask = get_mask_from_lengths(src_len, max_src_len)
         mel_mask = get_mask_from_lengths(mel_len, max_mel_len) if mel_len is not None else None
         
         # Extract Style Vector
-        style_vector = self.style_encoder(mel_target, mel_mask)
+        style_vector = self.style_encoder(masked_mel, mel_mask)
         # Encoding
         encoder_output, src_embedded, _ = self.encoder(src_seq, style_vector, src_mask)
         # Variance Adaptor
@@ -76,6 +77,26 @@ class StyleSpeech(nn.Module):
         style_vector = self.style_encoder(mel_target, mel_mask)
 
         return style_vector
+    
+    def inference_only_encoder(self, style_vector, src_seq, src_len=None, max_src_len=None, masked_frame_number=None):
+        src_mask = get_mask_from_lengths(src_len, max_src_len)
+        # Encoding
+        encoder_output, src_embedded, enc_slf_attn = self.encoder(src_seq, style_vector, src_mask)
+        return encoder_output
+    
+    def inference_only_encoder_with_pitch_energy(self, style_vector, src_seq, src_len=None, max_src_len=None, masked_frame_number=None):
+        src_mask = get_mask_from_lengths(src_len, max_src_len)
+        # Encoding
+        encoder_output, src_embedded, enc_slf_attn = self.encoder(src_seq, style_vector, src_mask)
+        # Pitch & Energy 
+        pitch_prediction = self.variance_adaptor.pitch_predictor(x, src_mask) 
+        pitch_embedding = self.variance_adaptor.pitch_embedding(pitch_prediction.unsqueeze(-1))
+
+        energy_prediction = self.energy_predictor(x, src_mask) 
+        energy_embedding = self.energy_embedding(energy_prediction.unsqueeze(-1))
+
+        x = self.ln(x) + pitch_embedding + energy_embedding
+        return x
 
     def get_criterion(self):
         return StyleSpeechLoss()
@@ -120,7 +141,7 @@ class Encoder(nn.Module):
         # word embedding
         src_embedded = self.src_word_emb(src_seq)
         # prenet
-        src_seq = self.prenet(src_embedded, mask)
+        src_seq = self.prenet(src_embedded, mask) #[B, T, d_model]
         # position encoding
         if src_seq.shape[1] > self.max_seq_len:
             position_embedded = get_sinusoid_encoding_table(src_seq.shape[1], self.d_model)[:src_seq.shape[1], :].unsqueeze(0).expand(batch_size, -1, -1).to(src_seq.device)
@@ -136,7 +157,7 @@ class Encoder(nn.Module):
                 slf_attn_mask=slf_attn_mask)
             slf_attn.append(enc_slf_attn)
         # last fc
-        enc_output = self.fc_out(enc_output)
+        enc_output = self.fc_out(enc_output) #[B, T, d_model] --> #[B, T, d_out]
         return enc_output, src_embedded, slf_attn
 
 
