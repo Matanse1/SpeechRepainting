@@ -4,7 +4,7 @@
 # this is the full test without asr: mel condition, free-classifier and vocoder(mel2audio)
 import json
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '6'
+os.environ['CUDA_VISIBLE_DEVICES'] = '4'
 import subprocess
 import time
 import warnings

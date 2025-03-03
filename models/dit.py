@@ -14,6 +14,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from dataloaders.stft import normalise_mel
 from StyleSpeech.audio.stft import TacotronSTFT
 # from dataloaders.stft import TacotronSTFT
 from x_transformers.x_transformers import RotaryEmbedding
@@ -292,8 +293,10 @@ class StyleSpeecEncoderPhonemehWrapper(nn.Module):
 
 
         if self.use_rope:
-            len_rope = max(T, max(phoneme_length))
-            rope = self.rotary_embed.forward_from_seq_len(len_rope)
+            # len_rope = max(T, max_generated_mel_len)
+            rope_noisy_mel = self.rotary_embed.forward_from_seq_len(T)
+            rope_tts = self.rotary_embed.forward_from_seq_len(max(phoneme_length))
+            rope = (rope_noisy_mel, rope_tts)
         else:
             rope = None
         # Apply Cross-Attention once at the input
@@ -373,6 +376,7 @@ class StyleSpeechWrapper(nn.Module):
             style_vector = self.style_speech_model.get_style_vector(ref_masked_mel.transpose(1, 2), mel_len=num_frames) # the input ref_masked_mel is [B, T, F], style_vector shape is [B, D=128]
             outputs = self.style_speech_model.inference(style_vector, input_text, phoneme_length, masked_frame_number=None) # [B, T, F]
         mel_output = outputs[0].detach()
+        mel_output = normalise_mel(mel_output)
         generated_mel_len = outputs[-1].detach()
         
         zero_frame = torch.zeros((B, 1, F), device=mel_output.device, dtype=mel_output.dtype) - 10.
@@ -394,8 +398,10 @@ class StyleSpeechWrapper(nn.Module):
             mel_output = self.encoder_clean(mel_output.transpose(1, 2), true_length=generated_mel_len)  # (B, T2, D)
 
         if self.use_rope:
-            len_rope = max(T, max_generated_mel_len)
-            rope = self.rotary_embed.forward_from_seq_len(len_rope)
+            # len_rope = max(T, max_generated_mel_len)
+            rope_noisy_mel = self.rotary_embed.forward_from_seq_len(T)
+            rope_tts = self.rotary_embed.forward_from_seq_len(max_generated_mel_len)
+            rope = (rope_noisy_mel, rope_tts)
         else:
             rope = None
         # Apply Cross-Attention once at the input

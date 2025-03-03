@@ -620,7 +620,7 @@ class ScaledDotProductAttention(nn.Module):
             # Replace fully masked rows with zeros before softmax
             
             attn = self.softmax(attn)
-            # attn_weights_np = attn_weights.detach().cpu().numpy()
+            # attn_weights_np = attn.detach().cpu().numpy()
             # plt.close()
             # plt.imshow(attn_weights_np[0], cmap='viridis')
             # plt.colorbar()
@@ -696,11 +696,14 @@ class CrossAttentionCustom(nn.Module):
         
         # apply rotary position embedding
         if rope is not None:
-            freqs, xpos_scale = rope
-            q_xpos_scale, k_xpos_scale = (xpos_scale, xpos_scale**-1.0) if xpos_scale is not None else (1.0, 1.0)
+            rope_noisy_mel, rope_tts = rope
+            freqs_noisy_mel, xpos_scale_noisy_mel = rope_noisy_mel
+            freqs_tts, xpos_scale_tts = rope_tts
+            
+            q_xpos_scale, k_xpos_scale = (1.0, 1.0)
 
-            q = apply_rotary_pos_emb(q, freqs, q_xpos_scale)
-            k = apply_rotary_pos_emb(k, freqs, k_xpos_scale)
+            q = apply_rotary_pos_emb(q, freqs_noisy_mel, q_xpos_scale)
+            k = apply_rotary_pos_emb(k, freqs_tts, k_xpos_scale)
         
         q = q.view(sz_b, len_q, n_head, d_k)
         k = k.view(sz_b, len_k, n_head, d_k)
@@ -711,9 +714,12 @@ class CrossAttentionCustom(nn.Module):
         v = v.permute(2, 0, 1, 3).contiguous().view(-1, len_k, d_v)  # (n*b) x lv x dv
 
         if query_mask is not None and context_mask is not None:
-            attn_mask = query_mask.unsqueeze(2) | context_mask.unsqueeze(1)  # [B, T1, T2]
-            attn_mask = attn_mask.unsqueeze(1).expand(-1, n_head, -1, -1)  # [B, n_head, T1, T2]
-            attn_mask = attn_mask.permute(1, 0, 2, 3).contiguous().view(-1, len_q, len_k)  # Flatten batch & heads: [(B*n_head), T1, T2]
+            attn_mask = context_mask.unsqueeze(1).unsqueeze(1)  # '[B T2] -> [B 1 1 T2]'
+            attn_mask = attn_mask.expand(sz_b, n_head, len_q, len_k)
+            
+            # attn_mask = query_mask.unsqueeze(2) | context_mask.unsqueeze(1)  # [B, T1, T2]
+            # attn_mask = attn_mask.unsqueeze(1).expand(-1, n_head, -1, -1)  # [B, n_head, T1, T2]
+            # attn_mask = attn_mask.permute(1, 0, 2, 3).contiguous().view(-1, len_q, len_k)  # Flatten batch & heads: [(B*n_head), T1, T2]
         else:
             attn_mask = None
         output, attn = self.attention(q, k, v, mask=attn_mask) # output = [B*n_head,lq, d_v]
