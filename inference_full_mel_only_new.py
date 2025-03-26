@@ -4,7 +4,7 @@
 # this is the full test without asr: mel condition, free-classifier and vocoder(mel2audio)
 import json
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '4'
+os.environ['CUDA_VISIBLE_DEVICES'] = '6'
 import subprocess
 import time
 import warnings
@@ -44,6 +44,15 @@ import ASR.asr_models as asr_models
 from utils import mask_time_all_frequencies_mask, mask_time_specific_frequencies_mask, mask_specific_frequencies_all_time_mask, mask_combined_mask, mask_with_shape_mask
 print("finished imports")
 
+def get_phones_dict(file_path):
+    phoneme_dict_p2d = {}
+    phoneme_dict_d2p = {}
+    with open(file_path, 'r') as file:
+        for line in file:
+            key, value = line.strip().split()
+            phoneme_dict_p2d[key] = int(value) #phone to digit
+            phoneme_dict_d2p[int(value)] = key #digit to phone
+    return phoneme_dict_p2d, phoneme_dict_d2p
 
 def training_loss(net, loss_fn, melspec, masked_melspec, mask, diffusion_hyperparams, w_masked_pix=0.8, mask_frames=None, masked_audio_time_mask=None, text=None, input_text=None,  mask_padding_time=None):
     """
@@ -98,6 +107,7 @@ def sampling(net, diffusion_hyperparams,
             text=None, 
             input_text=None,
             phoneme4guidance=None,
+            per_frame_phoneme4guidance=None,
             type_input_guidance='text',
             skip_step=1,
             ):
@@ -129,17 +139,21 @@ def sampling(net, diffusion_hyperparams,
         elif type_input_guidance == 'phoneme':
             tokens = torch.tensor([tokenizer[t] for t in phoneme4guidance[0]]).unsqueeze(0).cuda()
         elif type_input_guidance == 'frame_level_phoneme':
-            pass
+            tokens = torch.tensor(per_frame_phoneme4guidance[0], dtype=torch.int64).unsqueeze(0).cuda()
+            loss_ce = nn.CrossEntropyLoss(reduction='none')
 
     masked_melspec, _ = condition
     # This is Algorithm 1 in the paper of classifier-free
     B, C, L = masked_melspec.shape  # B is batchsize, C=80, L is number of melspec frames
-    if on_masked_melspec is not None:
+    if on_masked_melspec:
         mask = mask.cuda()  
-    
-    x = torch.normal(0, 1, size=masked_melspec.shape).cuda()
+    generator = torch.Generator().manual_seed(42)
+    x = torch.normal(0, 1, size=masked_melspec.shape, generator=generator).cuda()
     repeat_asr = 1
     asr_finish = -1
+    add_noise = True
+    start_noise_time = 50 
+    tho = 1
     with torch.no_grad():
         for t in tqdm(range(T - 1, -1, -skip_step)):
             if t < skip_step:  # Ensure the last step is exactly zero
@@ -154,10 +168,13 @@ def sampling(net, diffusion_hyperparams,
             # if asr_guidance_net is not None and (t <= asr_start and t > asr_finish):
                 # repeat_asr = 1
             # for _ in range(repeat_asr):
-            if on_masked_melspec is not None:
-                z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
+            if on_masked_melspec:
+                x = masked_melspec * mask + x * (1 - mask)
+            else:
+                z = torch.normal(0, 1, size=masked_melspec.shape, generator=generator).cuda()
                 noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
                 x = noisy_masked_melspec * mask + x * (1 - mask)
+                
             
             if without_condtion:
                 epsilon_theta_mel = net(x, condition, diffusion_steps, cond_drop_prob=1, mask_padding_frames=mask_frames, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask)
@@ -176,7 +193,7 @@ def sampling(net, diffusion_hyperparams,
                 for r in range(repeat_asr):
                     if r > 1:
                         if on_masked_melspec is not None:
-                            z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
+                            z = torch.normal(0, 1, size=masked_melspec.shape, generator=generator).cuda()
                             noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps_asr_linear.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps_asr_linear.int()]) * z
                             x = noisy_masked_melspec * mask + x * (1 - mask)
                     with torch.enable_grad():
@@ -189,9 +206,16 @@ def sampling(net, diffusion_hyperparams,
                             batch_losses = asr_guidance_net.forward_model(inputs, diffusion_steps_asr_linear, targets, compute_metrics=False, verbose=0)[0] #batch_losses, batch_metrics, batch_truths, batch_preds
                             asr_grad = torch.autograd.grad(batch_losses["loss"], inputs[0])[0]
                         elif type_input_guidance == 'frame_level_phoneme':
-                            inputs = x.detach().requires_grad_(True), length_input
-                            outputs_ao = asr_guidance_net(inputs, diffusion_steps_asr_linear)["outputs"]
-                            asr_grad = torch.autograd.grad(preds_ao, inputs[0])[0]
+                            masked_melspec, audio_time_masked = condition
+                            masked_melspec_noisy = masked_melspec.clone()
+                            z = torch.normal(0, 1, size=masked_melspec.shape, generator=generator).cuda()
+                            masked_melspec_noisy = masked_melspec * mask + z * (1 - mask)
+                            condition2 = masked_melspec_noisy, audio_time_masked
+                            inputs = x.detach().requires_grad_(True)
+                            outputs = asr_guidance_net(inputs, condition2, diffusion_steps_asr_linear, cond_drop_prob=0, mask_padding_time=masked_audio_time_mask)
+                            l_ce = loss_ce(outputs, tokens)
+                            l_ce = torch.sum(l_ce * (1-mask)) / torch.sum(1-mask)
+                            asr_grad = torch.autograd.grad(l_ce, inputs)[0]
                             
                         if torch.sum(asr_grad) == 0 and type_input_guidance == 'phoneme':
                             print("Zero grad")
@@ -205,13 +229,15 @@ def sampling(net, diffusion_hyperparams,
                     epsilon_theta = epsilon_theta_mel + torch.sqrt(1 - Alpha_bar[t]) * w_asr * grad_normaliser * asr_grad #the asr_grad include the minus
                     # print(f"grad_normaliser: {grad_normaliser} \t w_asr: {w_asr} \t grad: {torch.norm(asr_grad)} \t 1-alpha_bar: {torch.sqrt(1 - Alpha_bar[t])}")
                     x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
-                    if t > 0:
-                        x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
+                    if t > 0 and add_noise:
+                        x = x + tho * Sigma[t] * torch.normal(0, 1, size=x.shape, generator=generator).cuda()  # add the variance term to x_{t-1}
             else:
                 x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta_mel) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
-                if t > 0:
-                    x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
+                if t > 0 and add_noise:
+                    x = x + tho *  Sigma[t] * torch.normal(0, 1, size=x.shape, generator=generator).cuda()  # add the variance term to x_{t-1}
             # x = x.clip(-1, 1.5)
+            if t < start_noise_time:
+                add_noise = True
             
             if t % 10 == 0:
                 if (asr_guidance_net is not None) and (t <= asr_start) and (type_input_guidance != 'frame_level_phoneme'):
@@ -304,16 +330,18 @@ def generate(
             cfg = OmegaConf.load("/dsi/gannot-lab1/users/mordehay/phoneme_classifier/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_all_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/config/config.yaml")
             ckpt_path = "/dsi/gannot-lab1/users/mordehay/phoneme_classifier/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_all_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/checkpoint/8000.pkl"
             model_cfg = cfg.phoneme_classifier
+            g_model = cfg.g_model
             builder = ModelBuilder()
-            net_diffwave = builder.build_diffwave_model(model_cfg)
-            net = AudioVisualModel(net_diffwave).cuda()
+            net_diffwave = builder.build_model(model_cfg)
+            asr_guidance_net = AudioVisualModel(g_model, net_diffwave).cuda()
             print_size(net)
-            net.eval()
+            asr_guidance_net.eval()
+            tokenizer, decoder = None, None
 
             # load checkpoint
             try:
                 checkpoint = torch.load(ckpt_path, map_location='cpu')
-                net.load_state_dict(checkpoint['model_state_dict'])
+                asr_guidance_net.load_state_dict(checkpoint['model_state_dict'])
                 print('Successfully loaded MelGen checkpoint')
             except Exception as e:
                 print(e)
@@ -404,7 +432,7 @@ def generate(
         while i < n_samples_test:
             if mask_info['mask_type'] != 'none':
                 indx_data = rng.randint(0, length_data)  # Generate a random integer between 0 and length_data (inclusive)
-                if indx_data in used_indexes:
+                if indx_data in used_indexes: #or indx_data != 603:
                     print("Index already used")
                     continue
                 used_indexes.append(indx_data)
@@ -519,6 +547,7 @@ def generate(
                 
             text = true_text[0]
             phoneme4guidance=['None']
+            per_frame_phoneme4guidance = ['None']
             if apply_asr_guidance:
                 if type_input_guidance == 'text':
                     if mel_text: # use the true text of the sentence
@@ -546,6 +575,9 @@ def generate(
                         
                     print(f"The Ground thruth phoneme is: {phoneme4guidance[0]}") #TODO add the remove space if no space model used
 
+                elif type_input_guidance == 'frame_level_phoneme':
+                    per_frame_phoneme4guidance = [input_text[0]]
+                    # print(f"The Ground thruth phoneme is: {per_frame_phoneme[0]}")
         
             
             if dataset_type == 'explosion_speech_inpainting':
@@ -607,6 +639,7 @@ def generate(
                             text=true_text, 
                             input_text=input_text,
                             phoneme4guidance=phoneme4guidance,
+                            per_frame_phoneme4guidance=per_frame_phoneme4guidance,
                             type_input_guidance=type_input_guidance,
                             skip_step=skip_step
                             )
@@ -625,6 +658,8 @@ def generate(
                     f.write("asr_generated_signal:  " + text + "\n")
                     f.write("asr_condition       :  " +" ".join(phoneme4guidance[0])+"\n")
                     f.write("asr_generated_signal:  " + " ".join(preds_ao))
+                elif type_input_guidance == 'frame_level_phoneme':
+                    f.write("asr_generated_signal:  " + text + "\n")
             
             # plcmos_masked_init = compute_metrics.compute_plcmos(masked_audio_time.squeeze().cpu().numpy())
             # row_dict.update({'plcmos_masked_init': plcmos_masked_init})
@@ -682,7 +717,7 @@ def generate(
 # config_dit_without-space-phoneme
 # tts-dit_without-space
 
-@hydra.main(version_base=None, config_path="configs/4exp/", config_name="small_my-tts-dit_with-space_without-sma_tts-output=mel")
+@hydra.main(version_base=None, config_path="configs/4exp/", config_name="config_dit_phoneme-per_frame")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     OmegaConf.set_struct(cfg, False)  # Allow writing keys

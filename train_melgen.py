@@ -3,7 +3,7 @@
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,4,5,6,7'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0' #'1,2,4,5,6,7'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -358,7 +358,7 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion
     z = torch.normal(0, 1, size=melspec.shape).cuda()
     if on_masked_melspec:
         transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z
-        transformed_X = melspec * torch.unsqueeze(mask, dim=1) + transformed_X * (1-torch.unsqueeze(mask, dim=1))
+        transformed_X = melspec * mask + transformed_X * (1-mask)
     else:
         transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z  # training from Denoising Diffusion Probabilistic Models paper compute x_t from q(x_t|x_0)
     cond_drop_prob = 0.2 # 0.2
@@ -379,7 +379,12 @@ def test_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion_hyp
     return training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, text, input_text,
                   masked_audio_time_mask, on_masked_melspec, w_masked_pix)
 
-@hydra.main(version_base=None, config_path="configs/4exp/", config_name="small_my-tts-dit_with-space_without-sma")
+#small_my-tts-dit_with-space_without-sma_tts-output=mel
+# small_my-tts-dit_with-space_without-sma_tts-output=phoneme
+# small_my-tts-dit_with-space_without-sma_tts-output=phoneme_with_energy_pitch
+# config_dit_without-space-phoneme_on-masked-mel
+# small_my-tts-dit_with-space_without-sma_tts-output=phoneme_with_energy_pitch_nnter_attention
+@hydra.main(version_base=None, config_path="configs/4exp/", config_name="config_dit_without-space-phoneme_on-masked-mel")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     OmegaConf.set_struct(cfg, False)  # Allow writing keys

@@ -8,3 +8,7 @@ lossy_dir
 *.png
 StyleSpeech/results*
 files4plots
+my_utils/sample*
+pt-models
+results_models
+speechpainter_examples

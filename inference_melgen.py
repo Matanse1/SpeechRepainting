@@ -53,10 +53,11 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, ma
             #     break
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
             if on_masked_melspec is not None:
+                x = masked_melspec * mask + x * (1 - mask)
+            else:
                 z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
                 noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
                 x = noisy_masked_melspec * mask + x * (1 - mask)
-            
             epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
             if net.g_model_cfg.predict_type =='speech':
                 epsilon_theta = (x - torch.sqrt(Alpha_bar[diffusion_steps.int()]) * epsilon_theta) / torch.sqrt(1-Alpha_bar[diffusion_steps.int()])

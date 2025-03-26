@@ -317,7 +317,7 @@ def samples2frames(samples, filter_length, hop_length):
         #     frames[i] =  0 
     return frames
 
-def insert_random_values(melspec, frame_mask, mean=0.0, std=1.0):
+def insert_values(melspec, frame_mask, mean=0.0, std=1.0, num='randn'):
     """
     Insert random values into a mel-spectrogram at indices where the frame mask is `1`.
 
@@ -340,12 +340,15 @@ def insert_random_values(melspec, frame_mask, mean=0.0, std=1.0):
     indices = np.where(frame_mask == 0)[0]
     
     # Replace values in the identified frames with random values
-    for idx in indices:
-        modified_melspec[:, idx] = np.random.normal(loc=mean, scale=std, size=melspec.shape[0])
+    if num == 'randn':
+        for idx in indices:
+            modified_melspec[:, idx] = np.random.normal(loc=mean, scale=std, size=melspec.shape[0])
+    elif num == 'zeros':
+        modified_melspec = modified_melspec * frame_mask
     
     return modified_melspec
 
-def zero_regions_mask(signal, min_length=10, max_length=0.25*16000):
+def find_zero_regions(signal, min_length=10, max_length=1.5*16000):
     """
     Generate a mask indicating locations in the signal where 
     the audio is zero for at least `min_length` consecutive samples.
@@ -424,7 +427,7 @@ def plot_masked_melspec_with_activity(masked_melspec, frame_mask, output_directo
     plt.close(fig)
 
 
-def plot_signal_with_activity(signal, frame_mask, sr, output_directory, sample_idx):
+def plot_signal_with_activity(signal, frame_mask, sr, output_directory, sample_idx, idx_bool=False):
     """
     Plot the time-domain signal and frame mask activity side by side.
 
@@ -462,7 +465,10 @@ def plot_signal_with_activity(signal, frame_mask, sr, output_directory, sample_i
     ax[1].legend()
 
     # Save the combined plot
-    output_path = os.path.join(output_directory, f'sample_{sample_idx}', 'signal_with_activity.png')
+    if idx_bool:
+        output_path = os.path.join(output_directory, f'sample_{sample_idx}', 'signal_with_activity.png')
+    else:
+        output_path = os.path.join(output_directory, sample_idx, 'signal_with_activity.png')
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.tight_layout()
     plt.savefig(output_path)
@@ -503,7 +509,7 @@ def save_melspectrogram_with_colorbar(melspectrogram, output_directory, sample_i
     plt.close(fig)
     
     
-def plot_masked_melspec_and_spec_with_activity(masked_melspec, frame_mask, melspectrogram, output_directory, sample_idx):
+def plot_masked_melspec_and_spec_with_activity(masked_melspec, frame_mask, melspectrogram, output_directory, sample_idx, idx_bool=True):
     """
     Plot masked mel-spectrogram, frame mask activity, and raw mel-spectrogram with a shared x-axis.
     """
@@ -555,7 +561,10 @@ def plot_masked_melspec_and_spec_with_activity(masked_melspec, frame_mask, melsp
     ax1.xaxis.set_visible(False)
 
     # Save the combined plot
-    output_path = os.path.join(output_directory, f'sample_{sample_idx}', 'masked_melspectrogram_with_activity_and_raw_shared_xaxis.png')
+    if idx_bool:
+        output_path = os.path.join(output_directory, f'sample_{sample_idx}', 'masked_melspectrogram_with_activity_and_raw_shared_xaxis.png')
+    else:
+        output_path = os.path.join(output_directory, sample_idx, 'masked_melspectrogram_with_activity_and_raw_shared_xaxis.png')
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.tight_layout()
     plt.savefig(output_path)

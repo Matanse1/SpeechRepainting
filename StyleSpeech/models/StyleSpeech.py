@@ -89,14 +89,22 @@ class StyleSpeech(nn.Module):
         # Encoding
         encoder_output, src_embedded, enc_slf_attn = self.encoder(src_seq, style_vector, src_mask)
         # Pitch & Energy 
-        pitch_prediction = self.variance_adaptor.pitch_predictor(x, src_mask) 
+        pitch_prediction = self.variance_adaptor.pitch_predictor(encoder_output, src_mask) 
         pitch_embedding = self.variance_adaptor.pitch_embedding(pitch_prediction.unsqueeze(-1))
 
-        energy_prediction = self.energy_predictor(x, src_mask) 
-        energy_embedding = self.energy_embedding(energy_prediction.unsqueeze(-1))
+        energy_prediction = self.variance_adaptor.energy_predictor(encoder_output, src_mask) 
+        energy_embedding = self.variance_adaptor.energy_embedding(energy_prediction.unsqueeze(-1))
 
-        x = self.ln(x) + pitch_embedding + energy_embedding
+        x = self.variance_adaptor.ln(encoder_output) + pitch_embedding + energy_embedding
         return x
+    
+    def get_duration(self, style_vector, src_seq, src_len=None, max_src_len=None, masked_frame_number=None):
+        src_mask = get_mask_from_lengths(src_len, max_src_len)
+        # Encoding
+        encoder_output, src_embedded, enc_slf_attn = self.encoder(src_seq, style_vector, src_mask)
+        # Pitch & Energy 
+        log_duration_prediction = self.variance_adapto.duration_predictor(encoder_output, src_mask)
+        return log_duration_prediction
 
     def get_criterion(self):
         return StyleSpeechLoss()

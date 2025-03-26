@@ -329,11 +329,23 @@ def process_wav(sample_path):
     # with csv_writer_lock:
     #     csv_writer.writerow(dict_row_results)
 
-def main(interval_save=5, max_workers=4, gpu_dict_var={0: 4, 1:1}, specifc_folder=True):
+def main(interval_save=5, max_workers=4, gpu_dict_var={0: 4, 1:1}, specifc_folder=True, csv_name='dit'):
     mp.set_start_method("spawn", force=True)
     if specifc_folder:
-        pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=25_skip=150_cp=112000_mel_text=True_ASR/w1=-1_w2=0.5_asr_start=270_mask=True',
-                    '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=25_skip=150_cp=112000_mel_text=True_ASR/w1=-1_w2=0.5_asr_start=320_mask=True']
+        pathes2data = [
+           '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=25_skip=150_cp=1120000_mel_text=True_ASR',
+            '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=25_skip=150_cp=1120000_mel_Text=True_no-guidance',
+            '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=25_skip=150_cp=1120000_mel_text=True_phoneme-with-space',
+            '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=25_skip=150_cp=1120000_mel_text=True_phoneme-without-space',
+            '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=50_skip=150_cp=1120000_mel_text=True_ASR',
+            '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=50_skip=150_cp=1120000_mel_Text=True_no-guidance',
+            '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=50_skip=150_cp=1120000_mel_text=True_phoneme-with-space',
+            '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=50_skip=150_cp=1120000_mel_text=True_phoneme-without-space',
+            '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=1120000_mel_text=True_ASR',
+            '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=1120000_mel_Text=True_no-guidance',
+            '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=1120000_mel_text=True_phoneme-with-space',
+            '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=1120000_mel_text=True_phoneme-without-space'
+        ]
         # List to store all found sample folder paths
         sample_folders = []
 
@@ -341,7 +353,7 @@ def main(interval_save=5, max_workers=4, gpu_dict_var={0: 4, 1:1}, specifc_folde
         for base_path in pathes2data:
             # Use glob to recursively search for folders named 'sample'
             # sample_folders.extend(glob.glob(os.path.join(base_path, '**', 'sample'), recursive=True))
-            sample_folders.extend([f for f in glob.glob(os.path.join(base_path, 'sample*')) if os.path.isdir(f)])
+            sample_folders.extend([f for f in glob.glob(os.path.join(base_path, '**', 'sample*'), recursive=True) if os.path.isdir(f)])
     else:
         pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02']
         # List to store all found sample folder paths
@@ -352,6 +364,7 @@ def main(interval_save=5, max_workers=4, gpu_dict_var={0: 4, 1:1}, specifc_folde
             # Use glob to recursively search for folders named 'sample'
             # sample_folders.extend(glob.glob(os.path.join(base_path, '**', 'sample'), recursive=True))
             sample_folders.extend([f for f in glob.glob(os.path.join(base_path, '**', 'sample*'), recursive=True) if os.path.isdir(f)])
+    
     print(f"Found {len(sample_folders)} sample folders")
     vocoder_names = ["bigvgan", "hifi_gan"] 
 
@@ -364,7 +377,7 @@ def main(interval_save=5, max_workers=4, gpu_dict_var={0: 4, 1:1}, specifc_folde
                 [met + '_' + voc for met in ['WER', 'trans', 'num_wrong_words', 'total_num_words', 'plcmos_pred', 'LSD', 'STOI', 'PESQ'] for voc in vocoder_names]
                 
     # compute_metrics = Metrics()
-    save_csv_path = f"/home/dsi/moradim/SpeechRepainting/metric_results.csv"
+    save_csv_path = f"/home/dsi/moradim/SpeechRepainting/metric_results_{csv_name}.csv"
     user_input = input(f"Do you want to remove the existing file at {save_csv_path}? (yes/no): ")
 
     if user_input.lower() == 'yes':
@@ -437,9 +450,10 @@ def main(interval_save=5, max_workers=4, gpu_dict_var={0: 4, 1:1}, specifc_folde
         #     process_wav(sample_folder, csv_writer_lock, writer, compute_metrics)
     
 if __name__ == '__main__':
+    csv_name = 'unettttt'
     interval_save = 4500
     max_workers = 6
     gpu_dict_var = {0: 5, 1:6, 2:7}
     print(F"Using {len(gpu_dict_var)} GPUs")
-    specifc_folder = False
-    main(interval_save, max_workers, gpu_dict_var, specifc_folder)
+    specifc_folder = True
+    main(interval_save, max_workers, gpu_dict_var, specifc_folder, csv_name)

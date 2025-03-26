@@ -316,6 +316,7 @@ class StyleSpeechWrapper(nn.Module):
         self.cross_attn_type = tts_kw.cross_attn_type
         style_speech_ch_path = tts_kw["style_speech_ch_path"] # checkpoint path
         style_speech_config_path = tts_kw["style_speech_config_path"]
+        self.inner_attention = tts_kw.inner_attention
         self.style_speech_model, config = get_StyleSpeech(style_speech_config_path, style_speech_ch_path)
         self.stft = TacotronSTFT(
             config.filter_length,
@@ -409,6 +410,9 @@ class StyleSpeechWrapper(nn.Module):
             combined_feats = self.cross_attention(noisy_feats, mel_output, noisy_mel_len, generated_mel_len, t, rope=rope)  # (B, T1, D)
         else:
             combined_feats = self.cross_attention(noisy_feats, mel_output, noisy_mel_len, generated_mel_len)  # (B, T1, D)
+        
+        if self.inner_attention:
+            return combined_feats, rope, mel_output, generated_mel_len, noisy_mel_len
         return combined_feats, rope
 
 # Transformer backbone using DiT blocks
@@ -434,6 +438,7 @@ class DiT(nn.Module):
         super().__init__()
         self.unconditional = unconditional
         self.text_embed_prop = text_embed_prop
+        self.tts_kw = tts_kw
         self.use_tts = tts_kw["use_tts"]
         self.tts_output = tts_kw["tts_output"]
         self.use_rope = tts_kw["use_rope"]
@@ -469,7 +474,8 @@ class DiT(nn.Module):
         self.depth = depth
 
         self.transformer_blocks = nn.ModuleList(
-            [DiTBlock(dim=dim, heads=heads, dim_head=dim_head, ff_mult=ff_mult, dropout=dropout, inner_attention=self.inner_attention) for _ in range(depth)]
+            [DiTBlock(dim=dim, heads=heads, dim_head=dim_head, ff_mult=ff_mult, dropout=dropout, inner_attention=self.inner_attention, tts_output=self.tts_output,
+                      inner_embed_dim=self.tts_kw.embed_dim, inner_num_heads=self.tts_kw.num_heads, inner_dim_head=self.tts_kw.embed_dim) for _ in range(depth)]
         )
         self.long_skip_connection = nn.Linear(dim * 2, dim, bias=False) if long_skip_connection else None
 
@@ -518,12 +524,20 @@ class DiT(nn.Module):
         
         t = self.time_embed(time)
         # t: conditioning time, c: context (text + masked cond audio), x: noised input audio
+        context_output = None
+        context_len = None
+        noisy_mel_len = None
+        rope2 = None
         if self.unconditional is False:
             if self.use_tts:
-                x, rope2tts = self.sp_tts(masked_audio_time, input_text, x, mask_padding_time, mask_padding_frames, t)
+                x, *other = self.sp_tts(masked_audio_time, input_text, x, mask_padding_time, mask_padding_frames, t)
+                if self.inner_attention:
+                    rope2, context_output, context_len, noisy_mel_len = other
+                else:
+                    rope2 = other
                 # if self.use_rope:
                 #     rope = rope2tts
-
+                
             elif self.use_text_embed_rep:
                 if self.vocab_char_map is not None:
                     input_text = list_str_to_idx(input_text, self.vocab_char_map).to(device)
@@ -545,7 +559,7 @@ class DiT(nn.Module):
             if self.checkpoint_activations:
                 x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope)
             else:
-                x = block(x, t, mask=mask, rope=rope)
+                x = block(x, t, mask=mask, rope=rope, rope2=rope2, context_output=context_output, context_len=context_len, noisy_mel_len=noisy_mel_len)
 
         if self.long_skip_connection is not None:
             x = self.long_skip_connection(torch.cat((x, residual), dim=-1))

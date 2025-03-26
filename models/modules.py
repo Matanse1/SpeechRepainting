@@ -646,7 +646,7 @@ class CrossAttentionCustom(nn.Module):
         self.d_k = d_k
         self.d_v = d_v
         
-        if tts_output == 'mel' or tts_output == 'phoneme': #TODO dont forget to remove this
+        if tts_output == 'mel' or tts_output == 'phoneme' or tts_output == 'phoneme_with_energy_pitch': #TODO dont forget to remove this
             self.w_qs = nn.Conv1d(d_model, n_head * d_k, kernel_size, padding=kernel_size // 2, groups=n_head)
             self.w_ks = nn.Conv1d(d_model, n_head * d_k, kernel_size, padding=kernel_size // 2, groups=n_head)
             self.w_vs = nn.Conv1d(d_model, n_head * d_v, kernel_size, padding=kernel_size // 2, groups=n_head)
@@ -716,6 +716,7 @@ class CrossAttentionCustom(nn.Module):
         if query_mask is not None and context_mask is not None:
             attn_mask = context_mask.unsqueeze(1).unsqueeze(1)  # '[B T2] -> [B 1 1 T2]'
             attn_mask = attn_mask.expand(sz_b, n_head, len_q, len_k)
+            attn_mask = attn_mask.permute(1, 0, 2, 3).contiguous().view(-1, len_q, len_k)
             
             # attn_mask = query_mask.unsqueeze(2) | context_mask.unsqueeze(1)  # [B, T1, T2]
             # attn_mask = attn_mask.unsqueeze(1).expand(-1, n_head, -1, -1)  # [B, n_head, T1, T2]
@@ -833,7 +834,8 @@ class CrossAttention_noise(nn.Module):
 
 
 class DiTBlock(nn.Module):
-    def __init__(self, dim, heads, dim_head, ff_mult=4, dropout=0.1, inner_attention=False):
+    def __init__(self, dim, heads, dim_head, ff_mult=4, dropout=0.1, inner_attention=False, tts_output='phoneme',
+                 inner_embed_dim=768, inner_num_heads=3, inner_dim_head=768):
         super().__init__()
 
         self.attn_norm = AdaLayerNormZero(dim)
@@ -846,18 +848,20 @@ class DiTBlock(nn.Module):
         )
         self.inner_attention = inner_attention
         if inner_attention:
-            self.inner_attn_c = CrossAttentionCustom(heads, dim_head, d_k=int(dim/heads), d_v=int(dim/heads), dropout=dropout, spectral_norm=False, tts_output='phoneme')
+            self.inner_attn_c = CrossAttentionCustom(inner_num_heads, inner_dim_head, d_k=int(inner_embed_dim/inner_num_heads), d_v=int(inner_embed_dim/inner_num_heads), dropout=dropout, spectral_norm=False, tts_output=tts_output)
         self.ff_norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.ff = FeedForward(dim=dim, mult=ff_mult, dropout=dropout, approximate="tanh")
 
-    def forward(self, x, t, mask=None, rope=None, context=None):  # x: noised input, t: time embedding
+    def forward(self, x, t, mask=None, rope=None, rope2=None, context_output=None, context_len=None, noisy_mel_len=None):  # x: noised input, t: time embedding
         # pre-norm & modulation for attention input
         norm, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.attn_norm(x, emb=t)
 
         # attention
         attn_output = self.attn(x=norm, mask=mask, rope=rope)
         if self.inner_attention:
-            attn_output_inner, attn_weights = self.inner_attn_c(query=norm, context=clean_feats, query_mask=noisy_key_padding_mask, context_mask=clean_key_padding_mask, rope=rope) #TODO did not finish this
+            noisy_key_padding_mask = self.create_padding_mask(norm.size(1), noisy_mel_len)  # [B, T1]
+            context_key_padding_mask = self.create_padding_mask(context_output.size(1), context_len)  # [B, T2]
+            attn_output_inner, attn_weights = self.inner_attn_c(query=norm, context=context_output, query_mask=noisy_key_padding_mask, context_mask=context_key_padding_mask, rope=rope2)
             attn_output = attn_output + attn_output_inner
         # process attention output for input x
         
@@ -868,6 +872,19 @@ class DiTBlock(nn.Module):
         x = x + gate_mlp.unsqueeze(1) * ff_output
 
         return x
+    
+    def create_padding_mask(self, max_len, actual_lengths):
+        """
+        Creates attention padding mask
+        Args:
+            max_len: Maximum length in the batch
+            actual_lengths: List/tensor of actual sequence lengths
+        Returns:
+            mask: Boolean mask with False at valid positions and True at padding positions
+        """
+        batch_size = len(actual_lengths)
+        mask = torch.arange(max_len)[None, :].cuda() >= actual_lengths[:, None]  # [B, max_len]
+        return mask
 
 
 # MMDiT Block https://arxiv.org/abs/2403.03206

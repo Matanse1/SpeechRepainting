@@ -93,7 +93,7 @@ dit:
   checkpoint_activations: False  # recompute activations and save memory for extra compute
   unconditional: False
   text_embed_prop:
-    use_text_embed_rep: false
+    use_text_embed_rep: False
     text_dim: 512
     conv_layers: 4
     text_num_embeds: 256
@@ -101,6 +101,8 @@ dit:
     tokenizer_path: /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json #none #  /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json
   tts_kw:
     use_tts: False
+    tts_output: 'phoneme_with_energy_pitch' # phoneme, mel, phoneme_with_energy_pitch
+    inner_attention: False
     filter_length: 1024
     hop_length: 256
     win_length: 1024
@@ -113,6 +115,11 @@ dit:
     positional_emd: InputEmbedding1 # none
     style_speech_ch_path: /dsi/gannot-lab1/users/mordehay/style-speech_weights/stylespeech.pth.tar
     style_speech_config_path: /dsi/gannot-lab1/users/mordehay/style-speech_weights/config.json
+    log: "log"
+    norm: none # LayerNorm # none
+    cross_attn_type: 'CrossAttention_noise' # CrossAttention, CrossAttention_noise, CrossAttention_noise
+    custom_multi_att: custom_multi_att # monotonic_custom_multi_att, custom_multi_att
+    use_rope: True
 
 
 diffusion:
@@ -201,7 +208,7 @@ audio:
 # Unet_Anechoic_LibSp_conditional-masked-melspec-text_w-masked-pix=${train.w_masked_pix}_tokenizer=${unet.text_embed_prop.tokenizer}_num4empty_str=${dataset.speech_inpainting_anechoic.num4empty_str}
 # Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=${train.w_masked_pix}_diffusion-name=${diffusion.name}
 train:  # Not used in generate.py
-  name: DiT_Anechoic_LibSp_conditional-tts-melspec_positional_emd=InputEmbedding1_w-masked-pix=1  # DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1  # Wavenet_Anechoic_LibSp_unconditional #2delete_Anechoic_LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${wavenet.wavlm.two_branch}_specific_hidden_states_randn-filled #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
+  name: DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1  # DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1  # Wavenet_Anechoic_LibSp_unconditional #2delete_Anechoic_LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${wavenet.wavlm.two_branch}_specific_hidden_states_randn-filled #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting    # where checkpoints will be saved
   ckpt_iter: max    # continue training from a specific iteration
 
@@ -227,11 +234,11 @@ generate:
   n_samples_test: 50 #1000 # used in full inference mel only
   video_path: null      # generate audio for a given silent video file
   skip_step: 1
-  w_mel_cond: [-1, 0.5, 0.8, 1, 2]            # w1 in the paper
-  w_asr: [0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
-  asr_start: [320, 270] #270        # t_asr
+  w_mel_cond: [1.2, 1.3, 1.5] #[-1, 0.5, 0.8, 1, 2]            # w1 in the paper
+  w_asr: [1.5] #[0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
+  asr_start: [320] #[320, 270] #270        # t_asr
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02 #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
-  inference_mel_only_name_dir: repeat_all_freq-length=25_skip=150_cp=112000_mel_text=True_phoneme-without-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
+  inference_mel_only_name_dir: repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_phoneme-without-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
   without_condtion: False
   config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
   apply_asr_guidance: True
@@ -247,14 +254,14 @@ generate:
     repeat_all_freq:
     #all the samples above 7s
       #big
-      # length: 100 #1sec for hop_length=160
-      # skip: 150 # 1.5sec
+      length: 100 #1sec for hop_length=160
+      skip: 150 # 1.5sec
       # #medium
       # length: 50 #1sec for hop_length=160
       # skip: 150 # 1.5sec
       # #small
-      length: 25 #1sec for hop_length=160
-      skip: 150 # 1.5sec
+      # length: 25 #1sec for hop_length=160
+      # skip: 150 # 1.5sec
     repeat_specific_freq:
       length: 15
       skip: 30

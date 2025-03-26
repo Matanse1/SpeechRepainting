@@ -490,7 +490,7 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
         self.csv_df = pd.read_csv(self.csv_path, delimiter="|")
     
     def __len__(self):
-        # return 100000
+        # return 20
         return len(self.csv_df)
     
     def __getitem__(self, index):
@@ -532,7 +532,10 @@ class SpeechRepaingingAnechoicDataset(torch.utils.data.Dataset):
                 content = file.read()
             input_text = content.strip()
             input_text = [input_text]
-        
+        elif self.use_input_text == 'frame_level_phoneme':
+            input_text_path = audio_path.with_suffix('.npy')
+            input_text_path = Path(self.base_data_dir) / 'phoneme-frames_filter_length=640_hop_length=160' / (Path(input_text_path).relative_to(Path(self.base_data_dir).joinpath('data')))
+            input_text = np.load(input_text_path)
         # if self.return_mask_properties:
         #     masked_melspec, mask, masked_audio_time, block_size_list, num_blocks = self.create_masked_melspec(melspec, audio_time)
         #     if self.return_target_time:
