@@ -1,10 +1,9 @@
 """ from https://github.com/keithito/tacotron """
 import re
 import sys
-sys.path.append('/home/dsi/moradim/SpeechRepainting/glow-tts')
-from text import cleaners
-from text.symbols import symbols
-from text import cmudict
+from glow_tts.text import cleaners
+from glow_tts.text.symbols import symbols
+from glow_tts.text import cmudict
 
 # Mappings from symbol to numeric ID and vice versa:
 _symbol_to_id = {s: i for i, s in enumerate(symbols)}
@@ -101,7 +100,7 @@ def _should_keep_symbol(s):
 
 
 if __name__ == '__main__':
-  
+  # sys.path.append('/home/dsi/moradim/SpeechRepainting/glow-tts')
   dictionary = cmudict.CMUDict('/home/dsi/moradim/SpeechRepainting/glow-tts/data/cmu_dictionary')
   text = "Hello, it's me."
   cleaner_names = ['english_cleaners']

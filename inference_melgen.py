@@ -24,7 +24,7 @@ from dataloaders.stft import denormalise_mel
 from tqdm import tqdm
 from utils import find_max_epoch, print_size, get_diffusion_hyperparams, local_directory, fix_len_compatibility, pad_last_dim
 
-def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, mask_frames=None, masked_audio_time_mask=None, conditions=None, text=None, input_text=None):
+def sampling(net, diffusion_hyperparams, w_mel_cond, on_noisy_masked_melspec, mask, mask_frames=None, masked_audio_time_mask=None, conditions=None, text=None, input_text=None):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
 
@@ -52,7 +52,7 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, ma
             # if t< T-10:
             #     break
             diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
-            if on_masked_melspec is not None:
+            if on_noisy_masked_melspec is not None:
                 x = masked_melspec * mask + x * (1 - mask)
             else:
                 z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
@@ -69,7 +69,7 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, on_masked_melspec, mask, ma
             x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
             if t > 0:
                 x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
-    if on_masked_melspec is not None:
+    if on_noisy_masked_melspec is not None:
         x = masked_melspec * mask + x * (1 - mask)
     if mask_frames is not None:
         x = x[..., :int(torch.sum(mask_frames, dim=-1).item())]
@@ -88,7 +88,7 @@ def generate(
         name=None,
         n_samples=None,
         w_mel_cond=0,
-        on_masked_melspec=False,
+        on_noisy_masked_melspec=False,
     ):
     """
     Generate melspectrograms based on lips movement
@@ -217,7 +217,7 @@ def generate(
             w_mel_cond,
             conditions=masked_cond[i],
             mask=masks[i],
-            on_masked_melspec=on_masked_melspec,
+            on_noisy_masked_melspec=on_noisy_masked_melspec,
             mask_frames=mask_frames_list[i],
             masked_audio_time_mask=masked_audio_time_mask_list[i],
             text=text_list[i],

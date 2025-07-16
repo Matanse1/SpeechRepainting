@@ -44,6 +44,27 @@ import ASR.asr_models as asr_models
 from utils import mask_time_all_frequencies_mask, mask_time_specific_frequencies_mask, mask_specific_frequencies_all_time_mask, mask_combined_mask, mask_with_shape_mask
 print("finished imports")
 
+
+def get_g2p_pipeline(g2p_model, with_space=False):
+    p2n = '/home/dsi/moradim/SpeechRepainting/phoneme_to_number.json'
+    with open(p2n, 'r') as f:
+        valid_chars = json.load(f)
+        valid_chars = list(valid_chars.keys())
+    def g2p(text):
+        phonemes = g2p_model(text)
+        processed_list = []
+        for item in phonemes:
+            if item == ' ':
+                if with_space:
+                    processed_list.append('space')
+                # else: don't append, effectively removing it
+            elif item in valid_chars:
+                processed_list.append(item)
+            # else: don't append, removing invalid char.
+        return processed_list
+    return g2p
+
+
 def get_phones_dict(file_path):
     phoneme_dict_p2d = {}
     phoneme_dict_d2p = {}
@@ -101,7 +122,7 @@ def sampling(net, diffusion_hyperparams,
             decoder=None,
             without_condtion=False,
             mask=None,
-            on_masked_melspec=False,
+            on_noisy_masked_melspec=False,
             mask_frames=None,
             masked_audio_time_mask=None,
             text=None, 
@@ -145,8 +166,7 @@ def sampling(net, diffusion_hyperparams,
     masked_melspec, _ = condition
     # This is Algorithm 1 in the paper of classifier-free
     B, C, L = masked_melspec.shape  # B is batchsize, C=80, L is number of melspec frames
-    if on_masked_melspec:
-        mask = mask.cuda()  
+    mask = mask.cuda()  
     generator = torch.Generator().manual_seed(42)
     x = torch.normal(0, 1, size=masked_melspec.shape, generator=generator).cuda()
     repeat_asr = 1
@@ -168,9 +188,7 @@ def sampling(net, diffusion_hyperparams,
             # if asr_guidance_net is not None and (t <= asr_start and t > asr_finish):
                 # repeat_asr = 1
             # for _ in range(repeat_asr):
-            if on_masked_melspec:
-                x = masked_melspec * mask + x * (1 - mask)
-            else:
+            if on_noisy_masked_melspec:
                 z = torch.normal(0, 1, size=masked_melspec.shape, generator=generator).cuda()
                 noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
                 x = noisy_masked_melspec * mask + x * (1 - mask)
@@ -192,7 +210,7 @@ def sampling(net, diffusion_hyperparams,
             if (asr_guidance_net is not None) and (t <= asr_start and t > asr_finish):
                 for r in range(repeat_asr):
                     if r > 1:
-                        if on_masked_melspec is not None:
+                        if on_noisy_masked_melspec:
                             z = torch.normal(0, 1, size=masked_melspec.shape, generator=generator).cuda()
                             noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps_asr_linear.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps_asr_linear.int()]) * z
                             x = noisy_masked_melspec * mask + x * (1 - mask)
@@ -245,8 +263,8 @@ def sampling(net, diffusion_hyperparams,
                     outputs_ao = asr_guidance_net(inputs, diffusion_steps_asr_linear)["outputs"]
                     preds_ao = decoder(outputs_ao)[0]
                     print(preds_ao)
-    if on_masked_melspec is not None:
-        x = masked_melspec * mask + x * (1 - mask)
+
+    x = masked_melspec * mask + x * (1 - mask)
     if mask_frames is not None:
         x = x[..., :int(torch.sum(mask_frames, dim=-1).item())]
     return x, preds_ao
@@ -271,7 +289,7 @@ def generate(
         apply_asr_guidance=False,
         type_input_guidance = 'text',
         lipread_text_dir=None,
-        on_masked_melspec=False,
+        on_noisy_masked_melspec=False,
         mask_info=None,
         mel_text=None,
         with_space=False,
@@ -350,6 +368,9 @@ def generate(
             if type_input_guidance == "text":
                 print(f'Apply {type_input_guidance} guidance')
             elif type_input_guidance == "phoneme":
+                from g2p_en import G2p
+                g2p_model = G2p()
+                g2p = get_g2p_pipeline(g2p_model, with_space=with_space)
                 print(f'Apply {type_input_guidance} guidance with space={with_space}')    
             asr_guidance_net, tokenizer, decoder = asr_models.get_models(ds_name, type_input_guidance=type_input_guidance, with_space=with_space)
             print('ASR, tokenizer and decoder loaded')
@@ -399,7 +420,7 @@ def generate(
         dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=True, return_true_text=True, return_target_time=True)
         guidance_dir_name = f'w1={w_mel_cond}'
         guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}' #_asr_finish=80'
-        guidance_dir_name += f'_mask={on_masked_melspec}' #_repeat=5_same-theta_-mel'
+        guidance_dir_name += f'_mask={on_noisy_masked_melspec}' #_repeat=5_same-theta_-mel'
         _output_directory = os.path.join(output_directory, guidance_dir_name)
         os.makedirs(_output_directory, exist_ok=True)
         print("saving to output directory", _output_directory)
@@ -546,6 +567,7 @@ def generate(
                 masked_audio_time_mask=None
                 
             text = true_text[0]
+            true_text_str = true_text[0]
             phoneme4guidance=['None']
             per_frame_phoneme4guidance = ['None']
             if apply_asr_guidance:
@@ -569,11 +591,26 @@ def generate(
                             print(f"The normalized transcript is: {text}")
                         
                 elif type_input_guidance == 'phoneme':
-                    phoneme4guidance = [input_text[0]]
-                    if not with_space:
-                        phoneme4guidance[0] = [item for item in input_text[0] if item != "space"]
-                        
-                    print(f"The Ground thruth phoneme is: {phoneme4guidance[0]}") #TODO add the remove space if no space model used
+                    if mel_text: # use the true text of the sentence
+                        phoneme4guidance = [input_text[0]]
+                        if not with_space:
+                            phoneme4guidance[0] = [item for item in input_text[0] if item != "space"]
+                    else: # predict the text from the masked audio
+                        # Create a temporary file
+                        audio4text = masked_audio_time4text
+                        sample_rate = 16000  # Example value
+                        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_wav:
+                            # Save the masked audio array as a WAV file in the temporary file
+                            write(temp_wav.name, sample_rate, audio4text.numpy().astype(np.float32)) # TODO maybe we need to do something more clever here
+                            # Send the temporary WAV file to the pipeline
+                            transcript_from_condition = pipeline_asr(temp_wav.name)
+                            text = transcript_from_condition
+                            print(f"The transcript is: {text}")
+                            text = preprocess_text(text)
+                            print(f"The normalized transcript is: {text}")
+                            phoneme4guidance = [g2p(text)]
+                            
+                    print(f"The Ground thruth phoneme is: {' '.join(phoneme4guidance[0])}")
 
                 elif type_input_guidance == 'frame_level_phoneme':
                     per_frame_phoneme4guidance = [input_text[0]]
@@ -633,7 +670,7 @@ def generate(
                             decoder=decoder,
                             without_condtion=without_condtion,
                             mask=mask,
-                            on_masked_melspec=on_masked_melspec,
+                            on_noisy_masked_melspec=on_noisy_masked_melspec,
                             mask_frames=mask_frames,
                             masked_audio_time_mask=masked_audio_time_mask,
                             text=true_text, 
@@ -652,14 +689,18 @@ def generate(
             text_filename = os.path.join(_output_directory, f'sample_{indx_data}', 'asr_text.txt')
             with open(text_filename, 'w') as f:
                 if type_input_guidance == 'text':
+                    f.write("True text:  " + true_text_str + "\n")
                     f.write("asr_condition       :  " +text+"\n")
                     f.write("asr_generated_signal:  " + preds_ao)
                 elif type_input_guidance == 'phoneme':
-                    f.write("asr_generated_signal:  " + text + "\n")
+                    f.write("True text:  " + true_text_str + "\n")
+                    f.write("text4phoneme:  " + text + "\n")
                     f.write("asr_condition       :  " +" ".join(phoneme4guidance[0])+"\n")
                     f.write("asr_generated_signal:  " + " ".join(preds_ao))
                 elif type_input_guidance == 'frame_level_phoneme':
-                    f.write("asr_generated_signal:  " + text + "\n")
+                    f.write("True text:  " + true_text_str + "\n")
+                    f.write("text4phoneme:  " + text + "\n")
+
             
             # plcmos_masked_init = compute_metrics.compute_plcmos(masked_audio_time.squeeze().cpu().numpy())
             # row_dict.update({'plcmos_masked_init': plcmos_masked_init})
@@ -717,7 +758,7 @@ def generate(
 # config_dit_without-space-phoneme
 # tts-dit_without-space
 
-@hydra.main(version_base=None, config_path="configs/4exp/", config_name="config_dit_phoneme-per_frame")
+@hydra.main(version_base=None, config_path="configs/4exp/", config_name="config_dit_without-space-phoneme_mel-text=False")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     OmegaConf.set_struct(cfg, False)  # Allow writing keys

@@ -1,14 +1,19 @@
 # Speech Repainting
+
 to visulazie the mask of glow-tts i wrote this script:
 C:\Users\HP\OneDrive - Bar-Ilan University\אוניברסיטה\תואר שני\תזה\Some Explore Code\vis_algo.py
 
 to run mfa align pleas run:
- /home/dsi/moradim/anaconda3/envs/mfa_tool/bin/mfa align /dsi/gannot-lab1/datasets/libri_tts/LibriTTS/wav16/ english_us_arpa english_us_arpa /dsi/gannot-lab1/datasets/libri_tts/LibriTTS/TextGrid/ -j 10 -v
+/home/dsi/moradim/anaconda3/envs/mfa_tool/bin/mfa align /dsi/gannot-lab1/datasets/libri_tts/LibriTTS/wav16/ english_us_arpa english_us_arpa /dsi/gannot-lab1/datasets/libri_tts/LibriTTS/TextGrid/ -j 10 -v
 
 Right now, i base my my baselines on those:
 git@github.com:Haohan-SHI/SI-Multi-Layers-LSTM.git
 https://gricad-gitlab.univ-grenoble-alpes.fr/huebert/speech-inpainting
-<div align="center">
+
+- For calculating the distance mos metric use /home/dsi/moradim/SpeechRepainting/my_utils/calc_scoreq4dir.py
+- For speech_bleu, mcd and logf0rmse use /home/dsi/moradim/SpeechRepainting/my_utils/calc_other_metric4dir.py
+
+* <div align="center">
 
 [Paper](https://openreview.net/pdf?id=ZZCPSC5OgD) |
 [Demo Page](https://lipvoicer.github.io/) |
@@ -23,30 +28,39 @@ https://gricad-gitlab.univ-grenoble-alpes.fr/huebert/speech-inpainting
 ![](https://github.com/yochaiye/LipVoicer/blob/main/LipVoicer.jpg)
 
 ## Authors
+
 Yochai Yemini, Aviv Shamsian, Lior Bracha, Sharon Gannot and Ethan Fetaya
 
 ## Demo Page
+
 The [demo page](https://lipvoicer.github.io/) includes many sample videos and comparisons to other baselines.
 
 ## Introduction
+
 Official implementation of LipVoicer, a lip-to-speech method. Given a silent video, we first predict the spoken text using a pre-trained lip-reading network. We then condition a diffusion model on the video and use the extracted text through a classifier-guidance mechanism where a pre-trained ASR serves as the classifier. LipVoicer outperforms multiple lip-to-speech baselines on LRS2 and LRS3, which are in-the-wild datasets with hundreds of unique speakers in their test set and an unrestricted vocabulary.
 
 The lip reading network used in LipVoicer is taken from the [Visual Speech Recognition for Multiple Languages](https://github.com/mpc001/Visual_Speech_Recognition_for_Multiple_Languages) repository.
 The ASR system is adapted from [Audio-Visual Efficient Conformer for Robust Speech Recognition](https://github.com/burchim/AVEC/tree/master).
 
 ## Installation
+
 1. Clone the repository:
+
 ```
 git clone https://github.com/yochaiye/LipVoicer.git
 cd LipVoicer
 ```
+
 2. Install the required packages and ffmpeg
+
 ```
 pip install -r requirements.txt
 conda install -c conda-forge ffmpeg
 cd ..
 ```
+
 3. Install `ibug.face_detection`
+
 ```
 git clone https://github.com/hhj1897/face_detection.git
 cd face_detection
@@ -54,16 +68,20 @@ git lfs pull
 pip install -e .
 cd ..
 ```
+
 4. Install `ibug.face_alignment`
+
 ```
 git clone https://github.com/hhj1897/face_alignment.git
 cd face_alignment
 pip install -e .
 cd ..
 ```
+
 5. Install [RetinaFace](https://pypi.org/project/retina-face/) or [MediaPipe](https://pypi.org/project/mediapipe/) face tracker
 <!--6. Install ctcdecode for the ASR beam search
-```
+
+````
 git clone --recursive https://github.com/parlance/ctcdecode.git
 cd ctcdecode
 pip install .
@@ -87,10 +105,12 @@ We provide pretrained checkpoints for LipVoicer so you can kick-start generating
 * HiFi-GAN trained on 16KHz audio signals. In the paper we used DiffWave as the vocoder, but since HiFi-GAN is faster it is used here as the vocoder.
 
 The simplest and fastet way to download the models is to run
-```
+````
+
 python download_checkpoints.py
+
 ```
-which will download all the pretrained checkpoints and put them in the right place in the repository. 
+which will download all the pretrained checkpoints and put them in the right place in the repository.
 
 Alternatively, you can download individual checkpoint from [Google Drive](https://drive.google.com/drive/u/1/folders/1IdYw_jiKyfBdemiel6XD2rHkbIG12MbM)
 
@@ -104,82 +124,94 @@ To generate a speech signal for your video, you first need to edit the following
 
 You can also play with the values of `w_video, w_asr, ast_start`. Then run the following command
 ```
+
 python inference_real_video.py
+
 ```
 which will also take care of converting the video fps rate to 25Hz if necessary, mouth cropping and lip-reading.
 
 ### Test Videos for LRS2/LRS3
 If you wish to generate audio files for all of the test videos of LRS2/LRS3, first download the predicted lip-readings ([LRS2](https://drive.google.com/uc?id=1T4ZFGvW9643844BaOnJyo78-KN83h8Yf), [LRS3](https://drive.google.com/uc?id=https://drive.google.com/file/d/1sYs2MAmCF80GPK_kBieU2S5pOfJpcBei/view?usp=drive_link)), and then use the following
 ```
+
 python inference_full_test_split.py generate.ckpt_path=<path_to_MelGen_ckpt>
-                                    generate.save_dir=<save_dir> \
-                                    generate.lipread_text_dir=<lipread_text_dir> \
-                                    dataset.videos_dir=<videos_dir> \
-                                    dataset.audios_dir=<audio_dir> \
-                                    dataset.mouthrois_dir=<mouthrois_dir
+generate.save_dir=<save_dir> \
+ generate.lipread_text_dir=<lipread_text_dir> \
+ dataset.videos_dir=<videos_dir> \
+ dataset.audios_dir=<audio_dir> \
+ dataset.mouthrois_dir=<mouthrois_dir
+
 ```
 
 ## Training
-For training LipVoicer on the benchmark datasets, please download [LRS2](https://www.robots.ox.ac.uk/~vgg/data/lip_reading/lrs2.html) or [LRS3](https://mmai.io/datasets/lip_reading/). 
+For training LipVoicer on the benchmark datasets, please download [LRS2](https://www.robots.ox.ac.uk/~vgg/data/lip_reading/lrs2.html) or [LRS3](https://mmai.io/datasets/lip_reading/).
 
 ### Data Preparation
 The purpose of the data preparation step is to compute the groundtruth mel-spectrograms of the benchmark videos and extract the lip region videos.
 At the end of the process, you should have the following directory trees for LRS2 and LRS3:
 
 ```
-├── LRS2                          
-    │       └── [videos]               (contain the video in .mp4)
-    │                └── [main]
-    │                └── [pretrain]
-    │       └── [audios]             (contain the audio files in .wav and .wav.spec)
-    │                └── [main]
-    │                └── [pretrain
-    │       └── [mouth_rois]         (contain the mouth ROIs in .npz)
-    │                └── [main]
-    │                └── [pretrain]
 
-├── LRS3                          
-    │       └── [videos]               (contain the video in .mp4)
-    │                └── [pretrain]
-    │                └── [trainval]
-    │                └── [test]
-    │       └── [audios]             (contain the audio files in .wav and .wav.spec)
-    │                └── [pretrain]
-    │                └── [trainval]
-    │                └── [test]
-    │       └── [mouth_rois]         (contain the mouth ROIs in .npz)
-    │                └── [pretrain]
-    │                └── [trainval]
-    │                └── [test]
+├── LRS2  
+ │ └── [videos] (contain the video in .mp4)
+│ └── [main]
+│ └── [pretrain]
+│ └── [audios] (contain the audio files in .wav and .wav.spec)
+│ └── [main]
+│ └── [pretrain
+│ └── [mouth_rois] (contain the mouth ROIs in .npz)
+│ └── [main]
+│ └── [pretrain]
+
+├── LRS3  
+ │ └── [videos] (contain the video in .mp4)
+│ └── [pretrain]
+│ └── [trainval]
+│ └── [test]
+│ └── [audios] (contain the audio files in .wav and .wav.spec)
+│ └── [pretrain]
+│ └── [trainval]
+│ └── [test]
+│ └── [mouth_rois] (contain the mouth ROIs in .npz)
+│ └── [pretrain]
+│ └── [trainval]
+│ └── [test]
+
 ```
 
 To this end, perform the following steps inside the LipVoicer directory:
 1. Extract the audio files from the videos (audio files will be saved in a WAV format)
 ```
+
 python dataloaders/extract_audio_from_video.py --ds_dir <path_to_video_dir> \
-                                               --split <trainval/test/...>  \
-                                               --out_dir <output_directory>
+ --split <trainval/test/...> \
+ --out_dir <output_directory>
+
 ```
 The `wav` files will be saved to `output_directory/split`
 
 2. Compute the log mel-spectrograms and save them
-   ```
-   python dataloaders/wav2mel.py dataset.audios_dir=<path_to_directory_with_extracted_wav_files>
-   ```
-   It will save the mel-spectrograms with extension `.wav.spec`.
+```
+
+python dataloaders/wav2mel.py dataset.audios_dir=<path_to_directory_with_extracted_wav_files>
+
+```
+It will save the mel-spectrograms with extension `.wav.spec`.
 
 3. Crop the mouth regions of the videos, convert to greyscale and save to `<mouthrois_dir>`. The easiest way is to
-    1. Clone [Visual Speech Recognition for Multiple Languages](https://github.com/mpc001/Visual_Speech_Recognition_for_Multiple_Languages).
-    2. Download the landmarks for LRS2/LRS3
-    3. Copy `dataloader/extract_mouthcrops.py` from the LipVoicer repository and run it from the command line. It saves the greyscale mouthcrops as numpy arrays in `.npz` files.
+ 1. Clone [Visual Speech Recognition for Multiple Languages](https://github.com/mpc001/Visual_Speech_Recognition_for_Multiple_Languages).
+ 2. Download the landmarks for LRS2/LRS3
+ 3. Copy `dataloader/extract_mouthcrops.py` from the LipVoicer repository and run it from the command line. It saves the greyscale mouthcrops as numpy arrays in `.npz` files.
 
 ### Train
 1. Train MelGen
 ```
+
 CUDA_VISIBLE_DEVICES=0,1 python train_melgen.py train.save_dir=<save_dir> \
-                                                dataset.videos_dir=<videos_path> \
-                                                dataset.audios_dir=<audios_dir> \
-                                                dataset.mouthrois_dir=<mouthrois_dir>
+ dataset.videos_dir=<videos_path> \
+ dataset.audios_dir=<audios_dir> \
+ dataset.mouthrois_dir=<mouthrois_dir>
+
 ```
 The progress of the training stage is monitored with TensorBoard.
 
@@ -188,6 +220,7 @@ For further details on how to carry out this step, please refer to [Audio-Visual
 
 ## Citation
 ```
+
 @inproceedings{
 yemini2024lipvoicer,
 title={LipVoicer: Generating Speech from Silent Videos Guided by Lip Reading},
@@ -195,4 +228,7 @@ author={Yochai Yemini and Aviv Shamsian and Lior Bracha and Sharon Gannot and Et
 booktitle={The Twelfth International Conference on Learning Representations},
 year={2024},
 }
+
+```
+
 ```

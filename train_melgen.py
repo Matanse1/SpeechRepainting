@@ -52,7 +52,7 @@ def train(
     rank, num_gpus, save_dir,
     diffusion_cfg, model_cfg, g_model_cfg, dataset_cfg, generate_cfg, # dist_cfg, wandb_cfg, # train_cfg,
     ckpt_iter, n_iters, iters_per_ckpt, iters_per_logging,
-    learning_rate, batch_size_per_gpu, w_masked_pix, on_masked_melspec,
+    learning_rate, batch_size_per_gpu, w_masked_pix, on_noisy_masked_melspec,
     name=None, cfg=None
 ):
     
@@ -226,7 +226,7 @@ def train(
             # print("The min of melspec is: ", torch.min(melspec))
             optimizer.zero_grad()
             loss = training_loss(net, criterion, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, text, input_text,
-                  masked_audio_time_mask, on_masked_melspec, w_masked_pix)
+                  masked_audio_time_mask, on_noisy_masked_melspec, w_masked_pix)
             if num_gpus > 1:
                 reduced_loss = reduce_tensor(loss.data, num_gpus).item()
             else:
@@ -262,7 +262,7 @@ def train(
                     ckpt_iter="max",
                     n_samples=generate_cfg.n_samples,
                     w_mel_cond=generate_cfg.w_mel_cond,
-                    on_masked_melspec=generate_cfg.on_masked_melspec
+                    on_noisy_masked_melspec=generate_cfg.on_noisy_masked_melspec
                 )
                 
                 # send images to log
@@ -317,7 +317,7 @@ def train(
                     masked_cond = [masked_melspec, masked_audio_time]
                     
                 loss = test_loss(net, criterion, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, text, input_text,
-                  masked_audio_time_mask, on_masked_melspec, w_masked_pix)
+                  masked_audio_time_mask, on_noisy_masked_melspec, w_masked_pix)
                 if num_gpus > 1:
                     reduced_loss = reduce_tensor(loss.data, num_gpus).item()
                 else:
@@ -335,7 +335,7 @@ def train(
         writer.close()
 
 def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, text, input_text,
-                  masked_audio_time_mask, on_masked_melspec, w_masked_pix=0.7):
+                  masked_audio_time_mask, on_noisy_masked_melspec, w_masked_pix=0.7):
     """
     Compute the training loss of epsilon and epsilon_theta
 
@@ -356,7 +356,7 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion
     B, C, L = melspec.shape  # B is batchsize, C=80, L is number of melspec frames
     diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
     z = torch.normal(0, 1, size=melspec.shape).cuda()
-    if on_masked_melspec:
+    if on_noisy_masked_melspec:
         transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z
         transformed_X = melspec * mask + transformed_X * (1-mask)
     else:
@@ -375,9 +375,9 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion
     return weighted_loss
 
 def test_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, text, input_text,
-                  masked_audio_time_mask, on_masked_melspec, w_masked_pix=0.7):
+                  masked_audio_time_mask, on_noisy_masked_melspec, w_masked_pix=0.7):
     return training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, text, input_text,
-                  masked_audio_time_mask, on_masked_melspec, w_masked_pix)
+                  masked_audio_time_mask, on_noisy_masked_melspec, w_masked_pix)
 
 #small_my-tts-dit_with-space_without-sma_tts-output=mel
 # small_my-tts-dit_with-space_without-sma_tts-output=phoneme

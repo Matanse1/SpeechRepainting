@@ -48,7 +48,7 @@ def train(
     rank, num_gpus, save_dir,
     diffusion_cfg, model_cfg, dataset_cfg, # dist_cfg, wandb_cfg, # train_cfg,
     ckpt_iter, n_iters, iters_per_ckpt, iters_per_logging,
-    learning_rate, batch_size_per_gpu, w_masked_pix, on_masked_melspec,
+    learning_rate, batch_size_per_gpu, w_masked_pix, on_noisy_masked_melspec,
     name=None, cfg=None
 ):
     
@@ -174,7 +174,7 @@ def train(
             optimizer.zero_grad()
             loss = training_loss(net, criterion, melspec, masked_cond, mask,  mask_mask, phoneme_target,
                                  diffusion_hyperparams, w_masked_pix=w_masked_pix, masked_audio_time_mask=masked_audio_time_mask,
-                                 phoneme_target_mask=phoneme_target_mask, on_masked_melspec=on_masked_melspec)
+                                 phoneme_target_mask=phoneme_target_mask, on_noisy_masked_melspec=on_noisy_masked_melspec)
             if num_gpus > 1:
                 reduced_loss = reduce_tensor(loss.data, num_gpus).item()
             else:
@@ -235,7 +235,7 @@ def train(
                     
                 loss = test_loss(net, criterion, melspec, masked_cond, mask,  mask_mask, phoneme_target,
                                     diffusion_hyperparams, w_masked_pix=w_masked_pix, masked_audio_time_mask=masked_audio_time_mask,
-                                    phoneme_target_mask=phoneme_target_mask, on_masked_melspec=on_masked_melspec)
+                                    phoneme_target_mask=phoneme_target_mask, on_noisy_masked_melspec=on_noisy_masked_melspec)
                 if num_gpus > 1:
                     reduced_loss = reduce_tensor(loss.data, num_gpus).item()
                 else:
@@ -253,7 +253,7 @@ def train(
         writer.close()
 
 def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, phoneme_target, diffusion_hyperparams, 
-                  masked_audio_time_mask, phoneme_target_mask, on_masked_melspec, w_masked_pix=0.7):
+                  masked_audio_time_mask, phoneme_target_mask, on_noisy_masked_melspec, w_masked_pix=0.7):
     """
     Compute the training loss of epsilon and epsilon_theta
 
@@ -274,7 +274,7 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, phoneme_t
     B, C, L = melspec.shape  # B is batchsize, C=80, L is number of melspec frames
     diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
     z = torch.normal(0, 1, size=melspec.shape).cuda()
-    if on_masked_melspec:
+    if on_noisy_masked_melspec:
         transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z
         transformed_X = melspec * torch.unsqueeze(mask, dim=1) + transformed_X * (1-torch.unsqueeze(mask, dim=1))
     else:
@@ -290,9 +290,9 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, phoneme_t
     return weighted_loss
 
 def test_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, phoneme_target, diffusion_hyperparams, 
-                  masked_audio_time_mask, phoneme_target_mask, on_masked_melspec, w_masked_pix=0.7):
+                  masked_audio_time_mask, phoneme_target_mask, on_noisy_masked_melspec, w_masked_pix=0.7):
     return training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask, phoneme_target, diffusion_hyperparams, 
-                  masked_audio_time_mask, phoneme_target_mask, on_masked_melspec, w_masked_pix)
+                  masked_audio_time_mask, phoneme_target_mask, on_noisy_masked_melspec, w_masked_pix)
 
 #/home/dsi/moradim/SpeechRepainting/configs/phoneme_classifier_config_without_condition.yaml
 # phoneme_classifier_config

@@ -3,12 +3,12 @@ import numpy as np
 import torch
 import torch.utils.data
 import json
-import commons 
-from utils import load_wav_to_torch, load_filepaths_and_text
-from text import text_to_sequence, cmudict
-from text.symbols import symbols
+from glow_tts import commons 
+from glow_tts.utils import load_wav_to_torch, load_filepaths_and_text
+from glow_tts.text import text_to_sequence, cmudict
+from glow_tts.text.symbols import symbols
 import os
-from utils import HParams
+from glow_tts.utils import HParams
 from pathlib import Path
 import math
 import pandas as pd
@@ -47,10 +47,12 @@ class MyTextMelLoader(torch.utils.data.Dataset):
     spectrogram, audio pair.
     """
     def __init__(self, split, sampling_rate, min_block_size, max_block_size, min_spacing, csv_loc, add_blank,
-                 audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties, return_target_time=False, return_full_phoneme_squence=False,  **kwargs):
+                 audio_stft_hop, base_data_dir, num4empty_str, num_blocks, rand_num_blocks, return_mask_properties, return_target_time=False, return_full_phoneme_squence=False,
+                 without_blank_with_space=False,  **kwargs):
         split = split.capitalize()
         self.base_data_dir = base_data_dir
         self.add_blank = add_blank
+        self.without_blank_with_space = without_blank_with_space
         self.return_target_time = return_target_time
         self.return_mask_properties = return_mask_properties
         self.num_blocks = num_blocks
@@ -72,7 +74,10 @@ class MyTextMelLoader(torch.utils.data.Dataset):
         set_seed(1234)
         self.sampling_rate = sampling_rate
         self.split = split
-        self.csv_path = Path(csv_loc) / f'{split}_new.csv'
+        if without_blank_with_space:
+            self.csv_path = f'/home/dsi/moradim/SpeechRepainting/{split}_new_with-space.csv' #Path(csv_loc) / f'{split}_new_with-space.csv'
+        else:
+            self.csv_path = Path(csv_loc) / f'{split}_new.csv'
         self.csv_df = pd.read_csv(self.csv_path, delimiter="|")
     
     def __len__(self):
@@ -100,11 +105,18 @@ class MyTextMelLoader(torch.utils.data.Dataset):
             interspersed_phoneme_int_list_without_silence = torch.IntTensor(interspersed_phoneme_int_list_without_silence)
             return interspersed_phoneme_duration, interspersed_phoneme_int_list_without_silence, true_attention_matrix
         
-        true_attention_matrix = commons.create_attention_matrix(phoneme_duration_list_without_silence)
-        true_attention_matrix = torch.FloatTensor(true_attention_matrix)
-        phoneme_duration_list_without_silence = torch.IntTensor(phoneme_duration_list_without_silence)
-        phoneme_int_list_without_silence = torch.IntTensor(phoneme_int_list_without_silence)
-        return phoneme_duration_list_without_silence, phoneme_int_list_without_silence, true_attention_matrix
+        if self.without_blank_with_space:
+            true_attention_matrix = commons.create_attention_matrix(durations_with_silence)
+            true_attention_matrix = torch.FloatTensor(true_attention_matrix)
+            durations_with_silence = torch.IntTensor(durations_with_silence)
+            phoneme_with_silence_list = torch.IntTensor(phoneme_with_silence_list)
+            return durations_with_silence, phoneme_with_silence_list, true_attention_matrix
+        else:
+            true_attention_matrix = commons.create_attention_matrix(phoneme_duration_list_without_silence)
+            true_attention_matrix = torch.FloatTensor(true_attention_matrix)
+            phoneme_duration_list_without_silence = torch.IntTensor(phoneme_duration_list_without_silence)
+            phoneme_int_list_without_silence = torch.IntTensor(phoneme_int_list_without_silence)
+            return phoneme_duration_list_without_silence, phoneme_int_list_without_silence, true_attention_matrix
     
     def __getitem__(self, index):
         phoneme_duration_list, phoneme_int_list, true_attention_matrix = self.get_phonemes(index)

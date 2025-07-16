@@ -12,19 +12,20 @@ import torch.distributed as dist
 # from apex.parallel import DistributedDataParallel as DDP
 from torch.nn.parallel import DistributedDataParallel as DDP
 # from apex import amp
-
-from data_utils import TextMelLoader, TextMelCollate, CollateFn, MyTextMelLoader
-import models
-import commons
-import utils
-from text.symbols import symbols
-from text import _id_to_symbol, _symbol_to_id
+import sys
+sys.path.append('/home/dsi/moradim/SpeechRepainting/')
+from glow_tts.data_utils import TextMelLoader, TextMelCollate, CollateFn, MyTextMelLoader
+from glow_tts import models
+from glow_tts import commons
+from glow_tts import utils
+from glow_tts.text.symbols import symbols
+from glow_tts.text import _id_to_symbol, _symbol_to_id
 import os
 import numpy as np
 from PIL import Image
 from pathlib import Path
 from tqdm import tqdm
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 
 global_step = 0
 original_model = False
@@ -41,8 +42,8 @@ def main():
     phoneme_dict_d2p[148] = 'sil'
   else:
     phoneme_dict_d2p_or = phoneme_dict_d2p
-  model_dir = '/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss'
-  pretrained_model_path = '/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss/G_126.pth'
+  model_dir = '/home/dsi/moradim/SpeechRepainting/glow_tts/masked-mel-spec-as-input_silent-and-space-between-words_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss' #'/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss'
+  pretrained_model_path = '/home/dsi/moradim/SpeechRepainting/glow_tts/masked-mel-spec-as-input_silent-and-space-between-words_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss/G_97.pth' #'/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss/G_126.pth'
   cp_num = Path(pretrained_model_path).stem
   hps = utils.get_hparams_from_dir(model_dir)
   torch.manual_seed(hps.train.seed)

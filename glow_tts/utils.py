@@ -141,9 +141,10 @@ def load_filepaths_and_text(filename, split="|"):
   return filepaths_and_text
 
 
-def get_hparams(init=True):
+def get_hparams(init=True, config_path='/home/dsi/moradim/SpeechRepainting/glow_tts/configs/my_base_with-space.json', model_root_dir='/home/dsi/moradim/SpeechRepainting/glow_tts/'):
+  # model_root_dir = "/dsi/gannot-lab1/users/mordehay/glow_tts_alignment"
   parser = argparse.ArgumentParser()
-  parser.add_argument('-c', '--config', type=str, default="./configs/my_base_blank.json",
+  parser.add_argument('-c', '--config', type=str, default=config_path,
                       help='JSON file for configuration')
   args = parser.parse_args()
   config_path = args.config
@@ -153,7 +154,7 @@ def get_hparams(init=True):
   config = json.loads(data)
 
   hparams = HParams(**config)
-  model_dir = os.path.join("/dsi/gannot-lab1/users/mordehay/glow_tts_alignment", hparams.model_name)
+  model_dir = os.path.join(model_root_dir, hparams.model_name)
   if not os.path.exists(model_dir):
     os.makedirs(model_dir)
   config_save_path = os.path.join(model_dir, "config.json")

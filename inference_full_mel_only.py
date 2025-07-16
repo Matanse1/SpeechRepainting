@@ -90,7 +90,7 @@ def sampling(net, diffusion_hyperparams,
             decoder=None,
             without_condtion=False,
             mask=None,
-            on_masked_melspec=False,
+            on_noisy_masked_melspec=False,
             mask_frames=None,
             masked_audio_time_mask=None,
             text=None, 
@@ -129,7 +129,7 @@ def sampling(net, diffusion_hyperparams,
     masked_melspec, _ = condition
     # This is Algorithm 1 in the paper of classifier-free
     B, C, L = masked_melspec.shape  # B is batchsize, C=80, L is number of melspec frames
-    if on_masked_melspec is not None:
+    if on_noisy_masked_melspec is not None:
         mask = mask.cuda()  
     
     x = torch.normal(0, 1, size=masked_melspec.shape).cuda()
@@ -149,7 +149,7 @@ def sampling(net, diffusion_hyperparams,
             # if asr_guidance_net is not None and (t <= asr_start and t > asr_finish):
                 # repeat_asr = 1
             # for _ in range(repeat_asr):
-            if on_masked_melspec is not None:
+            if on_noisy_masked_melspec is not None:
                 z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
                 noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
                 x = noisy_masked_melspec * mask + x * (1 - mask)
@@ -164,7 +164,7 @@ def sampling(net, diffusion_hyperparams,
             if (asr_guidance_net is not None) and (t <= asr_start and t > asr_finish):
                 for r in range(repeat_asr):
                     if r > 1:
-                        if on_masked_melspec is not None:
+                        if on_noisy_masked_melspec is not None:
                             z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
                             noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps_asr_linear.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps_asr_linear.int()]) * z
                             x = noisy_masked_melspec * mask + x * (1 - mask)
@@ -202,7 +202,7 @@ def sampling(net, diffusion_hyperparams,
                     outputs_ao = asr_guidance_net(inputs, diffusion_steps_asr_linear)["outputs"]
                     preds_ao = decoder(outputs_ao)[0]
                     print(preds_ao)
-    if on_masked_melspec is not None:
+    if on_noisy_masked_melspec is not None:
         x = masked_melspec * mask + x * (1 - mask)
     if mask_frames is not None:
         x = x[..., :int(torch.sum(mask_frames, dim=-1).item())]
@@ -228,7 +228,7 @@ def generate(
         apply_asr_guidance=False,
         type_input_guidance = 'text',
         lipread_text_dir=None,
-        on_masked_melspec=False,
+        on_noisy_masked_melspec=False,
         mask_info=None,
         mel_text=None,
         with_space=False,
@@ -331,7 +331,7 @@ def generate(
         dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=True, return_true_text=True, return_target_time=True)
         guidance_dir_name = f'w1={w_mel_cond}'
         guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}' #_asr_finish=80'
-        guidance_dir_name += f'_mask={on_masked_melspec}' #_repeat=5_same-theta_-mel'
+        guidance_dir_name += f'_mask={on_noisy_masked_melspec}' #_repeat=5_same-theta_-mel'
         _output_directory = os.path.join(output_directory, guidance_dir_name)
         os.makedirs(_output_directory, exist_ok=True)
         print("saving to output directory", _output_directory)
@@ -556,7 +556,7 @@ def generate(
                             decoder=decoder,
                             without_condtion=without_condtion,
                             mask=mask,
-                            on_masked_melspec=on_masked_melspec,
+                            on_noisy_masked_melspec=on_noisy_masked_melspec,
                             mask_frames=mask_frames,
                             masked_audio_time_mask=masked_audio_time_mask,
                             text=true_text, 

@@ -38,7 +38,7 @@ from dataloaders import dataloader, CollateFn
 
 
 def calc_phoneme(net, loss_fn, melspec, masked_cond, mask, phoneme_target, diffusion_hyperparams, 
-                  masked_audio_time_mask=None, phoneme_target_mask=None, w_masked_pix=0.7, mask_mask=None, on_masked_melspec=False):
+                  masked_audio_time_mask=None, phoneme_target_mask=None, w_masked_pix=0.7, mask_mask=None, on_noisy_masked_melspec=False):
     """
     Compute the training loss of epsilon and epsilon_theta
 
@@ -59,7 +59,7 @@ def calc_phoneme(net, loss_fn, melspec, masked_cond, mask, phoneme_target, diffu
     B, C, L = melspec.shape  # B is batchsize, C=80, L is number of melspec frames
     diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
     z = torch.normal(0, 1, size=melspec.shape).cuda()
-    if on_masked_melspec:
+    if on_noisy_masked_melspec:
         transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z
         transformed_X = melspec * torch.unsqueeze(mask, dim=1) + transformed_X * (1-torch.unsqueeze(mask, dim=1))
     else:
@@ -100,7 +100,7 @@ def inference(
         save_dir=None,
         n_samples_test = 20,
         inference_phoneme_only_name_dir='inferenced_phonemes',
-        on_masked_melspec=False,
+        on_noisy_masked_melspec=False,
         **kwargs
     ):
 
@@ -154,7 +154,7 @@ def inference(
     criterion = nn.CrossEntropyLoss(reduction='none')
     # guidance_dir_name = f'w1={w_mel_cond}'
     # guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}'
-    dir_name = f'mask={on_masked_melspec}'
+    dir_name = f'mask={on_noisy_masked_melspec}'
     _output_directory = os.path.join(output_directory, dir_name)
     os.makedirs(_output_directory, exist_ok=True)
     print("saving to output directory", _output_directory)
@@ -236,7 +236,7 @@ def inference(
                     
             weighted_loss, phoneme_estimated, diffusion_steps, transformed_X = calc_phoneme(net, criterion, gt_melspec, masked_cond, mask, phoneme_target,
                             diffusion_hyperparams, w_masked_pix=0.8, masked_audio_time_mask=masked_audio_time_mask,
-                            phoneme_target_mask=phoneme_target_mask, mask_mask=mask_mask, on_masked_melspec=on_masked_melspec)
+                            phoneme_target_mask=phoneme_target_mask, mask_mask=mask_mask, on_noisy_masked_melspec=on_noisy_masked_melspec)
             phoneme_estimated_prob = torch.nn.functional.softmax(phoneme_estimated, dim=-2)
             est_phoneme_digits = torch.argmax(phoneme_estimated_prob, dim=-2)
             est_phoneme_string = [phoneme_dict_d2p[est_phoneme_digit] for est_phoneme_digit in est_phoneme_digits.tolist()[0]]

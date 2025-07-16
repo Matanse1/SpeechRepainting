@@ -92,7 +92,7 @@ def generate(
         config_filename_asr_cond=None,
         apply_asr_guidance=False,
         lipread_text_dir=None,
-        on_masked_melspec=False,
+        on_noisy_masked_melspec=False,
         **kwargs
     ):
     """
@@ -152,7 +152,7 @@ def generate(
     output_directory = os.path.join(save_dir, inference_mel_only_name_dir)
     guidance_dir_name = f'w1={w_mel_cond}'
     guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}'
-    guidance_dir_name += f'_mask={on_masked_melspec}'
+    guidance_dir_name += f'_mask={on_noisy_masked_melspec}'
     _output_directory = os.path.join(output_directory, guidance_dir_name)
     path_audio = ["/dsi/gannot-lab1/datasets/lossy_audio/sample_0.wav"]
     n_samples = len(path_audio)

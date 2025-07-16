@@ -253,7 +253,7 @@ class Metrics:
         return self.plcmos.run(audio.cpu().numpy(), self.sampling_rate)
 
 
-def main():
+def main(name_csv='dit'):
     # compute_metrics = Metrics()
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # masked_audio, sr = torchaudio.load('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/small_gap_mask/w1=2_w2=1.5_asr_start=270_mask=True/sample_0/masked_audio_time.wav')
@@ -272,30 +272,48 @@ def main():
     # pathes2data  =    ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/small-gap_cp=732000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True',
                 # '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/as-train-gap_cp=1256000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True']#,
     combine_dataframes = False
-    pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=25_skip=150_cp=112000_mel_text=True_ASR/w1=-1_w2=0.5_asr_start=270_mask=True',
-                   '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=25_skip=150_cp=112000_mel_text=True_ASR/w1=-1_w2=0.5_asr_start=320_mask=True']
-    for path2data in pathes2data:
+    pathes2data = ['/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=100',
+                   '/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=50',
+                   '/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=25']
+    save_csv_path = f"/home/dsi/moradim/SpeechRepainting/{name_csv}_metric_results.csv"
+        # Ask if user wants to remove the existing CSV file
+    user_input = input(f"Do you want to remove the existing file at {save_csv_path}? (yes/no): ")
+
+    if user_input.lower() == 'yes':
+        # Remove the CSV file
+        csv_path = Path(save_csv_path)
+        if csv_path.exists():
+            csv_path.unlink()  # Remove the file
+            print(f"File {save_csv_path} has been removed.")
+        else:
+            print(f"File {save_csv_path} does not exist.")
+    else:
+        print(f"Proceeding without removing the file.")
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # vocoder_names = ["bigvgan", "hifi_gan"] 
+    vocoder_names = ["hifi_gan"] 
+
+        
+    titles = ['sample_path', 'masked_WER', 'masked_num_wrong_words', 'total_masked_num_words', 'true_trans', 'masked_trans', 'masked_plcmos',
+                'masked_OVRL_raw', 'masked_SIG_raw', 'masked_BAK_raw', 'masked_OVRL', 'masked_SIG', 'masked_BAK', 'masked_P808_MOS']
+    titles = titles + [met + '_' + voc for met in ['target_OVRL_raw', 'target_SIG_raw', 'target_BAK_raw', 'target_OVRL', 'target_SIG', 'target_BAK', 'target_P808_MOS'] for voc in vocoder_names] + \
+                [met + '_' + voc for met in ['OVRL_raw', 'SIG_raw', 'BAK_raw', 'OVRL', 'SIG', 'BAK', 'P808_MOS'] for voc in vocoder_names] + \
+                [met + '_' + voc for met in ['plcmos_target_init', 'LSD_init', 'STOI_init', 'PESQ_init'] for voc in vocoder_names] + \
+                [met + '_' + voc for met in ['WER', 'trans', 'num_wrong_words', 'total_num_words', 'plcmos_pred', 'LSD', 'STOI', 'PESQ'] for voc in vocoder_names]
+                
+    compute_metrics = Metrics()
+    dict_row_results = {}
+    for i, path2data in enumerate(pathes2data):
     # path2data = '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/as-train-gap_cp=532000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True'
         num_dirs = count_directories(path2data)
         print(f"There is a total of {num_dirs} directories")
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        vocoder_names = ["bigvgan", "hifi_gan"] 
 
-            
-        titles = ['sample_path', 'masked_WER', 'masked_num_wrong_words', 'total_masked_num_words', 'true_trans', 'masked_trans', 'masked_plcmos',
-                  'masked_OVRL_raw', 'masked_SIG_raw', 'masked_BAK_raw', 'masked_OVRL', 'masked_SIG', 'masked_BAK', 'masked_P808_MOS']
-        titles = titles + [met + '_' + voc for met in ['target_OVRL_raw', 'target_SIG_raw', 'target_BAK_raw', 'target_OVRL', 'target_SIG', 'target_BAK', 'target_P808_MOS'] for voc in vocoder_names] + \
-                    [met + '_' + voc for met in ['OVRL_raw', 'SIG_raw', 'BAK_raw', 'OVRL', 'SIG', 'BAK', 'P808_MOS'] for voc in vocoder_names] + \
-                    [met + '_' + voc for met in ['plcmos_target_init', 'LSD_init', 'STOI_init', 'PESQ_init'] for voc in vocoder_names] + \
-                    [met + '_' + voc for met in ['WER', 'trans', 'num_wrong_words', 'total_num_words', 'plcmos_pred', 'LSD', 'STOI', 'PESQ'] for voc in vocoder_names]
-                    
-        compute_metrics = Metrics()
-        dict_row_results = {}
-        save_csv_path = f"{path2data}/metric_results.csv"
         # Open the file once and keep it open
-        with open(save_csv_path, mode="w", newline="") as file:
+        with open(save_csv_path, mode="a", newline="") as file:
             writer = csv.DictWriter(file, fieldnames=titles, delimiter="|")
-            writer.writeheader()  # Write the header row
+            if i == 0:
+                writer.writeheader()  # Write the header row
             samples_dir = Path(path2data).glob('sample_*')
             for idx, sample_path in enumerate(tqdm(samples_dir)):
                 dict_row_results["sample_path"] = sample_path
@@ -336,9 +354,9 @@ def main():
                         dict_row_results['target_' + key + '_' + voc] = round(value, 4) if is_number(value) else value
 
                 writer.writerow(dict_row_results)
-                print('-------------------')
-                if idx == 3:
-                    break
+                print('\n -------------------')
+                # if idx == 3:
+                #     break
         
         if combine_dataframes:
             output_csv = f"{path2data}/metric_results_and_samples_info.csv"
@@ -355,4 +373,5 @@ def main():
             df_combined.to_csv(output_csv, index=False)
     
 if __name__ == '__main__':
-    main()
+    name_csv = 'StyleSpeech'
+    main(name_csv=name_csv)

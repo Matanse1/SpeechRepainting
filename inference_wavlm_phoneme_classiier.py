@@ -78,7 +78,7 @@ def inference(
         save_dir=None,
         n_samples_test = 20,
         inference_phoneme_only_name_dir='inferenced_phonemes',
-        on_masked_melspec=False,
+        on_noisy_masked_melspec=False,
         **kwargs
     ):
 

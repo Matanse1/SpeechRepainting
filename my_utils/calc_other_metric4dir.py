@@ -62,7 +62,10 @@ def main(csv_name='all', interval_save=4500):
     
     # Paths for different data sources
     # pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02']
-    pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02']
+    # pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02']
+    pathes2data = ['/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=100',
+                   '/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=50',
+                   '/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=25']
     # List to store all found sample folder paths
     sample_folders = []
 
@@ -74,7 +77,8 @@ def main(csv_name='all', interval_save=4500):
     print(f"Found {len(sample_folders)} sample folders")
 
     # Vocoder names
-    vocoder_names = ["bigvgan", "hifi_gan"]
+    # vocoder_names = ["bigvgan", "hifi_gan"]
+    vocoder_names = ["hifi_gan"]
 
     # Define titles for the CSV file 
     titles = ['sample_path']
@@ -123,12 +127,13 @@ def main(csv_name='all', interval_save=4500):
 
             # Process each sample folder within the interval
             for sample_path in tqdm(sample_folders_interval):
-                if ("repeat_all_freq-length" not in sample_path) or ("cp=112000" not in sample_path) or ("noise" in sample_path):
-                    print(f"Skipping {sample_path}")
-                    continue
+                # if ("repeat_all_freq-length" not in sample_path) or ("cp=112000" not in sample_path) or ("noise" in sample_path):
+                #     print(f"Skipping {sample_path}")
+                #     continue
                 try:
                     dict_row_results = {}
-                    dict_row_results["sample_path"] = Path(sample_path).relative_to('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/')     
+                    # dict_row_results["sample_path"] = Path(sample_path).relative_to('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/')  
+                    dict_row_results["sample_path"] = Path(sample_path).relative_to('/home/dsi/moradim/SpeechRepainting')     
                             
                     masked_path = f'{sample_path}/masked_audio_time.wav'
                     masked_wav, sr = sf.read(masked_path)
@@ -175,20 +180,20 @@ def main(csv_name='all', interval_save=4500):
                             dict_row_results[f"masked_speech_token_distance_{voc}"] = round(distance_m, 4)
                             print("speech_token_distance done")
                         if mcd_bool:
-                            print("mcd")
+                            # print("mcd")
                             mcd = metrics_mcd.score(ref_wav, gen_wav)
                             mcd_m = metrics_mcd.score(ref_wav, masked_wav)
                             dict_row_results[f"mcd_{voc}"] = round(mcd, 4)
                             dict_row_results[f"masked_mcd_{voc}"] = round(mcd_m, 4)
-                            print("mcd done")
+                            # print("mcd done")
                             
                         if logfmse_bool:
-                            print("logf0rmse")
+                            # print("logf0rmse")
                             logf0rmse = metrics_f0_mse.score(ref_wav, gen_wav)
                             logf0rmse_m = metrics_f0_mse.score(ref_wav, masked_wav)
                             dict_row_results[f"logf0rmse_{voc}"] = round(logf0rmse, 4)
                             dict_row_results[f"masked_logf0rmse_{voc}"] = round(logf0rmse_m, 4)
-                            print("logf0rmse done")
+                            # print("logf0rmse done")
 
                     # Write the results to the CSV file
                     if len(dict_row_results) > 0:
@@ -202,14 +207,14 @@ def main(csv_name='all', interval_save=4500):
 
 if __name__ == '__main__':
     utmos_bool = False
-    mcd_bool = False
-    logfmse_bool = False
+    mcd_bool = True
+    logfmse_bool = True
     spbl = True
     spbc = False
     sptd = False
     
     interval_save = 10000
-    csv_name = 'dit_speech_bleu_n-gram=5'
+    csv_name = 'StyleSpeech_speech_bleu_n-gram=5'
     main(csv_name=csv_name, interval_save=interval_save)
     
 

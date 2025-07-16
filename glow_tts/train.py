@@ -12,15 +12,16 @@ import torch.distributed as dist
 # from apex.parallel import DistributedDataParallel as DDP
 from torch.nn.parallel import DistributedDataParallel as DDP
 # from apex import amp
-
+import sys
+sys.path.append('/home/dsi/moradim/SpeechRepainting/')
 from data_utils import TextMelLoader, TextMelCollate, CollateFn, MyTextMelLoader
-import models
-import commons
-import utils
+from glow_tts import models
+from glow_tts import commons
+from glow_tts import utils
 from text.symbols import symbols
 import os
 import numpy as np
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 
 global_step = 0
 
@@ -30,11 +31,11 @@ def main():
   """Assume Single Node Multi GPUs Training Only"""
   assert torch.cuda.is_available(), "CPU training is not allowed."
 
-  n_gpus = torch.cuda.device_count()
+  n_gpus = 1 #torch.cuda.device_count()
   # os.environ['MASTER_ADDR'] = 'localhost'
   # os.environ['MASTER_PORT'] = '8004'
 
-  hps = utils.get_hparams()
+  hps = utils.get_hparams(config_path='/home/dsi/moradim/SpeechRepainting/glow_tts/configs/my_base_with-space.json', model_root_dir='/home/dsi/moradim/SpeechRepainting/glow_tts/')
   train_and_eval(0, n_gpus, hps)
   # mp.spawn(train_and_eval, nprocs=n_gpus, args=(n_gpus, hps,))
 
@@ -299,4 +300,5 @@ def evaluate(rank, epoch, hps, generator, optimizer_g, val_loader, logger, write
 
                            
 if __name__ == "__main__":
+  
   main()

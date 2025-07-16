@@ -5,9 +5,9 @@ from torch import nn
 from torch.nn import functional as F
 
 from librosa.filters import mel as librosa_mel_fn
-from audio_processing import dynamic_range_compression
-from audio_processing import dynamic_range_decompression
-from stft import STFT
+from glow_tts.audio_processing import dynamic_range_compression
+from glow_tts.audio_processing import dynamic_range_decompression
+from glow_tts.stft import STFT
 
 
 def intersperse(lst, item):

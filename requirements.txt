@@ -27,26 +27,40 @@
 # skimage==0.0
 # soundfile==0.11.0
 
+torch
+torchaudio
+torchvision
+x-transformers
+tensorboard
+Unidecode
+torchmetrics
+pandas
+inflect
+g2p_en
+transformers
+openai-whisper
 tqdm
-warpctc_pytorch
 chainer
-ctcdecode
+# ctcdecode
 editdistance
 gdown
+scoreq
+# git+https://github.com/Takaaki-Saeki/DiscreteSpeechMetrics.git
+# git+https://github.com/WayenVan/ctcdecode.git#egg=ctcdecode install it after torch
 hydra-core
 jiwer
 librosa
 matplotlib
-numpy
+numpy<2.0.0
 omegaconf
-opencv_contrib_python
-Pillow
+# opencv_contrib_python
+# Pillow
 requests
-scikit_image
+# scikit_image
 scipy
 sentencepiece
 six
-skimage
+# skimage
 soundfile
 
 

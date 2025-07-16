@@ -3,11 +3,11 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-import modules
-import commons
-import attentions
+from glow_tts import modules
+from glow_tts import commons
+from glow_tts import attentions
 # import monotonic_align
-import my_monotonic_align as monotonic_align
+from glow_tts import my_monotonic_align as monotonic_align
 import numpy as np
 
 class DurationPredictor(nn.Module):

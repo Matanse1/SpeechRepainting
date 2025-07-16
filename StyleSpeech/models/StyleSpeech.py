@@ -103,7 +103,7 @@ class StyleSpeech(nn.Module):
         # Encoding
         encoder_output, src_embedded, enc_slf_attn = self.encoder(src_seq, style_vector, src_mask)
         # Pitch & Energy 
-        log_duration_prediction = self.variance_adapto.duration_predictor(encoder_output, src_mask)
+        log_duration_prediction = self.variance_adaptor.duration_predictor(encoder_output, src_mask)
         return log_duration_prediction
 
     def get_criterion(self):

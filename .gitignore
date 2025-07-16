@@ -12,3 +12,16 @@ my_utils/sample*
 pt-models
 results_models
 speechpainter_examples
+StyleSpeech/models_cp
+StyleSpeech/configs/my_config_with-space_only_duration_loss.json
+StyleSpeech_metric_results.csv
+Test_new_with-space.csv
+Train_new_with-space.csv
+alignment_results/
+glow_tts/configs/my_base_with-space.json
+glow_tts/masked-mel-spec-as-input_silent-and-space-between-words_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss/
+librispeech_mfa_utils/
+metric_results_StyleSpeech_distance-mos.csv
+metric_results_StyleSpeech_speech_bleu_n-gram=5.csv
+metric_results_unet_distance-mos.csv
+metric_results_unet_speech_bleu_n-gram=5.csv
