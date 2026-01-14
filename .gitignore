@@ -25,3 +25,4 @@ metric_results_StyleSpeech_distance-mos.csv
 metric_results_StyleSpeech_speech_bleu_n-gram=5.csv
 metric_results_unet_distance-mos.csv
 metric_results_unet_speech_bleu_n-gram=5.csv
+.venv

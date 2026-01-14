@@ -12,7 +12,7 @@ from itertools import product
 import random
 warnings.filterwarnings("ignore")
 
-# from functools import partial
+# from functools import partialks
 # import multiprocessing as mp
 
 import soundfile as sf
@@ -530,23 +530,28 @@ def generate(
                 mask = mask.unsqueeze(0).cuda()
                 masked_audio_time = masked_audio_time.unsqueeze(0).cuda()
                 masked_cond = [masked_melspec, masked_audio_time]
+                masked_audio_time4text = masked_audio_time.squeeze().cpu()
             elif mask_info['mask_type'] == 'repeat_specific_freq':
-                masked_melspec, mask = mask_time_specific_frequencies_mask(gt_melspec[0], mask_info['repeat_specific_freq']['length'], mask_info['repeat_specific_freq']['skip'], mask_info['repeat_specific_freq']['freq'], noise_type=mask_info['noise_type'])
+                masked_melspec, masked_audio_time, mask, _ = mask_time_specific_frequencies_mask(gt_melspec[0], mask_info['repeat_specific_freq']['length'], mask_info['repeat_specific_freq']['skip'], mask_info['repeat_specific_freq']['freq'], noise_type=mask_info['noise_type'])
                 masked_melspec = gt_melspec[0] * mask
                 masked_melspec = masked_melspec.unsqueeze(0).cuda()
                 mask = mask.unsqueeze(0).cuda()
                 masked_cond = [masked_melspec, masked_audio_time]
+                masked_audio_time4text = masked_audio_time.squeeze().cpu()
             elif mask_info['mask_type'] == 'by_number':
                 masked_melspec, mask = mask_with_shape_mask(gt_melspec[0], mask_info['by_number']['number'], noise_type=mask_info['noise_type'])
                 masked_melspec = masked_melspec.unsqueeze(0).cuda()
                 mask = mask.unsqueeze(0).cuda()
                 masked_cond = [masked_melspec, masked_audio_time]
+                masked_audio_time4text = masked_audio_time.squeeze().cpu()
             elif mask_info['mask_type'] == 'all_time_specific_freq':
-                masked_melspec, mask = mask_specific_frequencies_all_time_mask(gt_melspec[0], mask_info['all_time_specific_freq']['freq'], noise_type=mask_info['noise_type'])
+                masked_melspec, masked_audio_time, mask, _ = mask_specific_frequencies_all_time_mask(gt_melspec[0], mask_info['all_time_specific_freq']['freq'], noise_type=mask_info['noise_type'])
                 masked_melspec = gt_melspec[0] * mask
                 masked_melspec = masked_melspec.unsqueeze(0).cuda()
                 mask = mask.unsqueeze(0).cuda()
-                
+                masked_audio_time4text = masked_audio_time.squeeze().cpu()
+
+
             if model_cfg._name_ == 'unet':
                 # mask should be [1, 1, T] but  mask type option output it as [1, F, T], so we need to collapse this
                 mask = mask.mean(dim=1, keepdim=True)

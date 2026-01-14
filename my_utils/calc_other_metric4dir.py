@@ -7,7 +7,7 @@ import glob
 import os
 import csv
 from pathlib import Path
-import torchaudio
+# import torchaudio
 from tqdm import tqdm
 from discrete_speech_metrics import MCD
 from discrete_speech_metrics import SpeechTokenDistance
@@ -19,7 +19,7 @@ import soundfile as sf
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 
-def main(csv_name='all', interval_save=4500):
+def main(pathes2data, csv_name='all', interval_save=4500):
 
 
     print("Load models")
@@ -63,9 +63,7 @@ def main(csv_name='all', interval_save=4500):
     # Paths for different data sources
     # pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02']
     # pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02']
-    pathes2data = ['/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=100',
-                   '/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=50',
-                   '/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=25']
+
     # List to store all found sample folder paths
     sample_folders = []
 
@@ -132,8 +130,8 @@ def main(csv_name='all', interval_save=4500):
                 #     continue
                 try:
                     dict_row_results = {}
-                    # dict_row_results["sample_path"] = Path(sample_path).relative_to('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/')  
-                    dict_row_results["sample_path"] = Path(sample_path).relative_to('/home/dsi/moradim/SpeechRepainting')     
+                    dict_row_results["sample_path"] = Path(sample_path).relative_to('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/')  
+                    # dict_row_results["sample_path"] = Path(sample_path).relative_to('/home/dsi/moradim/SpeechRepainting')     
                             
                     masked_path = f'{sample_path}/masked_audio_time.wav'
                     masked_wav, sr = sf.read(masked_path)
@@ -213,9 +211,14 @@ if __name__ == '__main__':
     spbc = False
     sptd = False
     
+    pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=10_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn',
+                   '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=20_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn',
+                   '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=30_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn',
+                   '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=40_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn',
+                   '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=50_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn',]
     interval_save = 10000
-    csv_name = 'StyleSpeech_speech_bleu_n-gram=5'
-    main(csv_name=csv_name, interval_save=interval_save)
+    csv_name = 'dit_mel-text=False_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1_speech_bleu_n-gram=5'
+    main(pathes2data, csv_name=csv_name, interval_save=interval_save)
     
 
 

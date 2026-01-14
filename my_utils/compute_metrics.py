@@ -197,6 +197,14 @@ class Metrics:
         wrong_words = int(wer * num_words_ref)
         wer = wer * 100
         return round(wer, 4), num_words_ref, wrong_words, reference_clean, hypo_clean
+    def calc_wer_2_texts(self, target_text, pred_text):
+        hypo_clean = self.normalizer(pred_text)
+        reference_clean = self.normalizer(target_text)
+        wer = jiwer.wer(reference_clean, hypo_clean)
+        num_words_ref = len(reference_clean.split())
+        wrong_words = int(wer * num_words_ref)
+        wer = wer * 100
+        return round(wer, 4)
     
     def compute_metrics(self, pred, tar_wav, target_text):
         if len(pred) < len(tar_wav):
@@ -253,7 +261,7 @@ class Metrics:
         return self.plcmos.run(audio.cpu().numpy(), self.sampling_rate)
 
 
-def main(name_csv='dit'):
+def main(pathes2data, name_csv='dit', mel_text_bool=True):
     # compute_metrics = Metrics()
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # masked_audio, sr = torchaudio.load('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/small_gap_mask/w1=2_w2=1.5_asr_start=270_mask=True/sample_0/masked_audio_time.wav')
@@ -271,10 +279,10 @@ def main(name_csv='dit'):
                 #    '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/medium-gap_cp=732000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True']
     # pathes2data  =    ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/small-gap_cp=732000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True',
                 # '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/as-train-gap_cp=1256000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True']#,
-    combine_dataframes = False
-    pathes2data = ['/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=100',
-                   '/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=50',
-                   '/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=25']
+    # combine_dataframes = False
+    # pathes2data = ['/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=100',
+    #                '/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=50',
+    #                '/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=25']
     save_csv_path = f"/home/dsi/moradim/SpeechRepainting/{name_csv}_metric_results.csv"
         # Ask if user wants to remove the existing CSV file
     user_input = input(f"Do you want to remove the existing file at {save_csv_path}? (yes/no): ")
@@ -291,8 +299,8 @@ def main(name_csv='dit'):
         print(f"Proceeding without removing the file.")
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # vocoder_names = ["bigvgan", "hifi_gan"] 
-    vocoder_names = ["hifi_gan"] 
+    vocoder_names = ["bigvgan", "hifi_gan"] 
+    # vocoder_names = ["hifi_gan"] 
 
         
     titles = ['sample_path', 'masked_WER', 'masked_num_wrong_words', 'total_masked_num_words', 'true_trans', 'masked_trans', 'masked_plcmos',
@@ -301,77 +309,85 @@ def main(name_csv='dit'):
                 [met + '_' + voc for met in ['OVRL_raw', 'SIG_raw', 'BAK_raw', 'OVRL', 'SIG', 'BAK', 'P808_MOS'] for voc in vocoder_names] + \
                 [met + '_' + voc for met in ['plcmos_target_init', 'LSD_init', 'STOI_init', 'PESQ_init'] for voc in vocoder_names] + \
                 [met + '_' + voc for met in ['WER', 'trans', 'num_wrong_words', 'total_num_words', 'plcmos_pred', 'LSD', 'STOI', 'PESQ'] for voc in vocoder_names]
-                
+    if not mel_text_bool:
+        titles.append('mel_text_false_wer')
     compute_metrics = Metrics()
     dict_row_results = {}
-    for i, path2data in enumerate(pathes2data):
-    # path2data = '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/as-train-gap_cp=532000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True'
-        num_dirs = count_directories(path2data)
-        print(f"There is a total of {num_dirs} directories")
-
+    sample_folders = []
+    for base_path in pathes2data:
+        sample_folders.extend([f for f in glob.glob(os.path.join(base_path, '**', 'sample*'), recursive=True) if os.path.isdir(f)])
+    num_dirs = len(sample_folders)
+    print(f"There is a total of {num_dirs} directories")
+    for i, path2sample_dir in enumerate(sample_folders):
+        # if "sample_312" not in path2sample_dir:
+        #     continue
         # Open the file once and keep it open
         with open(save_csv_path, mode="a", newline="") as file:
             writer = csv.DictWriter(file, fieldnames=titles, delimiter="|")
             if i == 0:
                 writer.writeheader()  # Write the header row
-            samples_dir = Path(path2data).glob('sample_*')
-            for idx, sample_path in enumerate(tqdm(samples_dir)):
-                dict_row_results["sample_path"] = sample_path
-                sample = Path(sample_path).name.split('_')[-1]
-                with open(f'{path2data}/sample_{sample}/asr_text.txt', "r") as file:
-                    lines = file.readlines()
-                    # Extract the sentences
-                    target_text = lines[0].split(":")[1].strip()
-                    estimated_text = lines[1].split(":")[1].strip()
-                masked_audio, sr = torchaudio.load(f'{path2data}/sample_{sample}/masked_audio_time.wav') #masked_audio_time, time_masking_audio
-                masked_audio = masked_audio[0].to(device)
-                dict_row_results['masked_WER'], dict_row_results["total_masked_num_words"], dict_row_results["masked_num_wrong_words"], \
-                    dict_row_results["true_trans"], dict_row_results["masked_trans"] = compute_metrics.calc_wer(target_text, masked_audio)
-                dict_row_results['masked_plcmos'] = round(compute_metrics.calc_plcmos(masked_audio), 4)
-                dict_row_results.update({'masked_' + k: round(v, 4) for k, v in compute_metrics.calc_dnsmos(masked_audio).items()})
-                for voc in vocoder_names:
-                    
-                    pred, sr = torchaudio.load(f'{path2data}/sample_{sample}/generated_audio_{voc}.wav')
-                    tar_wav, sr = torchaudio.load(f'{path2data}/sample_{sample}/gt_audio_{voc}.wav')
+            dict_row_results["sample_path"] = Path(path2sample_dir).relative_to('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/')
+            with open(f'{path2sample_dir}/asr_text.txt', "r") as file:
+                lines = file.readlines()
+                # Extract the sentences
+                target_text = lines[0].split(":")[1].strip()
+                if not mel_text_bool:
+                    asrplm_text = lines[1].split(":")[1].strip()
 
-                    pred = pred[0].to(device)
-                    tar_wav = tar_wav[0].to(device)
-                    
-                    metrics = compute_metrics.compute_metrics(pred, tar_wav, target_text)
-                    for key, value in metrics.items():
-                        dict_row_results[key + '_' + voc] = round(value, 4) if is_number(value) else value
-                    # print(metrics)
-                    metrics = compute_metrics.compute_init_metrics(masked_audio, tar_wav)
-                    for key, value in metrics.items():
-                        dict_row_results[key + '_' + voc] = round(value, 4) if is_number(value) else value
-                    
-                    metrics = compute_metrics.calc_dnsmos(pred)
-                    for key, value in metrics.items():
-                        dict_row_results[key + '_' + voc] = round(value, 4) if is_number(value) else value
-                        
-                    metrics = compute_metrics.calc_dnsmos(tar_wav)
-                    for key, value in metrics.items():
-                        dict_row_results['target_' + key + '_' + voc] = round(value, 4) if is_number(value) else value
+                
+            masked_audio, sr = torchaudio.load(f'{path2sample_dir}/masked_audio_time.wav') #masked_audio_time, time_masking_audio
+            masked_audio = masked_audio[0].to(device)
+            dict_row_results['masked_WER'], dict_row_results["total_masked_num_words"], dict_row_results["masked_num_wrong_words"], \
+                dict_row_results["true_trans"], dict_row_results["masked_trans"] = compute_metrics.calc_wer(target_text, masked_audio)
+            if not mel_text_bool:
+                dict_row_results["mel_text_false_wer"] = compute_metrics.calc_wer_2_texts(target_text, asrplm_text)
+            dict_row_results['masked_plcmos'] = round(compute_metrics.calc_plcmos(masked_audio), 4)
+            dict_row_results.update({'masked_' + k: round(v, 4) for k, v in compute_metrics.calc_dnsmos(masked_audio).items()})
+            for voc in vocoder_names:
+                
+                pred, sr = torchaudio.load(f'{path2sample_dir}/generated_audio_{voc}.wav')
+                tar_wav, sr = torchaudio.load(f'{path2sample_dir}/gt_audio_{voc}.wav')
 
-                writer.writerow(dict_row_results)
-                print('\n -------------------')
-                # if idx == 3:
-                #     break
+                pred = pred[0].to(device)
+                tar_wav = tar_wav[0].to(device)
+                
+                metrics = compute_metrics.compute_metrics(pred, tar_wav, target_text)
+                for key, value in metrics.items():
+                    dict_row_results[key + '_' + voc] = round(value, 4) if is_number(value) else value
+                # print(metrics)
+                metrics = compute_metrics.compute_init_metrics(masked_audio, tar_wav)
+                for key, value in metrics.items():
+                    dict_row_results[key + '_' + voc] = round(value, 4) if is_number(value) else value
+                
+                metrics = compute_metrics.calc_dnsmos(pred)
+                for key, value in metrics.items():
+                    dict_row_results[key + '_' + voc] = round(value, 4) if is_number(value) else value
+                    
+                metrics = compute_metrics.calc_dnsmos(tar_wav)
+                for key, value in metrics.items():
+                    dict_row_results['target_' + key + '_' + voc] = round(value, 4) if is_number(value) else value
+
+            writer.writerow(dict_row_results)
+            print('\n -------------------')
+            # if idx == 3:
+            #     break
         
-        if combine_dataframes:
-            output_csv = f"{path2data}/metric_results_and_samples_info.csv"
+        # if combine_dataframes:
+        #     output_csv = f"{path2data}/metric_results_and_samples_info.csv"
 
-            # Convert new samples to a DataFrame
-            df_new = pd.read_csv(save_csv_path, delimiter="|")
+        #     # Convert new samples to a DataFrame
+        #     df_new = pd.read_csv(save_csv_path, delimiter="|")
 
-            input_csv = f"{path2data}/samples_info.csv" #samples_info
-            df_existing = pd.read_csv(input_csv, delimiter="|")
-            # Concatenate the two DataFrames along the rows (axis=0)
-            df_combined = pd.concat([df_existing, df_new], ignore_index=False, axis=1)
+        #     input_csv = f"{path2data}/samples_info.csv" #samples_info
+        #     df_existing = pd.read_csv(input_csv, delimiter="|")
+        #     # Concatenate the two DataFrames along the rows (axis=0)
+        #     df_combined = pd.concat([df_existing, df_new], ignore_index=False, axis=1)
 
-            # Save the combined DataFrame to a new CSV
-            df_combined.to_csv(output_csv, index=False)
+        #     # Save the combined DataFrame to a new CSV
+        #     df_combined.to_csv(output_csv, index=False)
     
 if __name__ == '__main__':
-    name_csv = 'StyleSpeech'
-    main(name_csv=name_csv)
+    mel_text_bool = False
+    name_csv = 'dit_mel-text=False_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1_WER_skip=50_test'
+    pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=20_skip=50_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1']
+    main(pathes2data, name_csv=name_csv, mel_text_bool=mel_text_bool)
