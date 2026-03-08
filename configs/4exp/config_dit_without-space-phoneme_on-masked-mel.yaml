@@ -2,8 +2,12 @@ g_model:
   null_type: "zeros" # randn, learn, zeros
   predict_type: "noise" # speech
 melgen: dit #unet, wavenet
-wavenet:
-  _name_: wavenet
+
+# ============================================================================
+# UNUSED IN TRAINING: wavenet block below is not used (melgen: dit selected)
+# ============================================================================
+# wavenet:
+#   _name_: wavenet
   in_channels: 80
   out_channels: 80
   diffusion_step_embed_dim_in: 128
@@ -50,8 +54,12 @@ wavenet:
     version_model: "microsoft/wavlm-base-plus" # microsoft/wavlm-large, microsoft/wavlm-base-plus
     reduce_channels: False
     two_branch: True # process each branch separately and them fuse them
-unet:
-  _name_: unet
+
+# ============================================================================
+# UNUSED IN TRAINING: unet block below is not used (melgen: dit selected)
+# ============================================================================
+# unet:
+#   _name_: unet
   dim: 64
   dim_mults: [1, 2, 4]
   groups: 128
@@ -93,6 +101,9 @@ dit:
   long_skip_connection: False
   checkpoint_activations: False # recompute activations and save memory for extra compute
   unconditional: False
+  # ========================================================================
+  # UNUSED IN TRAINING: text_embed_prop below is not used (use_text_embed_rep: False)
+  # ========================================================================
   text_embed_prop:
     use_text_embed_rep: False
     text_dim: 512
@@ -100,6 +111,9 @@ dit:
     text_num_embeds: 256
     tokenizer: phoneme #'byte' #phoneme
     tokenizer_path: /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json #none #  /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json
+  # ========================================================================
+  # UNUSED IN TRAINING: tts_kw block below is not used (use_tts: False)
+  # ========================================================================
   tts_kw:
     use_tts: False
     tts_output: "phoneme_with_energy_pitch" # phoneme, mel, phoneme_with_energy_pitch
@@ -124,9 +138,10 @@ dit:
 
 diffusion:
   name: "linear"
-  cosine:
-    T: 400
-    s: 0.008
+  # UNUSED IN TRAINING: cosine schedule below is not used (name: "linear" selected)
+  # cosine:
+  #   T: 400
+  #   s: 0.008
   linear:
     T: 400
     beta_0: 0.0001
@@ -135,7 +150,10 @@ diffusion:
 
 dataset:
   dataset_type: "speech_inpainting_anechoic" # explosion_speech_inpainting, speech_inpainting, speech_inpainting_anechoic
-  speech_inpainting:
+  # ========================================================================
+  # UNUSED IN TRAINING: speech_inpainting block below (dataset_type: speech_inpainting_anechoic selected)
+  # ========================================================================
+  # speech_inpainting:
     base_data_dir: /dsi/gannot-lab1/datasets/reverb_data/
     sampling_rate: ${audio.sampling_rate}
     # for train - relatively large masking
@@ -178,11 +196,14 @@ dataset:
     num4empty_str: 0 #or -12, 0, min, randn
     use_input_text: none # text (for byte), none, phoneme (for phoneme)
     remove_space: True
-  explosion_speech_inpainting:
-    base_data_dir: /dsi/gannot-lab1/datasets/speech_with_explosions
-    sampling_rate: ${audio.sampling_rate}
-    audio_stft_hop: ${audio.hop_length}
-  plc_task:
+  # ========================================================================
+  # UNUSED IN TRAINING: explosion_speech_inpainting and plc_task blocks below
+  # ========================================================================
+  # explosion_speech_inpainting:
+  #   base_data_dir: /dsi/gannot-lab1/datasets/speech_with_explosions
+  #   sampling_rate: ${audio.sampling_rate}
+  #   audio_stft_hop: ${audio.hop_length}
+  # plc_task: # packet loss concealment task
     base_data_dir: /dsi/gannot-lab1/datasets/Librispeech_mfa
     csv_loc: /dsi/gannot-lab1/datasets/Librispeech_mfa/
     sampling_rate: ${audio.sampling_rate}
@@ -211,6 +232,9 @@ train: # Not used in generate.py
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting # where checkpoints will be saved
   ckpt_iter: max # continue training from a specific iteration
 
+  ############ in save dir the plots are saves by tensorboard (need to download extension), and the checkpoints are saved by iteration number ############
+  ############ weights and biases - package to track loss - maybe use this #########
+
   # for testing the training phase
   # iters_per_ckpt: 20 #20 #10000
   # iters_per_logging: 1 #1 #100
@@ -233,15 +257,18 @@ generate:
   video_path: null # generate audio for a given silent video file
   skip_step: 1
   w_mel_cond: 1 #[-1, 0.5, 0.8, 1, 2]            # w1 in the paper
-  w_asr: 1.5 #[0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
-  asr_start: [320] #[320, 270] #270        # t_asr
+  # ========================================================================
+  # UNUSED IN TRAINING: ASR-guidance fields below are inference-specific
+  # ========================================================================
+  # w_asr: 1.5 #[0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
+  # asr_start: [320] #[320, 270] #270        # t_asr
   save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02 #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
   inference_mel_only_name_dir: repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_phoneme-without-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
   without_condtion: False
-  config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
-  apply_asr_guidance: True
-  type_input_guidance: "phoneme" # text , phoneme
-  lipread_text_dir: null # directory with predicted text for generating test samples of benchmark dataset
+  # config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini # UNUSED: inference-only
+  # apply_asr_guidance: True # UNUSED: inference-only
+  # type_input_guidance: "phoneme" # UNUSED: inference-only (text , phoneme)
+  # lipread_text_dir: null # UNUSED: inference-only (directory with predicted text for generating test samples)
   on_noisy_masked_melspec: True # whether to input the model the masked noisy melspec or noisy melspec(in inference only)
   mel_text: True # or masked_text
   with_space: False
@@ -260,14 +287,18 @@ generate:
       # #small
       # length: 25 #1sec for hop_length=160
       # skip: 150 # 1.5sec
-    repeat_specific_freq:
-      length: 15
-      skip: 30
-      freq: [[5, 80]]
-    all_time_specific_freq:
-      freq: [[10, 20]]
-    by_number:
-      number: "2"
+    # ====================================================================
+    # UNUSED: mask_info.repeat_specific_freq, all_time_specific_freq, by_number
+    # Only repeat_all_freq is used (mask_type: repeat_all_freq)
+    # ====================================================================
+    # repeat_specific_freq:
+    #   length: 15
+    #   skip: 30
+    #   freq: [[5, 80]]
+    # all_time_specific_freq:
+    #   freq: [[10, 20]]
+    # by_number:
+    #   number: "2"
 
 distributed:
   dist_backend: nccl

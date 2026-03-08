@@ -13,7 +13,73 @@ import torch.nn.functional as F
 import math
 
 
+# ------- modified for SDE diffusion ---------
 
+def local_directory(name, model_cfg, diffusion_cfg, save_dir, output_directory):
+    model_name = model_identifier(model_cfg)
+    
+    if not isinstance(diffusion_cfg, DictConfig):
+        diffusion_name = diffusion_cfg
+    elif diffusion_cfg.name == 'linear':
+        diffusion_name = f"_T{diffusion_cfg.linear['T']}_betaT{diffusion_cfg.linear['beta_T']}"
+    elif diffusion_cfg.name == 'cosine':
+        diffusion_name = f"_T{diffusion_cfg.cosine['T']}_s{diffusion_cfg.cosine['s']}"
+    elif diffusion_cfg.name == 'VPSDE':
+        diffusion_name = f"_VPSDE_N{diffusion_cfg.VPSDE.N}"
+    elif diffusion_cfg.name == 'VESDE':
+        diffusion_name = f"_VESDE_N{diffusion_cfg.VESDE.N}"
+    else:
+        raise ValueError(f"Unknown diffusion type: {diffusion_cfg.name}")
+    
+    local_path = model_name + diffusion_name
+    
+        # Get shared output_directory ready
+    if save_dir is None:
+        save_dir = os.getcwd()
+    if not (name is None or name == ""):
+        output_directory = os.path.join(save_dir, 'exp', name, local_path, output_directory)
+    else:
+        output_directory = os.path.join(save_dir, 'exp', local_path, output_directory)
+    if not os.path.isdir(output_directory):
+        print(f"Creating output directory {output_directory}")
+        os.makedirs(output_directory, exist_ok=True)
+        os.chmod(output_directory, 0o775)
+    print("output directory", output_directory, flush=True)
+    return local_path, output_directory
+
+def get_diffusion_hyperparams(diffusion_cfg, fast=False):
+    """
+    Returns a dictionary of diffusion hyperparameters.
+    Supports: linear (DDPM), cosine (DDPM), VPSDE, VESDE.
+    """
+    if diffusion_cfg.name == 'linear':
+        dh = calc_diffusion_hyperparams_linear(**diffusion_cfg.linear, fast=fast)
+    
+    elif diffusion_cfg.name == 'cosine':
+        dh = calc_diffusion_hyperparams_cosine(**diffusion_cfg.cosine)
+    
+    elif diffusion_cfg.name == 'VPSDE':
+        dh = {
+            "name": "VPSDE",
+            "beta_min": diffusion_cfg.VPSDE.beta_min,
+            "beta_max": diffusion_cfg.VPSDE.beta_max,
+            "N":        diffusion_cfg.VPSDE.N,
+        }
+    
+    elif diffusion_cfg.name == 'VESDE':
+        dh = {
+            "name": "VESDE",
+            "sigma_min": diffusion_cfg.VESDE.sigma_min,
+            "sigma_max": diffusion_cfg.VESDE.sigma_max,
+            "N":         diffusion_cfg.VESDE.N,
+        }
+    
+    else:
+        raise ValueError(f"Unknown diffusion type: {diffusion_cfg.name}")
+    
+    return dh
+
+# -----------------------------------------------------------
 
 def pad_last_dim(tensor, pad_size, pad_value=0):
     # Create the padding tuple dynamically based on the number of dimensions
@@ -117,34 +183,6 @@ def print_size(net, verbose=False):
             net.__class__.__name__, params / 1e6), flush=True)
 
 
-
-def local_directory(name, model_cfg, diffusion_cfg, save_dir, output_directory):
-
-    # generate experiment (local) path
-    model_name = model_identifier(model_cfg)
-    if not isinstance(diffusion_cfg, DictConfig):
-        diffusion_name = diffusion_cfg
-    else:
-        if diffusion_cfg.name == 'linear':
-            diffusion_name = f"_T{diffusion_cfg.linear['T']}_betaT{diffusion_cfg.linear['beta_T']}"
-        elif diffusion_cfg.name == 'cosine':
-            diffusion_name = f"_T{diffusion_cfg.cosine['T']}_s{diffusion_cfg.cosine['s']}"
-    local_path = model_name + diffusion_name
-
-
-    # Get shared output_directory ready
-    if save_dir is None:
-        save_dir = os.getcwd()
-    if not (name is None or name == ""):
-        output_directory = os.path.join(save_dir, 'exp', name, local_path, output_directory)
-    else:
-        output_directory = os.path.join(save_dir, 'exp', local_path, output_directory)
-    if not os.path.isdir(output_directory):
-        print(f"Creating output directory {output_directory}")
-        os.makedirs(output_directory, exist_ok=True)
-        os.chmod(output_directory, 0o775)
-    print("output directory", output_directory, flush=True)
-    return local_path, output_directory
 
 
 # Utilities for diffusion models
@@ -256,14 +294,6 @@ def calc_diffusion_hyperparams_cosine(T, s=0.008):
     _dh["T"], _dh["Beta"], _dh["Alpha"], _dh["Alpha_bar"], _dh["Sigma"] = T, Beta.cuda(), Alpha.cuda(), Alpha_bar.cuda(), Sigma
     
     return _dh
-
-
-def get_diffusion_hyperparams(diffusion_cfg, fast=False):
-    if diffusion_cfg.name == 'linear':
-        dh = calc_diffusion_hyperparams_linear(**diffusion_cfg.linear, fast=fast)
-    elif diffusion_cfg.name == 'cosine':
-        dh = calc_diffusion_hyperparams_cosine(**diffusion_cfg.cosine)
-    return dh
 
 
 def find_linear_t_given_cosine_t():
