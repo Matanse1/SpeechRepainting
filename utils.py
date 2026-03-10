@@ -310,7 +310,7 @@ def find_linear_t_given_cosine_t():
         return corresponding_linear_t
     return linear_t_given_cosine_t
 
-linear_t_given_cosine_t = find_linear_t_given_cosine_t()
+# linear_t_given_cosine_t = find_linear_t_given_cosine_t()
 
 def plot_melspec(melspec):
     fig = plt.figure()
