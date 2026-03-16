@@ -3,7 +3,7 @@
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0' #'1,2,4,5,6,7'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1' #'1,2,4,5,6,7'
 import time
 import warnings
 warnings.filterwarnings("ignore")

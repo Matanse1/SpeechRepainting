@@ -36,12 +36,20 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, on_noisy_masked_melspec, ma
     Returns:
     the generated melspec(s) in torch.tensor, shape=size
     """
-
     _dh = diffusion_hyperparams
-    T, Alpha, Alpha_bar, Sigma = _dh["T"], _dh["Alpha"], _dh["Alpha_bar"], _dh["Sigma"]
-    assert len(Alpha) == T
-    assert len(Alpha_bar) == T
-    assert len(Sigma) == T
+    if _dh["name"] in ["linear", "cosine"]:
+        T, Alpha, Alpha_bar, Sigma = _dh["T"], _dh["Alpha"], _dh["Alpha_bar"], _dh["Sigma"]
+        assert len(Alpha_bar) == T
+        assert len(Sigma) == T
+
+    # ── SDE path (new) ───────────────────────────────────────────────
+    elif _dh["name"] in ["VPSDE", "VESDE"]:
+        # SDE reverse sampling goes here
+        # (we need to implement this separately)
+        raise NotImplementedError("SDE sampling not yet implemented in inference_melgen.py")
+
+    
+    
 
     # print('begin sampling, total number of reverse steps = %s' % T)
     #This is Algorithm 2 in the paper of classifier-free but with the regular sampler(the one shown in the paper ddpm)

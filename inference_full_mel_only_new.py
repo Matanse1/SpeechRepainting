@@ -143,7 +143,7 @@ def sampling(net, diffusion_hyperparams,
     Returns:
     the generated melspec(s) in torch.tensor, shape=size
     """
-
+    # Part 1: calculating hyperparameters, tokenizing text, sampling noise (X_T)
     _dh = diffusion_hyperparams
     T, Alpha, Alpha_bar, Sigma = _dh["T"], _dh["Alpha"], _dh["Alpha_bar"], _dh["Sigma"]
     assert len(Alpha) == T
@@ -174,6 +174,8 @@ def sampling(net, diffusion_hyperparams,
     add_noise = True
     start_noise_time = 50 
     tho = 1
+
+    # part 2: statrting the sampling loop and stiching the melspec together according to the mask
     with torch.no_grad():
         for t in tqdm(range(T - 1, -1, -skip_step)):
             if t < skip_step:  # Ensure the last step is exactly zero
@@ -193,7 +195,8 @@ def sampling(net, diffusion_hyperparams,
                 noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
                 x = noisy_masked_melspec * mask + x * (1 - mask)
                 
-            
+            # part 3: get the noise from the model, with or without condition, and with or without asr guidance.
+            ''' what is the fucking condition?'''
             if without_condtion:
                 epsilon_theta_mel = net(x, condition, diffusion_steps, cond_drop_prob=1, mask_padding_frames=mask_frames, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask)
                 if net.g_model_cfg.predict_type =='speech':
@@ -207,6 +210,7 @@ def sampling(net, diffusion_hyperparams,
                     epsilon_theta_uncond = (x - torch.sqrt(Alpha_bar[diffusion_steps.int()]) * epsilon_theta_uncond) / torch.sqrt(1-Alpha_bar[diffusion_steps.int()])
                 epsilon_theta_mel = (1+w_mel_cond) * epsilon_theta_cond - w_mel_cond * epsilon_theta_uncond
             
+            # part 4: apply ASR guidance or not
             if (asr_guidance_net is not None) and (t <= asr_start and t > asr_finish):
                 for r in range(repeat_asr):
                     if r > 1:
@@ -246,10 +250,13 @@ def sampling(net, diffusion_hyperparams,
                     num_tokens = tokens.shape[1]
                     epsilon_theta = epsilon_theta_mel + torch.sqrt(1 - Alpha_bar[t]) * w_asr * grad_normaliser * asr_grad #the asr_grad include the minus
                     # print(f"grad_normaliser: {grad_normaliser} \t w_asr: {w_asr} \t grad: {torch.norm(asr_grad)} \t 1-alpha_bar: {torch.sqrt(1 - Alpha_bar[t])}")
+                    # part 5: update x according to the diffusion formula.
                     x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
                     if t > 0 and add_noise:
                         x = x + tho * Sigma[t] * torch.normal(0, 1, size=x.shape, generator=generator).cuda()  # add the variance term to x_{t-1}
             else:
+            # part 5: update x according to the diffusion formula without ASR guidance.
+            # THIS IS THE INTERESTING PART ________________________________________________________________________________________________________________________
                 x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta_mel) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
                 if t > 0 and add_noise:
                     x = x + tho *  Sigma[t] * torch.normal(0, 1, size=x.shape, generator=generator).cuda()  # add the variance term to x_{t-1}
