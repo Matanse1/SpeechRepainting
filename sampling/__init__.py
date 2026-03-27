@@ -6,12 +6,10 @@ import torch
 from .predictors import Predictor, PredictorRegistry, ReverseDiffusionPredictor
 from .correctors import Corrector, CorrectorRegistry
 
-
 __all__ = [
     'PredictorRegistry', 'CorrectorRegistry', 'Predictor', 'Corrector',
-    'get_sampler'
+    'get_pc_sampler', 'get_ode_sampler', 'get_sb_sampler'
 ]
-
 
 def to_flattened_numpy(x):
     """Flatten a torch tensor `x` and convert it to numpy."""
@@ -24,10 +22,24 @@ def from_flattened_numpy(x, shape):
 
 
 def get_pc_sampler(
-    predictor_name, corrector_name, sde, score_fn, y,
-    denoise=True, eps=3e-2, snr=0.1, corrector_steps=1, probability_flow: bool = False,
-    intermediate=False, **kwargs
+    predictor_name,
+    corrector_name,
+    sde,
+    score_fn,
+    y,
+    denoise=True,
+    eps=3e-2,
+    snr=0.1,
+    corrector_steps=1,
+    probability_flow: bool = False,
+    intermediate=False,
+    w_mel_cond=0.0,
+    # Masking / inpainting
+    mask=None,
+    mask_noise=False,
+    **kwargs
 ):
+
     """Create a Predictor-Corrector (PC) sampler.
 
     Args:
@@ -39,15 +51,30 @@ def get_pc_sampler(
         denoise: If `True`, add one-step denoising to the final samples.
         eps: A `float` number. The reverse-time SDE and ODE are integrated to `epsilon` to avoid numerical issues.
         snr: The SNR to use for the corrector. 0.1 by default, and ignored for `NoneCorrector`.
-        N: The number of reverse sampling steps. If `None`, uses the SDE's `N` property by default.
+        mask: Optional mask tensor with same shape as `y` (1 for observed/preserved values, 0 for unknown values).
+        mask_noise: If True, the observed portion is replaced by a noisy version of `y` at every timestep (useful for inpainting).
+        **kwargs: Additional arguments forwarded to `score_fn` and `guidance_fn`.
 
     Returns:
         A sampling function that returns samples and the number of function evaluations during sampling.
     """
+
     predictor_cls = PredictorRegistry.get_by_name(predictor_name)
     corrector_cls = CorrectorRegistry.get_by_name(corrector_name)
     predictor = predictor_cls(sde, score_fn, probability_flow=probability_flow)
     corrector = corrector_cls(sde, score_fn, snr=snr, n_steps=corrector_steps)
+
+    def _apply_masking(x, y, t):
+        """Apply masking / inpainting constraints to the current state."""
+        if mask is None:
+            return x
+
+        if mask_noise:
+            # For inpainting with noise injection, replace observed entries with a noisy version at time t.
+            mean, std = sde.marginal_prob(y, y, t)
+            noisy_y = mean + std[:, None, None, None] * torch.randn_like(y)
+            return noisy_y * mask + x * (1 - mask)
+
 
     def pc_sampler():
         """The PC sampler function."""
@@ -57,16 +84,21 @@ def get_pc_sampler(
             for i in range(sde.N):
                 t = timesteps[i]
                 if i != len(timesteps) - 1:
-                    stepsize = t - timesteps[i+1]
+                    stepsize = t - timesteps[i + 1]
                 else:
-                    stepsize = timesteps[-1] # from eps to 0
+                    stepsize = timesteps[-1]  # from eps to 0
                 vec_t = torch.ones(y.shape[0], device=y.device) * t
+
+                # Apply masking / inpainting constraints
+                xt = _apply_masking(xt, y, vec_t)
+ 
                 xt, xt_mean = corrector.update_fn(xt, y, vec_t)
                 xt, xt_mean = predictor.update_fn(xt, y, vec_t, stepsize)
+
             x_result = xt_mean if denoise else xt
             ns = sde.N * (corrector.n_steps + 1)
             return x_result, ns
-    
+
     return pc_sampler
 
 

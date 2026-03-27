@@ -1,15 +1,11 @@
 # this file is an adapated version https://github.com/albertfgu/diffwave-sashimi, licensed
 # under https://github.com/albertfgu/diffwave-sashimi/blob/master/LICENSE
-
-
 import os
 import time
 import warnings
 warnings.filterwarnings("ignore")
-
 from functools import partial
 import multiprocessing as mp
-
 import matplotlib.image
 import numpy as np
 import torch
@@ -24,7 +20,43 @@ from dataloaders.stft import denormalise_mel
 from tqdm import tqdm
 from utils import find_max_epoch, print_size, get_diffusion_hyperparams, local_directory, fix_len_compatibility, pad_last_dim
 
-def sampling(net, diffusion_hyperparams, w_mel_cond, on_noisy_masked_melspec, mask, mask_frames=None, masked_audio_time_mask=None, conditions=None, text=None, input_text=None):
+# def sampling(
+#     net,
+#     diffusion_hyperparams,
+#     w_mel_cond,
+#     on_noisy_masked_melspec,
+#     mask, mask_frames=None,
+#     masked_audio_time_mask=None,
+#     conditions=None, text=None,
+#     input_text=None
+# ):
+
+def sampling(
+    net,
+    diffusion_hyperparams,
+    w_mel_cond,
+    conditions=None,
+    mask=None,
+    on_noisy_masked_melspec=False,
+    mask_frames=None,
+    masked_audio_time_mask=None,
+    text=None,
+    input_text=None,
+    # until here are the original arguments, below are the new arguments
+    condition=None,
+    asr_guidance_net=None,
+    w_asr=None,
+    asr_start=None,
+    guidance_text=None,
+    tokenizer=None,
+    decoder=None,
+    without_condtion=False,
+    phoneme4guidance=None,
+    per_frame_phoneme4guidance=None,
+    type_input_guidance='text',
+    skip_step=1,
+    tokens=None
+):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
 
@@ -36,53 +68,176 @@ def sampling(net, diffusion_hyperparams, w_mel_cond, on_noisy_masked_melspec, ma
     Returns:
     the generated melspec(s) in torch.tensor, shape=size
     """
+    if condition is None:
+        condition = conditions
+
     _dh = diffusion_hyperparams
     if _dh["name"] in ["linear", "cosine"]:
         T, Alpha, Alpha_bar, Sigma = _dh["T"], _dh["Alpha"], _dh["Alpha_bar"], _dh["Sigma"]
         assert len(Alpha_bar) == T
         assert len(Sigma) == T
 
-    # ── SDE path (new) ───────────────────────────────────────────────
+        # print('begin sampling, total number of reverse steps = %s' % T)
+        # This is Algorithm 2 in the paper of classifier-free but with the regular sampler(the one shown in the paper ddpm)
+        masked_melspec, masked_audio_time = conditions
+        x = torch.normal(0, 1, size=masked_melspec.shape).cuda()
+        with torch.no_grad():
+            for t in tqdm(range(T-1, -1, -1)):
+                # if t< T-10:
+                #     break
+                diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
+                if on_noisy_masked_melspec is not None:
+                    x = masked_melspec * mask + x * (1 - mask)
+                else:
+                    z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
+                    noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
+                    x = noisy_masked_melspec * mask + x * (1 - mask)
+                epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
+                if net.g_model_cfg.predict_type =='speech':
+                    epsilon_theta = (x - torch.sqrt(Alpha_bar[diffusion_steps.int()]) * epsilon_theta) / torch.sqrt(1-Alpha_bar[diffusion_steps.int()])
+                epsilon_theta_uncond = net(x, conditions, diffusion_steps, cond_drop_prob=1, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
+                if net.g_model_cfg.predict_type =='speech':
+                    epsilon_theta_uncond = (x - torch.sqrt(Alpha_bar[diffusion_steps.int()]) * epsilon_theta_uncond) / torch.sqrt(1-Alpha_bar[diffusion_steps.int()])
+                epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
+
+                x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
+                if t > 0:
+                    x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
+        if on_noisy_masked_melspec is not None:
+            x = masked_melspec * mask + x * (1 - mask)
+        if mask_frames is not None:
+            x = x[..., :int(torch.sum(mask_frames, dim=-1).item())]
+        return x
+
+
+    # ── SDE path (new) ────────────────────────────────────────────
     elif _dh["name"] in ["VPSDE", "VESDE"]:
-        # SDE reverse sampling goes here
-        # (we need to implement this separately)
-        raise NotImplementedError("SDE sampling not yet implemented in inference_melgen.py")
+        from SDE import VPSDE, VESDE
+        from sampling import get_pc_sampler
+        masked_melspec, masked_audio_time = conditions
+        if masked_melspec.ndim == 4 and masked_melspec.shape[1] == 1:
+            masked_melspec = masked_melspec.squeeze(1)
 
-    
-    
+        if mask is not None and mask.ndim == 4 and mask.shape[1] == 1:
+            mask = mask.squeeze(1)
 
-    # print('begin sampling, total number of reverse steps = %s' % T)
-    #This is Algorithm 2 in the paper of classifier-free but with the regular sampler(the one shown in the paper ddpm)
-    masked_melspec, masked_audio_time = conditions
-    x = torch.normal(0, 1, size=masked_melspec.shape).cuda()
-    with torch.no_grad():
-        for t in tqdm(range(T-1, -1, -1)):
-            # if t< T-10:
-            #     break
-            diffusion_steps = (t * torch.ones((x.shape[0], 1))).cuda()  # use the corresponding reverse step
-            if on_noisy_masked_melspec is not None:
-                x = masked_melspec * mask + x * (1 - mask)
+        if isinstance(condition, list):
+            condition = [masked_melspec, masked_audio_time]
+        else:
+            condition = (masked_melspec, masked_audio_time)
+
+        loss_ce = nn.CrossEntropyLoss(reduction='none')
+
+        if _dh["name"] == "VPSDE":
+            sde = VPSDE(_dh["beta_min"], _dh["beta_max"], _dh["N"])
+        else:
+            sde = VESDE(_dh["sigma_min"], _dh["sigma_max"], _dh["N"])
+
+        # ── score_fn: CFG  ────────────────────
+        def score_fn_without_asr(x, t):
+            B = x.shape[0]
+            t_input = t.view(B, 1)
+
+            if without_condtion:
+                print("x shape:", x.shape)
+                print("condition type:", type(condition))
+                if isinstance(condition, tuple):
+                    print("condition[0] shape:", condition[0].shape)
+                score = net(
+                    x, condition, t_input, cond_drop_prob=1,
+                    mask_padding_frames=mask_frames, text=text,
+                    input_text=input_text,
+                    mask_padding_time=masked_audio_time_mask
+                )
             else:
-                z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
-                noisy_masked_melspec = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * masked_melspec + torch.sqrt(1-Alpha_bar[diffusion_steps.int()]) * z
-                x = noisy_masked_melspec * mask + x * (1 - mask)
-            epsilon_theta = net(x, conditions, diffusion_steps, cond_drop_prob=0, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
-            if net.g_model_cfg.predict_type =='speech':
-                epsilon_theta = (x - torch.sqrt(Alpha_bar[diffusion_steps.int()]) * epsilon_theta) / torch.sqrt(1-Alpha_bar[diffusion_steps.int()])
-            epsilon_theta_uncond = net(x, conditions, diffusion_steps, cond_drop_prob=1, text=text, input_text=input_text,  mask_padding_time=masked_audio_time_mask, mask_padding_frames=mask_frames)   # predict \epsilon according to \epsilon_\theta
-            if net.g_model_cfg.predict_type =='speech':
-                epsilon_theta_uncond = (x - torch.sqrt(Alpha_bar[diffusion_steps.int()]) * epsilon_theta_uncond) / torch.sqrt(1-Alpha_bar[diffusion_steps.int()])
-            epsilon_theta = (1+w_mel_cond) * epsilon_theta - w_mel_cond * epsilon_theta_uncond
+                print("x shape:", x.shape)
+                print("condition type:", type(condition))
+                if isinstance(condition, tuple):
+                    print("condition[0] shape:", condition[0].shape)
+                score_cond = net(
+                    x, condition, t_input, cond_drop_prob=0,
+                    mask_padding_frames=mask_frames, text=text,
+                    input_text=input_text,
+                    mask_padding_time=masked_audio_time_mask
+                )
+                score_uncond = net(
+                    x, condition, t_input, cond_drop_prob=1,
+                    mask_padding_frames=mask_frames, text=text,
+                    input_text=input_text,
+                    mask_padding_time=masked_audio_time_mask
+                )
+                score = (1 + w_mel_cond) * score_cond - w_mel_cond * score_uncond
 
-            x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
-            if t > 0:
-                x = x + Sigma[t] * torch.normal(0, 1, size=x.shape).cuda()  # add the variance term to x_{t-1}
-    if on_noisy_masked_melspec is not None:
-        x = masked_melspec * mask + x * (1 - mask)
+            return score
+
+        # ── asr_guidance_fn ───────────────────────────────────────
+        def asr_guidance_fn(x, y, t):
+            if asr_guidance_net is None:
+                return torch.zeros_like(x)
+            asr_start_val = asr_start[0] if isinstance(asr_start, list) else asr_start
+            if not (t[0].item() <= asr_start_val):
+                return torch.zeros_like(x)
+
+            with torch.no_grad():
+                score = score_fn_without_asr(x, t)
+                grad_norm = torch.norm(score.reshape(score.shape[0], -1), dim=-1).mean()
+
+            with torch.enable_grad():
+                if type_input_guidance in ['text', 'phoneme']:
+                    length_input = torch.tensor([x.shape[2]]).cuda()
+                    inputs = x.detach().requires_grad_(True), length_input
+                    targets = tokens, torch.tensor([tokens.shape[1]]).cuda()
+                    asr_guidance_net.device = torch.device("cuda")
+                    batch_losses = asr_guidance_net.forward_model(inputs, t.view(x.shape[0], 1), targets, compute_metrics=False, verbose=0)[0]  # batch_losses, batch_metrics, batch_truths, batch_preds
+                    asr_grad = torch.autograd.grad(batch_losses["loss"], inputs[0])[0]
+                elif type_input_guidance == 'frame_level_phoneme':
+                    masked_melspec, audio_time_masked = condition
+                    masked_melspec_noisy = masked_melspec.clone()
+                    z = torch.normal(0, 1, size=masked_melspec.shape).cuda()
+                    masked_melspec_noisy = masked_melspec * mask + z * (1 - mask)
+                    condition2 = masked_melspec_noisy, audio_time_masked
+                    inputs = x.detach().requires_grad_(True)
+                    outputs = asr_guidance_net(inputs, condition2, t.view(x.shape[0], 1), cond_drop_prob=0, mask_padding_time=masked_audio_time_mask)
+                    l_ce = loss_ce(outputs, tokens)
+                    l_ce = torch.sum(l_ce * (1 - mask)) / torch.sum(1 - mask)
+                    asr_grad = torch.autograd.grad(l_ce, inputs)[0]
+
+                asr_grad_norm = torch.norm(asr_grad.reshape(asr_grad.shape[0], -1), dim=-1).mean()
+                grad_normaliser = grad_norm / (asr_grad_norm + 1e-8)
+                asr_guidance_net.device = torch.device("cpu")
+
+            return grad_normaliser * asr_grad
+
+        def score_fn(x, y, t):
+            score = score_fn_without_asr(x, t)
+            guidance = asr_guidance_fn(x, y, t)
+            asr_scale = 0.0 if w_asr is None else w_asr
+            return score + asr_scale * guidance
+
+        # ── call PC sampler ───────────────────────────────────────
+        pc_sampler = get_pc_sampler(
+            predictor_name="reverse_diffusion",
+            corrector_name="langevin",
+            sde=sde,
+            score_fn=score_fn,
+            y=masked_melspec,
+            snr=0.1,
+            corrector_steps=1,
+            w_mel_cond=w_mel_cond,
+            mask=mask,
+            mask_noise=on_noisy_masked_melspec
+        )
+
+        x, nfe = pc_sampler()
+        print(f"PC sampler finished in {nfe} function evaluations")
+
+    # ── final masking (same as original) ─────────────────────
+    x = masked_melspec * mask + x * (1 - mask)
     if mask_frames is not None:
         x = x[..., :int(torch.sum(mask_frames, dim=-1).item())]
     return x
 
+    
 
 @torch.no_grad()
 def generate(
@@ -97,6 +252,7 @@ def generate(
         n_samples=None,
         w_mel_cond=0,
         on_noisy_masked_melspec=False,
+        **kwargs
     ):
     """
     Generate melspectrograms based on lips movement
@@ -242,15 +398,15 @@ def generate(
     return generated_melspec, groundtruth_melspec, masked_cond
 
 
-@hydra.main(version_base=None, config_path="configs/", config_name="config")
+@hydra.main(version_base=None, config_path="configs_Alon_Matan", config_name="config_dit_without-space-phoneme_on-masked-mel_for_inference")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     OmegaConf.set_struct(cfg, False)  # Allow writing keys
 
-    generate(0,
-        name=cfg.generate['name'],
+    generate(
+        0,
         diffusion_cfg=cfg.diffusion,
-        model_cfg=cfg.model,
+        model_cfg=cfg[cfg.melgen],
         g_model_cfg = cfg.g_model,
         dataset_cfg=cfg.dataset,
         **cfg.generate,

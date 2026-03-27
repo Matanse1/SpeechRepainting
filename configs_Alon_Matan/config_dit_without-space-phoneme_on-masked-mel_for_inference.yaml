@@ -238,7 +238,7 @@ train: # Not used in generate.py
 generate:
   name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states
   ckpt_path: /home/dsi/kenanal/SpeechRepainting/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/checkpoint/112000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/700000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/64000.pkl
-  n_samples: 2 # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
+  n_samples: 1 # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
   n_samples_test: 50 #1000 # used in full inference mel only
   video_path: null # generate audio for a given silent video file
   skip_step: 1
@@ -249,7 +249,7 @@ generate:
   inference_mel_only_name_dir: repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_phoneme-without-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
   without_condtion: False
   config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
-  apply_asr_guidance: True
+  apply_asr_guidance: False
   type_input_guidance: "phoneme" # text , phoneme
   lipread_text_dir: null # directory with predicted text for generating test samples of benchmark dataset
   on_noisy_masked_melspec: True # whether to input the model the masked noisy melspec or noisy melspec(in inference only)

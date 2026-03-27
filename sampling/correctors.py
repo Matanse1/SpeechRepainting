@@ -90,5 +90,6 @@ class NoneCorrector(Corrector):
         self.n_steps = 0
         pass
 
-    def update_fn(self, x, t, *args):
+    def update_fn(self, x, y, t, *args):
+        # Accept `y` for API consistency with other correctors (even if unused).
         return x, x
