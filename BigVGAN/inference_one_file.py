@@ -70,9 +70,9 @@ def main():
     print("Initializing Inference Process..")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_mel_path", default="/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/as-train-gap_asr_guidance_9cp/w1=2_w2=1.5_asr_start=270/sample_2/generated_spec.npz")
-    parser.add_argument("--output_dir", default="/dsi/gannot-lab1/users/mordehay/bigvgan/generated_file_from_mel_one-file")
-    parser.add_argument("--checkpoint_file", required=False, default='/dsi/gannot-lab1/users/mordehay/bigvgan/g_00050000')
+    parser.add_argument("--input_mel_path", default="/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/as-train-gap_asr_guidance_9cp/w1=2_w2=1.5_asr_start=270/sample_2/generated_spec.npz")
+    parser.add_argument("--output_dir", default="/dsi/gannot-lab/gannot-lab1/users/mordehay/bigvgan/generated_file_from_mel_one-file")
+    parser.add_argument("--checkpoint_file", required=False, default='/dsi/gannot-lab/gannot-lab1/users/mordehay/bigvgan/g_00050000')
     parser.add_argument("--use_cuda_kernel", action="store_true", default=False)
 
     a = parser.parse_args()

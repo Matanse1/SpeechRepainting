@@ -10,7 +10,7 @@ def load_pickle(file_path):
 # Example usage
 for i in range(10):
     filename = f'example_{i}'
-    pickle_file = f'/dsi/gannot-lab1/datasets/speech_with_explosions/Test/audio_rn/{filename}.pkl'
+    pickle_file = f'/dsi/gannot-lab/gannot-lab1/datasets/speech_with_explosions/Test/audio_rn/{filename}.pkl'
     mix, masked_mix, masked_norm_speech, explosions, norm_speech = load_pickle(pickle_file)
     sample_rate = 16000
     os.makedirs(f'/home/dsi/moradim/sgmse/target_speech/{filename}', exist_ok=True) 

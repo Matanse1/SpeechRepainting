@@ -170,7 +170,7 @@ def LSD(x_hr, x_pr):
     return lsd, lsd_high
 
 class Metrics:
-    def __init__(self, sampling_rate=16000, whisper_model_name= 'medium.en', path2whisper_model='/dsi/gannot-lab1/users/mordehay/whisper_models'):
+    def __init__(self, sampling_rate=16000, whisper_model_name= 'medium.en', path2whisper_model='/dsi/gannot-lab/gannot-lab1/users/mordehay/whisper_models'):
         self.sampling_rate = sampling_rate
         self.stoi = STOI(sampling_rate)
         self.pesq = PESQ(sampling_rate, 'wb') # wide band signal (speech)
@@ -264,9 +264,9 @@ class Metrics:
 def main(pathes2data, name_csv='dit', mel_text_bool=True):
     # compute_metrics = Metrics()
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # masked_audio, sr = torchaudio.load('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/small_gap_mask/w1=2_w2=1.5_asr_start=270_mask=True/sample_0/masked_audio_time.wav')
-    # pred, sr = torchaudio.load('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/small_gap_mask/w1=2_w2=1.5_asr_start=270_mask=True/sample_0/generated_audio_hifi_gan.wav')
-    # tar_wav, sr = torchaudio.load('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/small_gap_mask/w1=2_w2=1.5_asr_start=270_mask=True/sample_0/gt_audio_hifi_gan.wav')
+    # masked_audio, sr = torchaudio.load('/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/small_gap_mask/w1=2_w2=1.5_asr_start=270_mask=True/sample_0/masked_audio_time.wav')
+    # pred, sr = torchaudio.load('/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/small_gap_mask/w1=2_w2=1.5_asr_start=270_mask=True/sample_0/generated_audio_hifi_gan.wav')
+    # tar_wav, sr = torchaudio.load('/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/small_gap_mask/w1=2_w2=1.5_asr_start=270_mask=True/sample_0/gt_audio_hifi_gan.wav')
     # pred = pred[0].to(device)
     # masked_audio = masked_audio[0].to(device)
     # tar_wav = tar_wav[0].to(device)
@@ -274,11 +274,11 @@ def main(pathes2data, name_csv='dit', mel_text_bool=True):
     # metrics = compute_metrics.compute_metrics(masked_audio, pred, tar_wav, target_text)
     # print(metrics)
     
-    # path2data = '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/small_gap_mask/w1=2_w2=1.5_asr_start=270_mask=True'
-    # pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/as-train-gap_cp=732000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True',
-                #    '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/medium-gap_cp=732000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True']
-    # pathes2data  =    ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/small-gap_cp=732000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True',
-                # '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/as-train-gap_cp=1256000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True']#,
+    # path2data = '/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/small_gap_mask/w1=2_w2=1.5_asr_start=270_mask=True'
+    # pathes2data = ['/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/as-train-gap_cp=732000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True',
+                #    '/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/medium-gap_cp=732000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True']
+    # pathes2data  =    ['/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/small-gap_cp=732000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True',
+                # '/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/as-train-gap_cp=1256000_mel_text=True_withoutLM/w1=2_w2=0.8_asr_start=320_mask=True']#,
     # combine_dataframes = False
     # pathes2data = ['/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=100',
     #                '/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_greater_7_gap=50',
@@ -326,7 +326,7 @@ def main(pathes2data, name_csv='dit', mel_text_bool=True):
             writer = csv.DictWriter(file, fieldnames=titles, delimiter="|")
             if i == 0:
                 writer.writeheader()  # Write the header row
-            dict_row_results["sample_path"] = Path(path2sample_dir).relative_to('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/')
+            dict_row_results["sample_path"] = Path(path2sample_dir).relative_to('/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/')
             with open(f'{path2sample_dir}/asr_text.txt', "r") as file:
                 lines = file.readlines()
                 # Extract the sentences
@@ -389,5 +389,5 @@ def main(pathes2data, name_csv='dit', mel_text_bool=True):
 if __name__ == '__main__':
     mel_text_bool = False
     name_csv = 'dit_mel-text=False_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1_WER_skip=50_test'
-    pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=20_skip=50_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1']
+    pathes2data = ['/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=20_skip=50_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1']
     main(pathes2data, name_csv=name_csv, mel_text_bool=mel_text_bool)

@@ -699,7 +699,7 @@ def main():
 
     parser.add_argument("--group_name", default=None)
 
-    parser.add_argument("--input_wavs_dir", default="/dsi/gannot-lab1/datasets/reverb_data")
+    parser.add_argument("--input_wavs_dir", default="/dsi/gannot-lab/gannot-lab1/datasets/reverb_data")
     parser.add_argument("--input_mels_dir", default="ft_dataset")
     parser.add_argument(
         "--input_training_file", default="/home/dsi/moradim/SpeechRepainting/BigVGAN/input_training_file.txt"
@@ -711,7 +711,7 @@ def main():
     parser.add_argument(
         "--list_input_unseen_wavs_dir",
         nargs="+",
-        default=["/dsi/gannot-lab1/datasets/reverb_data"],
+        default=["/dsi/gannot-lab/gannot-lab1/datasets/reverb_data"],
     )
     parser.add_argument(
         "--list_input_unseen_validation_file",
@@ -719,7 +719,7 @@ def main():
         default=["/home/dsi/moradim/SpeechRepainting/BigVGAN/list_input_unseen_validation_file_short.txt"],
     )
 
-    parser.add_argument("--checkpoint_path", default="/dsi/gannot-lab1/users/mordehay/bigvgan")
+    parser.add_argument("--checkpoint_path", default="/dsi/gannot-lab/gannot-lab1/users/mordehay/bigvgan")
     parser.add_argument("--config", default="/home/dsi/moradim/SpeechRepainting/BigVGAN/configs/my_bigvgan_22khz_80band.json")
 
     parser.add_argument("--training_epochs", default=100000, type=int)

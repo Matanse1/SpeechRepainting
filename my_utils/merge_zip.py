@@ -15,7 +15,7 @@ def unzip_file(zip_file_path, extract_to):
 
 def main():
     # Path to the directory containing the split zip files
-    split_zip_dir = '/dsi/gannot-lab1/datasets/FSD50K'  # Change this to your path
+    split_zip_dir = '/dsi/gannot-lab/gannot-lab1/datasets/FSD50K'  # Change this to your path
 
     # List of split files (make sure to include them in the correct order)
     split_files = [

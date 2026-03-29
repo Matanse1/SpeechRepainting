@@ -43,8 +43,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 
 if __name__ == "__main__":
     """    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    style_speech_ch_path = "/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec/ckpt/checkpoint_205000.pth.tar"
-    style_speech_config_path =  "/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec/config.json"
+    style_speech_ch_path = "/dsi/gannot-lab/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec/ckpt/checkpoint_205000.pth.tar"
+    style_speech_config_path =  "/dsi/gannot-lab/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec/config.json"
     # style_speech_ch_path = "/home/dsi/moradim/SpeechRepainting/StyleSpeech/models_cp/with-space_masked-mel4style-vec_only-duration-loss/ckpt/checkpoint_295000.pth.tar"
     # style_speech_config_path =  "/home/dsi/moradim/SpeechRepainting/StyleSpeech/models_cp/with-space_masked-mel4style-vec_only-duration-loss/config.json"
 
@@ -60,9 +60,9 @@ if __name__ == "__main__":
         config.mel_fmax,
         log="log")
     
-    masked_audio_path = '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-my-tts-melspec_positional_emd=InputEmbedding1_cross-custom-attn-noise_w-masked-pix=0.5/dit-net_dim768_depth9_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_withoutLM_phoneme-with-space/w1=2_w2=0.8_asr_start=320_mask=True/sample_69/masked_audio_time.wav'
+    masked_audio_path = '/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-my-tts-melspec_positional_emd=InputEmbedding1_cross-custom-attn-noise_w-masked-pix=0.5/dit-net_dim768_depth9_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_withoutLM_phoneme-with-space/w1=2_w2=0.8_asr_start=320_mask=True/sample_69/masked_audio_time.wav'
     masked_audio_time, sr = sf.read(masked_audio_path)
-    phonemes_path = "/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-my-tts-melspec_positional_emd=InputEmbedding1_cross-custom-attn-noise_w-masked-pix=0.5/dit-net_dim768_depth9_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_withoutLM_phoneme-with-space/w1=2_w2=0.8_asr_start=320_mask=True/sample_69/asr_text.txt"
+    phonemes_path = "/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-my-tts-melspec_positional_emd=InputEmbedding1_cross-custom-attn-noise_w-masked-pix=0.5/dit-net_dim768_depth9_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_withoutLM_phoneme-with-space/w1=2_w2=0.8_asr_start=320_mask=True/sample_69/asr_text.txt"
     with open(phonemes_path, 'r') as file:
         lines = file.readlines()
     line = lines[1]
@@ -118,8 +118,8 @@ if __name__ == "__main__":
         phoneme_dict_d2p[148] = 'sil'
     else:
         phoneme_dict_d2p_or = phoneme_dict_d2p
-    model_dir = '/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss'
-    pretrained_model_path = '/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss/G_126.pth'
+    model_dir = '/dsi/gannot-lab/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss'
+    pretrained_model_path = '/dsi/gannot-lab/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss/G_126.pth'
     cp_num = Path(pretrained_model_path).stem
     hps = utils.get_hparams_from_dir(model_dir)
     # hps.data.without_blank_with_silence = True

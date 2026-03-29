@@ -142,7 +142,7 @@ def load_filepaths_and_text(filename, split="|"):
 
 
 def get_hparams(init=True, config_path='/home/dsi/moradim/SpeechRepainting/glow_tts/configs/my_base_with-space.json', model_root_dir='/home/dsi/moradim/SpeechRepainting/glow_tts/'):
-  # model_root_dir = "/dsi/gannot-lab1/users/mordehay/glow_tts_alignment"
+  # model_root_dir = "/dsi/gannot-lab/gannot-lab1/users/mordehay/glow_tts_alignment"
   parser = argparse.ArgumentParser()
   parser.add_argument('-c', '--config', type=str, default=config_path,
                       help='JSON file for configuration')

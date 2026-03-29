@@ -17,7 +17,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '5'
 # model = AutoModel.from_pretrained("microsoft/wavlm-large")
 model = AutoModel.from_pretrained("microsoft/wavlm-base-plus").cuda()
 processor  = AutoFeatureExtractor.from_pretrained("microsoft/wavlm-base-plus")
-reverb_audio1_path = "/dsi/gannot-lab1/datasets/reverb_data/Train/audio_final/example_0.wav"
+reverb_audio1_path = "/dsi/gannot-lab/gannot-lab1/datasets/reverb_data/Train/audio_final/example_0.wav"
 reverb_audio1, _ = sf.read(reverb_audio1_path) 
 input = processor(reverb_audio1)
 # model.compile()
@@ -36,10 +36,10 @@ print("The number of parameters of the model is: {:.6f}M".format(params/1e6))
 # params = sum([np.prod(p.size()) for n, p in module_parameters])
 # print(f"The number of parameters of the model is: {params:.6f}M")
 
-# spk1_ut1_path = "/dsi/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/480/123176/480-123176-0033.wav"
-# spk1_ut2_path = "/dsi/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/480/123176/480-123176-0012.wav"
-# spk2_ut1_path = "/dsi/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/5190/87791/5190-87791-0040.wav"
-# reverb_audio1_path = "/dsi/gannot-lab1/datasets/reverb_data/Old_train/audio_final/example_0.wav"
+# spk1_ut1_path = "/dsi/gannot-lab/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/480/123176/480-123176-0033.wav"
+# spk1_ut2_path = "/dsi/gannot-lab/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/480/123176/480-123176-0012.wav"
+# spk2_ut1_path = "/dsi/gannot-lab/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/5190/87791/5190-87791-0040.wav"
+# reverb_audio1_path = "/dsi/gannot-lab/gannot-lab1/datasets/reverb_data/Old_train/audio_final/example_0.wav"
 # reverb_audio1, _ = sf.read(reverb_audio1_path) 
 # reverb_audio1 = torch.from_numpy(reverb_audio1.astype(np.float32)).unsqueeze(0).cuda()
 # reverb_audio1_dict = {"input_values": reverb_audio1, "output_hidden_states":True}

@@ -192,12 +192,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
     #Original
-    # parser.add_argument('--data_path', default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed_original')
-    # parser.add_argument('--save_path', default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/orignal') #'/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space'
+    # parser.add_argument('--data_path', default='/dsi/gannot-lab/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed_original')
+    # parser.add_argument('--save_path', default='/dsi/gannot-lab/gannot-lab1/users/mordehay/my_StyleSpeech/orignal') #'/dsi/gannot-lab/gannot-lab1/users/mordehay/my_StyleSpeech/with-space'
     # parser.add_argument('--config', default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/config.json')
     
-    parser.add_argument('--data_path', default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed_with-masked-mel') #preprocessed
-    parser.add_argument('--save_path', default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/models_cp/with-space_masked-mel4style-vec_only-duration-loss') #'/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec_only-duration-loss'
+    parser.add_argument('--data_path', default='/dsi/gannot-lab/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed_with-masked-mel') #preprocessed
+    parser.add_argument('--save_path', default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/models_cp/with-space_masked-mel4style-vec_only-duration-loss') #'/dsi/gannot-lab/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec_only-duration-loss'
     parser.add_argument('--config', default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config_with-space_only_duration_loss.json')  # /home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config_with-space.json
     
     parser.add_argument('--max_iter', default=400000, type=int)
@@ -205,7 +205,7 @@ if __name__ == "__main__":
     parser.add_argument('--synth_step', default=1000, type=int)
     parser.add_argument('--eval_step', default=1000, type=int)
     parser.add_argument('--log_step', default=10, type=int)
-    parser.add_argument('--checkpoint_path', default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec/ckpt/checkpoint_205000.pth.tar', type=str, help='Path to the pretrained model') 
+    parser.add_argument('--checkpoint_path', default='/dsi/gannot-lab/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec/ckpt/checkpoint_205000.pth.tar', type=str, help='Path to the pretrained model') 
 
     args = parser.parse_args()
 

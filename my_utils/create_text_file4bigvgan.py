@@ -55,8 +55,8 @@ def create_unseen_validation_file(test_dir, unseen_val_file, prefix, include_met
                 f.write(f"{file_path}\n")
 
 # Example usage
-train_dir = "/dsi/gannot-lab1/datasets/reverb_data/Train/audio_final"
-test_dir = "/dsi/gannot-lab1/datasets/reverb_data/Test/audio_final"
+train_dir = "/dsi/gannot-lab/gannot-lab1/datasets/reverb_data/Train/audio_final"
+test_dir = "/dsi/gannot-lab/gannot-lab1/datasets/reverb_data/Test/audio_final"
 prefix = "Train/audio_final"
 prefix_unseen = "Test/audio_final"
 # Paths to the output files

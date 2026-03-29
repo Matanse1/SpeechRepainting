@@ -297,7 +297,7 @@ def generate(
     json_config = json.loads(data)
     h = AttrDict(json_config)
     vocoder = Vocoder(h).cuda()
-    checkpoint_file = '/dsi/gannot-lab1/users/mordehay/hifi_gan/g_02400000'
+    checkpoint_file = '/dsi/gannot-lab/gannot-lab1/users/mordehay/hifi_gan/g_02400000'
     state_dict_g = vocoder_utils.load_checkpoint(checkpoint_file, 'cuda')
     vocoder.load_state_dict(state_dict_g['generator'])
     vocoder.eval()
@@ -305,8 +305,8 @@ def generate(
     print('Finish Loading HiFi-GAN')
     vocoders['hifi_gan'] = vocoder
     # BigVGAN
-    checkpoint_file = '/dsi/gannot-lab1/users/mordehay/bigvgan/g_00550000'
-    config_file = '/dsi/gannot-lab1/users/mordehay/bigvgan/config.json'
+    checkpoint_file = '/dsi/gannot-lab/gannot-lab1/users/mordehay/bigvgan/g_00550000'
+    config_file = '/dsi/gannot-lab/gannot-lab1/users/mordehay/bigvgan/config.json'
     with open(config_file) as f:
         data = f.read()
 

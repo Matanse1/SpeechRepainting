@@ -11,8 +11,8 @@ import soundfile as sf
 import tgt
 
 """This file generate the csv for the phoneme classifier model from the folders of
-/dsi/gannot-lab1/datasets/Librispeech_mfa/phoneme-frames_filter_length=640_hop_length=160
-/dsi/gannot-lab1/datasets/Librispeech_mfa/mel_filter_length=640_hop_length=160 
+/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/phoneme-frames_filter_length=640_hop_length=160
+/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/mel_filter_length=640_hop_length=160 
 containing the phone for each frame and the mel spectrum respectively.
 """
 
@@ -191,14 +191,14 @@ if __name__ == '__main__':
     phoneme_dict_path = "/home/dsi/moradim/Documents/MFA/models/inspect/english_us_arpa_acoustic/phones.txt"
     phoneme_dict = get_phones_dict(phoneme_dict_path)
     
-    root_dir = "/dsi/gannot-lab1/datasets/Librispeech_mfa"
+    root_dir = "/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa"
     mode = "Train"
-    mel_dir = f'/dsi/gannot-lab1/datasets/Librispeech_mfa/mel_filter_length=640_hop_length=160/{mode}'
-    phoneme_dir = f'/dsi/gannot-lab1/datasets/Librispeech_mfa/phoneme-frames_filter_length=640_hop_length=160/{mode}'
-    wav_dir = f'/dsi/gannot-lab1/datasets/Librispeech_mfa/data/{mode}'
-    textgrid_dir = f'/dsi/gannot-lab1/datasets/Librispeech_mfa/mfa_text-grid/{mode}'
+    mel_dir = f'/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/mel_filter_length=640_hop_length=160/{mode}'
+    phoneme_dir = f'/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/phoneme-frames_filter_length=640_hop_length=160/{mode}'
+    wav_dir = f'/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/data/{mode}'
+    textgrid_dir = f'/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/mfa_text-grid/{mode}'
     with_space = True #Saves the phoneme sequence with space or not (the mentioned sequence is not per frame)
-    output_csv = f'/home/dsi/moradim/SpeechRepainting/{mode}_new_with-space.csv'  # f'/dsi/gannot-lab1/datasets/Librispeech_mfa/{mode}_new_with-space.csv'
+    output_csv = f'/home/dsi/moradim/SpeechRepainting/{mode}_new_with-space.csv'  # f'/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/{mode}_new_with-space.csv'
 
     mel_files = glob(f"{mel_dir}/**/*.npz", recursive=True)
     max_duration = 17

@@ -129,7 +129,7 @@ def synthesize(args, model, _stft):
         json_config = json.loads(data)
         h = AttrDict(json_config)
         vocoder = Vocoder(h).cuda()
-        checkpoint_file = '/dsi/gannot-lab1/users/mordehay/hifi_gan/g_02400000'
+        checkpoint_file = '/dsi/gannot-lab/gannot-lab1/users/mordehay/hifi_gan/g_02400000'
         state_dict_g = vocoder_utils.load_checkpoint(checkpoint_file, 'cuda')
         vocoder.load_state_dict(state_dict_g['generator'])
         vocoder.eval()
@@ -138,7 +138,7 @@ def synthesize(args, model, _stft):
         wav = vocoder(mel_output.transpose(-2, -1)).squeeze().cpu().detach().numpy()
         sf.write(os.path.join(save_path, 'synthesized.wav'), wav, 16000)
     else:
-        vocoder = MelVocoder(path='/dsi/gannot-lab1/users/mordehay/melgen-stylespeech-vocoder/')
+        vocoder = MelVocoder(path='/dsi/gannot-lab/gannot-lab1/users/mordehay/melgen-stylespeech-vocoder/')
         wav = vocoder.inverse(mel_output.transpose(-2, -1)).squeeze().cpu().detach().numpy()
         sf.write(os.path.join(save_path, 'synthesized.wav'), wav, 16000)
     print('Generate done!')
@@ -148,20 +148,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     my_style_speech = True
     if my_style_speech:
-        parser.add_argument("--checkpoint_path", type=str, default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec/ckpt/checkpoint_205000.pth.tar',
+        parser.add_argument("--checkpoint_path", type=str, default='/dsi/gannot-lab/gannot-lab1/users/mordehay/my_StyleSpeech/with-space_masked-mel4style-vec/ckpt/checkpoint_205000.pth.tar',
             help="Path to the pretrained model")
-        parser.add_argument('--config', default='/dsi/gannot-lab1/users/mordehay/my_StyleSpeech/with-space/config.json')
+        parser.add_argument('--config', default='/dsi/gannot-lab/gannot-lab1/users/mordehay/my_StyleSpeech/with-space/config.json')
         parser.add_argument("--with_space", default=True, help="Use space token in phoneme sequence")
     else:
-        parser.add_argument("--checkpoint_path", type=str, default='/dsi/gannot-lab1/users/mordehay/style-speech_weights/stylespeech.pth.tar',
+        parser.add_argument("--checkpoint_path", type=str, default='/dsi/gannot-lab/gannot-lab1/users/mordehay/style-speech_weights/stylespeech.pth.tar',
             help="Path to the pretrained model")
-        parser.add_argument('--config', default='/dsi/gannot-lab1/users/mordehay/style-speech_weights/config.json')
+        parser.add_argument('--config', default='/dsi/gannot-lab/gannot-lab1/users/mordehay/style-speech_weights/config.json')
         parser.add_argument("--with_space", default=False, help="Use space token in phoneme sequence")
     
 
     
     parser.add_argument("--save_path", type=str, default='/home/dsi/moradim/SpeechRepainting/StyleSpeech/results_176500_sample=69_masked-ref_masked-model_again/')
-    parser.add_argument("--ref_audio", type=str, default='/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-my-tts-melspec_positional_emd=InputEmbedding1_cross-custom-attn-noise_w-masked-pix=0.5/dit-net_dim768_depth9_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_withoutLM_phoneme-with-space/w1=2_w2=0.8_asr_start=320_mask=True/sample_69/masked_audio_time.wav',
+    parser.add_argument("--ref_audio", type=str, default='/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-my-tts-melspec_positional_emd=InputEmbedding1_cross-custom-attn-noise_w-masked-pix=0.5/dit-net_dim768_depth9_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_withoutLM_phoneme-with-space/w1=2_w2=0.8_asr_start=320_mask=True/sample_69/masked_audio_time.wav',
         help="path to an reference speech audio sample")
 
     parser.add_argument("--text", type=str, default='IN THE MODERN WELL CONSTRUCTED PLAY HE SIMPLY RINGS UP AN IMAGINARY CONFEDERATE AND TELLS HIM WHAT HE IS GOING TO DO COULD ANYTHING BE MORE NATURAL',

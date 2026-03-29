@@ -5,12 +5,12 @@ import torch
 import soundfile as sf
 import time
 from tqdm import tqdm
-save_dir_hf_models = '/dsi/gannot-lab1/users/mordehay/hf_models'
+save_dir_hf_models = '/dsi/gannot-lab/gannot-lab1/users/mordehay/hf_models'
 feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained('microsoft/wavlm-base-plus-sv', cache_dir=save_dir_hf_models)
 model = WavLMForXVector.from_pretrained('microsoft/wavlm-base-plus-sv', cache_dir=save_dir_hf_models)
 
 # audio files are decoded on the fly
-audio_path = "/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=76000_mel_text=True_withoutLM_phoneme-with-space/w1=0.5_w2=0.8_asr_start=320_mask=True/sample_9/gt_audio_hifi_gan.wav"
+audio_path = "/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=76000_mel_text=True_withoutLM_phoneme-with-space/w1=0.5_w2=0.8_asr_start=320_mask=True/sample_9/gt_audio_hifi_gan.wav"
 audio, sample_rate = sf.read(audio_path)
 # inputs = feature_extractor(audio, padding=True, return_tensors="pt")
 # embeddings = model(**inputs).embeddings

@@ -140,6 +140,13 @@ diffusion:
     sigma_min: 0.01
     sigma_max: 50.0
     N: 1000
+  # Diffusion-based sampling hyperparameters
+  predictor: "reverse_diffusion"  # Choices: reverse_diffusion, euler_maruyama, none
+  corrector: "langevin"           # Choices: langevin, ald, none
+  snr: 0.1                        # Step-size scale for the Langevin/ALD gradient
+  corrector_steps: 1              # Number of inner-loop correction steps
+
+  
 
 
 

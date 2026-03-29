@@ -20,7 +20,7 @@ _, phoneme_dict_d2p = get_phones_dict(phoneme_dict_path)
 
 # Directory containing .npy files
 mode = 'Train'
-npy_dir = Path(f"/dsi/gannot-lab1/datasets/Librispeech_mfa/phoneme-frames_filter_length=640_hop_length=160/{mode.capitalize()}")
+npy_dir = Path(f"/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/phoneme-frames_filter_length=640_hop_length=160/{mode.capitalize()}")
 
 # Initialize a Counter to accumulate label counts
 total_counter = Counter()

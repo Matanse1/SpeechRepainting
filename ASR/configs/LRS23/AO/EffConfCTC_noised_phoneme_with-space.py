@@ -29,7 +29,7 @@ grad_max_norm= None
 eval_training = False
 precision = torch.float32
 recompute_metrics = True
-callback_path = "/dsi/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space-con" # where to save logs and model checkpoints
+callback_path = "/dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space-con" # where to save logs and model checkpoints
 
 # Beam Search
 beam_search = False
@@ -79,8 +79,8 @@ collate_fn = nnet.CollateFn(
 training_dataset = nnet.datasets.LibriSpeechPhoneme(
                     split="train",
                     sampling_rate=16000,
-                    csv_loc="/dsi/gannot-lab1/datasets/Librispeech_mfa/",
-                    base_data_dir="/dsi/gannot-lab1/datasets/Librispeech_mfa/", 
+                    csv_loc="/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/",
+                    base_data_dir="/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/", 
                     batch_size=batch_size,
                     collate_fn=collate_fn,
                     vocab_char_map=vocab_char_map,
@@ -91,8 +91,8 @@ evaluation_dataset = [
     nnet.datasets.LibriSpeechPhoneme(
                     split="test",
                     sampling_rate=16000,
-                    csv_loc="/dsi/gannot-lab1/datasets/Librispeech_mfa/",
-                    base_data_dir="/dsi/gannot-lab1/datasets/Librispeech_mfa/", 
+                    csv_loc="/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/",
+                    base_data_dir="/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/", 
                     batch_size=batch_size,
                     collate_fn=collate_fn,
                     vocab_char_map=vocab_char_map,

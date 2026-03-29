@@ -206,7 +206,7 @@ def generate(
     json_config = json.loads(data)
     h = AttrDict(json_config)
     vocoder = Vocoder(h).cuda()
-    checkpoint_file = '/dsi/gannot-lab1/users/mordehay/hifi_gan/g_02400000'
+    checkpoint_file = '/dsi/gannot-lab/gannot-lab1/users/mordehay/hifi_gan/g_02400000'
     state_dict_g = vocoder_utils.load_checkpoint(checkpoint_file, 'cuda')
     vocoder.load_state_dict(state_dict_g['generator'])
     vocoder.eval()
@@ -214,8 +214,8 @@ def generate(
     print('Finish Loading HiFi-GAN')
     vocoders['hifi_gan'] = vocoder
     # BigVGAN
-    checkpoint_file = '/dsi/gannot-lab1/users/mordehay/bigvgan/g_00550000'
-    config_file = '/dsi/gannot-lab1/users/mordehay/bigvgan/config.json'
+    checkpoint_file = '/dsi/gannot-lab/gannot-lab1/users/mordehay/bigvgan/g_00550000'
+    config_file = '/dsi/gannot-lab/gannot-lab1/users/mordehay/bigvgan/config.json'
     with open(config_file) as f:
         data = f.read()
 
@@ -245,8 +245,8 @@ def generate(
 
     # ASR based on audio-only model, this is used for getting transcription for guidance, so the input is the masked audio in time domain
     pipeline_asr = InferencePipeline(config_filename_asr_cond, device='cuda')
-    path_audio = ["/dsi/gannot-lab1/datasets/lossy_audio/lossy/sample_1.wav",
-                  "/dsi/gannot-lab1/datasets/lossy_audio/lossy/sample_1.wav"]
+    path_audio = ["/dsi/gannot-lab/gannot-lab1/datasets/lossy_audio/lossy/sample_1.wav",
+                  "/dsi/gannot-lab/gannot-lab1/datasets/lossy_audio/lossy/sample_1.wav"]
     n_samples = len(path_audio)
     dataset_indices = torch.arange(n_samples)
     for i in dataset_indices:

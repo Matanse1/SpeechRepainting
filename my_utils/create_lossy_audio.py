@@ -118,6 +118,6 @@ def create_lossy_audio_and_save(
 
 # Example usage
 
-input_wav_path = "/dsi/gannot-lab1/datasets/lossy_audio/clean/sample_0.wav"
+input_wav_path = "/dsi/gannot-lab/gannot-lab1/datasets/lossy_audio/clean/sample_0.wav"
 output_directory = "/home/dsi/moradim/SpeechRepainting/lossy_dir"
 create_lossy_audio_and_save(input_wav_path, output_directory)

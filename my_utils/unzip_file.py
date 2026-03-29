@@ -13,6 +13,6 @@ def unzip_file(zip_file_path, extract_to):
 
 if __name__ == "__main__":
     # Example usage
-    zip_file = '/dsi/gannot-lab1/datasets/FSD50K/files-archive'  # Path to your zip file
-    output_dir = '/dsi/gannot-lab1/datasets/FSD50K'  # Directory where you want to extract the files
+    zip_file = '/dsi/gannot-lab/gannot-lab1/datasets/FSD50K/files-archive'  # Path to your zip file
+    output_dir = '/dsi/gannot-lab/gannot-lab1/datasets/FSD50K'  # Directory where you want to extract the files
     unzip_file(zip_file, output_dir)

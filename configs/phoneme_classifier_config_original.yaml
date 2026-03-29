@@ -50,8 +50,8 @@ diffusion:
 dataset:
   dataset_type: "speech_inpainting_phoneme_classifier" # explosion_speech_inpainting_phoneme_classifier, speech_inpainting_phoneme_classifier
   speech_inpainting_phoneme_classifier:
-    base_data_dir: /dsi/gannot-lab1/datasets/Librispeech_mfa
-    csv_loc: /dsi/gannot-lab1/datasets/Librispeech_mfa/ # /dsi/gannot-lab1/datasets/Librispeech_mfa/Test.csv, /dsi/gannot-lab1/datasets/Librispeech_mfa/Train.csv
+    base_data_dir: /dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa
+    csv_loc: /dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/ # /dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/Test.csv, /dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/Train.csv
     sampling_rate: ${audio.sampling_rate}
     # for train - relatively large masking
     min_block_size: 30 # 35, 10
@@ -71,7 +71,7 @@ dataset:
     audio_stft_hop: ${audio.hop_length}
     num4empty_str: randn #or -12, 0, min, randn
   explosion_speech_inpainting_phoneme_classifier:
-    base_data_dir: /dsi/gannot-lab1/datasets/speech_with_explosions
+    base_data_dir: /dsi/gannot-lab/gannot-lab1/datasets/speech_with_explosions
     sampling_rate: ${audio.sampling_rate}
     audio_stft_hop: ${audio.hop_length}
 
@@ -85,7 +85,7 @@ audio:
 
 train: # Not used in generate.py
   name: LibSp_masked_pix=${train.w_masked_pix}_learning_rate=${train.learning_rate}_on_masked_melspec=${train.on_noisy_masked_melspec}_unconditional_like-original-network #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${phoneme_classifier.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
-  save_dir: /dsi/gannot-lab1/users/mordehay/phoneme_classifier # where checkpoints will be saved
+  save_dir: /dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_classifier # where checkpoints will be saved
   ckpt_iter: max # continue training from a specific iteration
 
   # for testing the training phase
@@ -104,14 +104,14 @@ train: # Not used in generate.py
 
 inference:
   name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_all_hidden_states_randn-filled_multi-gpu
-  ckpt_path: /dsi/gannot-lab1/users/mordehay/phoneme_classifier/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.99_two_branch=True_all_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/checkpoint/6500.pkl
+  ckpt_path: /dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_classifier/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.99_two_branch=True_all_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02/checkpoint/6500.pkl
   n_samples: 2 # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
   # n_samples_test: 10 # used in full inference mel only
   # video_path: null      # generate audio for a given silent video file
   # w_mel_cond: 2            # w1 in the paper
   # w_asr: 1.5 #1.5            # w2 in the paper
   # asr_start: 270 #270        # t_asr
-  save_dir: /dsi/gannot-lab1/users/mordehay/phoneme_classifier/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.99_two_branch=True_all_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02 # where to save the generated audio
+  save_dir: /dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_classifier/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.99_two_branch=True_all_hidden_states_randn-filled/wnet_h512_d12_T400_betaT0.02 # where to save the generated audio
   inference_phoneme_only_name_dir: as-train-gap_6500cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
   # without_condtion: False
   # config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini

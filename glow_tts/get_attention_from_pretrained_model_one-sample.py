@@ -42,8 +42,8 @@ def main():
     phoneme_dict_d2p[148] = 'sil'
   else:
     phoneme_dict_d2p_or = phoneme_dict_d2p
-  model_dir = '/home/dsi/moradim/SpeechRepainting/glow_tts/masked-mel-spec-as-input_silent-and-space-between-words_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss' #'/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss'
-  pretrained_model_path = '/home/dsi/moradim/SpeechRepainting/glow_tts/masked-mel-spec-as-input_silent-and-space-between-words_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss/G_97.pth' #'/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss/G_126.pth'
+  model_dir = '/home/dsi/moradim/SpeechRepainting/glow_tts/masked-mel-spec-as-input_silent-and-space-between-words_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss' #'/dsi/gannot-lab/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss'
+  pretrained_model_path = '/home/dsi/moradim/SpeechRepainting/glow_tts/masked-mel-spec-as-input_silent-and-space-between-words_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss/G_97.pth' #'/dsi/gannot-lab/gannot-lab1/users/mordehay/glow_tts_alignment/masked-mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant_without-weighted-loss/G_126.pth'
   cp_num = Path(pretrained_model_path).stem
   hps = utils.get_hparams_from_dir(model_dir)
   torch.manual_seed(hps.train.seed)

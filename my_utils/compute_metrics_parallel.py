@@ -173,7 +173,7 @@ def LSD(x_hr, x_pr):
     return lsd, lsd_high
 
 class Metrics:
-    def __init__(self, sampling_rate=16000, whisper_model_name= 'medium.en', path2whisper_model='/dsi/gannot-lab1/users/mordehay/whisper_models', device='cuda:0'):
+    def __init__(self, sampling_rate=16000, whisper_model_name= 'medium.en', path2whisper_model='/dsi/gannot-lab/gannot-lab1/users/mordehay/whisper_models', device='cuda:0'):
         self.sampling_rate = sampling_rate
         self.stoi = STOI(sampling_rate)
         self.pesq = PESQ(sampling_rate, 'wb') # wide band signal (speech)
@@ -298,7 +298,7 @@ def process_wav(sample_path):
     device = f"cuda:{gpu_num}"
     vocoder_names = ["bigvgan", "hifi_gan"]
     dict_row_results = {}
-    dict_row_results["sample_path"] = Path(sample_path).relative_to('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/')
+    dict_row_results["sample_path"] = Path(sample_path).relative_to('/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/')
     sample = Path(sample_path).name.split('_')[-1]
     with open(f'{sample_path}/asr_text.txt', "r") as file:
         lines = file.readlines()
@@ -355,7 +355,7 @@ def main(interval_save=5, max_workers=4, gpu_dict_var={0: 4, 1:1}, pathes2data=T
         # sample_folders.extend(glob.glob(os.path.join(base_path, '**', 'sample'), recursive=True))
         sample_folders.extend([f for f in glob.glob(os.path.join(base_path, '**', 'sample*'), recursive=True) if os.path.isdir(f)])
 # else:
-    #     pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02']
+    #     pathes2data = ['/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02']
     #     # List to store all found sample folder paths
     #     sample_folders = []
 
@@ -457,12 +457,12 @@ if __name__ == '__main__':
     max_workers = 6
     gpu_dict_var = {0: 4, 1:6, 2:7}
     print(F"Using {len(gpu_dict_var)} GPUs")
-    # pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=50_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1',
-    #                '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=40_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1',
-    #                '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=30_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1',
-    #                '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=20_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1',
-    #                '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=10_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1'] 
-    pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=10_skip=25_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p5_ctc-weight=0p1_bs=80',
-                   '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=20_skip=50_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p5_ctc-weight=0p1_bs=80',
-                   '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=30_skip=75_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p5_ctc-weight=0p1_bs=80']
+    # pathes2data = ['/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=50_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1',
+    #                '/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=40_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1',
+    #                '/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=30_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1',
+    #                '/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=20_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1',
+    #                '/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=10_skip=150_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p3_ctc-weight=0p1'] 
+    pathes2data = ['/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=10_skip=25_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p5_ctc-weight=0p1_bs=80',
+                   '/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=20_skip=50_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p5_ctc-weight=0p1_bs=80',
+                   '/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=30_skip=75_cp=112000_mel_text=False_phoneme-without-space_g2p-no-nn_lm-weight=0p5_ctc-weight=0p1_bs=80']
     main(interval_save, max_workers, gpu_dict_var, pathes2data, csv_name, mel_text_bool)

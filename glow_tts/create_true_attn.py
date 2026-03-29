@@ -26,8 +26,8 @@ def create_attention_matrix(sequence):
     return attention_matrix
 
 split = 'Test'
-save_dir = f'/dsi/gannot-lab1/datasets/Librispeech_mfa/attention_matrices_filter_length=640_hop_length=160/{split}'
-csv_path = f"/dsi/gannot-lab1/datasets/Librispeech_mfa/{split}_new.csv"
+save_dir = f'/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/attention_matrices_filter_length=640_hop_length=160/{split}'
+csv_path = f"/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/{split}_new.csv"
 csv_df = pd.read_csv(csv_path, delimiter="|")
 
 for index in range(len(csv_df)):

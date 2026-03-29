@@ -37,7 +37,7 @@ def init_worker(gpu_dict_var = {0: 4, 1:1}):
 
 def process_wav(sample_path):
     dict_row_results = {}
-    dict_row_results["sample_path"] = Path(sample_path).relative_to('/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/')
+    dict_row_results["sample_path"] = Path(sample_path).relative_to('/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/')
     
     masked_path = f'{sample_path}/masked_audio_time.wav'
     pred_mos = nr_scoreq_n.predict(test_path=masked_path, ref_path=None)
@@ -70,8 +70,8 @@ def process_wav(sample_path):
 def main(csv_name='all', interval_save=5, max_workers=4, gpu_dict_var = {0: 4, 1:1}):
     mp.set_start_method("spawn", force=True)
     # Paths for different data sources
-    pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02']
-    # pathes2data = ['/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_phoneme-without-space']
+    pathes2data = ['/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02']
+    # pathes2data = ['/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_phoneme-without-space']
     # List to store all found sample folder paths
     sample_folders = []
 

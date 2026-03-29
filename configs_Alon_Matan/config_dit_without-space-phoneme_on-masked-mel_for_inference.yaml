@@ -141,6 +141,12 @@ diffusion:
     sigma_max: 50.0
     N: 1000
 
+  # Diffusion-based sampling hyperparameters
+  predictor: "reverse_diffusion"  # Choices: reverse_diffusion, euler_maruyama, none
+  corrector: "langevin"           # Choices: langevin, ald, none
+  snr: 0.1                        # Step-size scale for the Langevin/ALD gradient
+  corrector_steps: 1              # Number of inner-loop correction steps
+
 
 
 dataset:
@@ -237,7 +243,7 @@ train: # Not used in generate.py
 
 generate:
   name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states
-  ckpt_path: /home/dsi/kenanal/SpeechRepainting/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/checkpoint/112000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/700000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/64000.pkl
+  ckpt_path: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/outputs/mel_spec/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1_on_masked_melspec/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_VPSDE_N1000/checkpoint/18000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/700000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/64000.pkl
   n_samples: 1 # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
   n_samples_test: 50 #1000 # used in full inference mel only
   video_path: null # generate audio for a given silent video file

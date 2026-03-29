@@ -72,7 +72,7 @@ def get_pc_sampler(
         if mask_noise:
             # For inpainting with noise injection, replace observed entries with a noisy version at time t.
             mean, std = sde.marginal_prob(y, y, t)
-            noisy_y = mean + std[:, None, None, None] * torch.randn_like(y)
+            noisy_y = mean + std[:, None, None] * torch.randn_like(y)
             return noisy_y * mask + x * (1 - mask)
 
 
@@ -91,7 +91,7 @@ def get_pc_sampler(
 
                 # Apply masking / inpainting constraints
                 xt = _apply_masking(xt, y, vec_t)
- 
+                
                 xt, xt_mean = corrector.update_fn(xt, y, vec_t)
                 xt, xt_mean = predictor.update_fn(xt, y, vec_t, stepsize)
 

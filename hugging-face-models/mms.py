@@ -2,7 +2,7 @@ import torch
 from transformers import VitsTokenizer, VitsModel, set_seed
 import soundfile as sf
 import time
-save_dir_hf_models = '/dsi/gannot-lab1/users/mordehay/hf_models'
+save_dir_hf_models = '/dsi/gannot-lab/gannot-lab1/users/mordehay/hf_models'
 tokenizer = VitsTokenizer.from_pretrained("facebook/mms-tts-eng", cache_dir=save_dir_hf_models)
 model = VitsModel.from_pretrained("facebook/mms-tts-eng", cache_dir=save_dir_hf_models)
 

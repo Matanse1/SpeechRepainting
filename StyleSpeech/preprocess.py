@@ -57,8 +57,8 @@ if __name__ == "__main__":
     parser.add_argument('--log', type=str, default='log')
     parser.add_argument('--with_space_alignment', type=bool, default=True)
     
-    parser.add_argument('--data_path', type=str, default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/wav16')
-    parser.add_argument('--output_path', type=str, default='/dsi/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed_with-masked-mel')
+    parser.add_argument('--data_path', type=str, default='/dsi/gannot-lab/gannot-lab1/datasets/libri_tts/LibriTTS/wav16')
+    parser.add_argument('--output_path', type=str, default='/dsi/gannot-lab/gannot-lab1/datasets/libri_tts/LibriTTS/preprocessed_with-masked-mel')
     #/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config_with-space.json
     #'/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/config.json'
     #/home/dsi/moradim/SpeechRepainting/StyleSpeech/configs/my_config_without-space.json

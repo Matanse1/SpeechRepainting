@@ -3,12 +3,12 @@ import os
 
 # Path to your CSV file
 mode = 'Test_complete'
-csv_file_path = f'/dsi/gannot-lab1/datasets/reverb_data/{mode}/room_parameters.csv'  # Replace with your actual CSV file path
+csv_file_path = f'/dsi/gannot-lab/gannot-lab1/datasets/reverb_data/{mode}/room_parameters.csv'  # Replace with your actual CSV file path
 
 # Load the CSV file into a DataFrame
 df = pd.read_csv(csv_file_path, delimiter='|')
-# old_path = f'/dsi/gannot-lab1/datasets/reverb_data/audio_final2/'
-# new_path = f'/dsi/gannot-lab1/datasets/reverb_data/{mode}/audio_final/'
+# old_path = f'/dsi/gannot-lab/gannot-lab1/datasets/reverb_data/audio_final2/'
+# new_path = f'/dsi/gannot-lab/gannot-lab1/datasets/reverb_data/{mode}/audio_final/'
 
 
 def extract_transcript(audio_file_path):
@@ -51,7 +51,7 @@ def update_file_path(path):
 df['transcript'] = df['original_librispeech_file'].apply(extract_transcript)
 
 # Save the updated DataFrame back to a CSV file
-updated_csv_file_path = f'/dsi/gannot-lab1/datasets/reverb_data/{mode}/room_parameters_with_trans.csv'  # Replace with your desired output file path
+updated_csv_file_path = f'/dsi/gannot-lab/gannot-lab1/datasets/reverb_data/{mode}/room_parameters_with_trans.csv'  # Replace with your desired output file path
 df.to_csv(updated_csv_file_path, index=False, sep='|')
 
 print(f"Updated CSV file saved to {updated_csv_file_path}")

@@ -118,7 +118,7 @@ def generate(
     json_config = json.loads(data)
     h = AttrDict(json_config)
     vocoder = Vocoder(h).cuda()
-    checkpoint_file = '/dsi/gannot-lab1/users/mordehay/hifi_gan/g_02400000'
+    checkpoint_file = '/dsi/gannot-lab/gannot-lab1/users/mordehay/hifi_gan/g_02400000'
     state_dict_g = vocoder_utils.load_checkpoint(checkpoint_file, 'cuda')
     vocoder.load_state_dict(state_dict_g['generator'])
     vocoder.eval()
@@ -154,7 +154,7 @@ def generate(
     guidance_dir_name += f'_w2={w_asr}_asr_start={asr_start}'
     guidance_dir_name += f'_mask={on_noisy_masked_melspec}'
     _output_directory = os.path.join(output_directory, guidance_dir_name)
-    path_audio = ["/dsi/gannot-lab1/datasets/lossy_audio/sample_0.wav"]
+    path_audio = ["/dsi/gannot-lab/gannot-lab1/datasets/lossy_audio/sample_0.wav"]
     n_samples = len(path_audio)
     dataset_indices = torch.arange(n_samples)
     for i in dataset_indices:

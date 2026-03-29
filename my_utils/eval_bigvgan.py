@@ -15,7 +15,7 @@ model.remove_weight_norm()
 model = model.eval().to(device)
 
 # load wav file and compute mel spectrogram
-wav_path = '/dsi/gannot-lab1/datasets/reverb_data/Train/audio_final/example_129797.wav'
+wav_path = '/dsi/gannot-lab/gannot-lab1/datasets/reverb_data/Train/audio_final/example_129797.wav'
 wav, sr = librosa.load(wav_path, sr=model.h.sampling_rate, mono=True) # wav is np.ndarray with shape [T_time] and values in [-1, 1]
 wav = torch.FloatTensor(wav).unsqueeze(0) # wav is FloatTensor with shape [B(1), T_time]
 # wav = torch.nn.functional.pad(wav, (0, 65536*2 - wav.size(1))) 

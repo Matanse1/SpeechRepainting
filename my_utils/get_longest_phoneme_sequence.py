@@ -24,7 +24,7 @@ def get_longest_phoneme_sequence(csv_file_path):
     return duration_without_sil, longest_sequence_without_sil, duration_with_sil, longest_sequence_with_sil
 
 if __name__ == "__main__":
-    csv_file_path = '/dsi/gannot-lab1/datasets/Librispeech_mfa/Train_new.csv'
+    csv_file_path = '/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/Train_new.csv'
     duration_without_sil, longest_sequence_without_sil, duration_with_sil, longest_sequence_with_sil = get_longest_phoneme_sequence(csv_file_path)
     print(f"Duration without silence: {duration_without_sil}")
     print(f"Longest Phoneme Sequence without silence: {longest_sequence_without_sil}")

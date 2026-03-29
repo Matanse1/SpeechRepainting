@@ -18,6 +18,6 @@ def load_npy_file(file_path):
         return None
     
 if __name__ == '__main__':
-    file_path = '/dsi/gannot-lab1/datasets/Librispeech_mfa/phoneme-frames_filter_length=640_hop_length=160/Test/61/61-70968-0000.npy'
+    file_path = '/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/phoneme-frames_filter_length=640_hop_length=160/Test/61/61-70968-0000.npy'
     data = load_npy_file(file_path)
     print(data)

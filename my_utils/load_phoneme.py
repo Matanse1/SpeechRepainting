@@ -5,7 +5,7 @@ from tqdm import tqdm
 import torch
 import matplotlib.pyplot as plt
 import math
-input_text_path = '/dsi/gannot-lab1/datasets/Librispeech_mfa/phoneme_seq2/Test/61/61-70968-0000.phonemes'
+input_text_path = '/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/phoneme_seq2/Test/61/61-70968-0000.phonemes'
 with open(input_text_path, 'rb') as file:
     input_text = pickle.load(file)  # Load the phoneme sequence from the file
     if input_text[-1] == 'space':

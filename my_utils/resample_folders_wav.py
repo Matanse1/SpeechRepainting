@@ -35,7 +35,7 @@ def resample_wav_files(src_dir, dst_dir, target_sr=16000):
         sf.write(dst_path, y_resampled, target_sr)
 
 # Example usage
-src_directory = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.eval_audio'
-dst_directory = '/dsi/gannot-lab1/datasets/FSD50K/FSD50K.eval_audio_16k'
+src_directory = '/dsi/gannot-lab/gannot-lab1/datasets/FSD50K/FSD50K.eval_audio'
+dst_directory = '/dsi/gannot-lab/gannot-lab1/datasets/FSD50K/FSD50K.eval_audio_16k'
 target_sr = 16000
 resample_wav_files(src_directory, dst_directory, target_sr=target_sr)

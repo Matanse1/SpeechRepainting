@@ -12,9 +12,9 @@ model = WavLMForXVector.from_pretrained('microsoft/wavlm-base-sv')
 module_parameters = list(filter(lambda p: p[1].requires_grad, model.named_parameters()))
 params = sum([np.prod(p.size()) for n, p in module_parameters])
 print(f"The number of parameters of the model is: {params}")
-spk1_ut1_path = "/dsi/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/480/123176/480-123176-0033.wav"
-spk1_ut2_path = "/dsi/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/480/123176/480-123176-0012.wav"
-spk2_ut1_path = "/dsi/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/5190/87791/5190-87791-0040.wav"
+spk1_ut1_path = "/dsi/gannot-lab/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/480/123176/480-123176-0033.wav"
+spk1_ut2_path = "/dsi/gannot-lab/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/480/123176/480-123176-0012.wav"
+spk2_ut1_path = "/dsi/gannot-lab/gannot-lab1/datasets/LibriSpeech/LibriSpeech/Train/5190/87791/5190-87791-0040.wav"
 spk1_ut1, _ = sf.read(spk1_ut1_path) 
 spk1_ut1_dict = {"input_values": torch.from_numpy(spk1_ut1.astype(np.float32)).unsqueeze(0), "output_hidden_states":True}
 spk1_ut2, _ = sf.read(spk1_ut2_path)

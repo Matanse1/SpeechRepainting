@@ -68,7 +68,7 @@ def plot_attention_matrix2(npy_file_path, path2true_attn, path2est_attn, save_pa
     plt.savefig(save_path)
 # Example usage
 
-path2model = '/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant/alignment_results/G_155'
+path2model = '/dsi/gannot-lab/gannot-lab1/users/mordehay/glow_tts_alignment/mel-spec-as-input_without-silenece-token_with-blank-token_true_duration_mean-only_true-attn_ce_weight=0p8_c-non-simple-head_npz=2_warmup_and_constant/alignment_results/G_155'
 sample = 0
 path2true_attn = os.path.join(path2model, f"sample_{sample}", 'true_attn.npy')
 path2logp = os.path.join(path2model, f"sample_{sample}", 'logp.npy')

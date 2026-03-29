@@ -72,9 +72,9 @@ def main():
     print("Initializing Inference Process..")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_mels_dir", default="/dsi/gannot-lab1/datasets/reverb_data/Test/mel")
-    parser.add_argument("--output_dir", default="/dsi/gannot-lab1/users/mordehay/bigvgan/generated_files_from_mel")
-    parser.add_argument("--checkpoint_file", required=False, default='/dsi/gannot-lab1/users/mordehay/bigvgan/g_00050000')
+    parser.add_argument("--input_mels_dir", default="/dsi/gannot-lab/gannot-lab1/datasets/reverb_data/Test/mel")
+    parser.add_argument("--output_dir", default="/dsi/gannot-lab/gannot-lab1/users/mordehay/bigvgan/generated_files_from_mel")
+    parser.add_argument("--checkpoint_file", required=False, default='/dsi/gannot-lab/gannot-lab1/users/mordehay/bigvgan/g_00050000')
     parser.add_argument("--use_cuda_kernel", action="store_true", default=False)
 
     a = parser.parse_args()

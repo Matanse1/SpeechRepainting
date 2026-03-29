@@ -36,8 +36,8 @@ def main():
   dict_phoneme_path = "/home/dsi/moradim/Documents/MFA/models/inspect/english_us_arpa_acoustic/phones.txt"
   phoneme_dict_p2d, phoneme_dict_d2p = utils.get_phones_dict(dict_phoneme_path)
   # phoneme_dict_d2p = _id_to_symbol
-  model_dir = '/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/origianl_pretrained_model'
-  pretrained_model_path = '/dsi/gannot-lab1/users/mordehay/glow_tts_alignment/origianl_pretrained_model/pretrained_blank.pth'
+  model_dir = '/dsi/gannot-lab/gannot-lab1/users/mordehay/glow_tts_alignment/origianl_pretrained_model'
+  pretrained_model_path = '/dsi/gannot-lab/gannot-lab1/users/mordehay/glow_tts_alignment/origianl_pretrained_model/pretrained_blank.pth'
   cp_num = Path(pretrained_model_path).stem
   hps = utils.get_hparams_from_dir(model_dir)
   torch.manual_seed(hps.train.seed)

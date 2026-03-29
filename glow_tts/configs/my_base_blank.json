@@ -24,8 +24,8 @@
     "use_true_attn": true
   },
   "data": {
-    "base_data_dir": "/dsi/gannot-lab1/datasets/Librispeech_mfa",
-    "csv_loc": "/dsi/gannot-lab1/datasets/Librispeech_mfa/",
+    "base_data_dir": "/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa",
+    "csv_loc": "/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/",
     "min_block_size": 30,
     "max_block_size": 65,
     "min_spacing": 30,

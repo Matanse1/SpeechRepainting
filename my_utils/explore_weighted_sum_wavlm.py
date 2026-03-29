@@ -5,7 +5,7 @@ import numpy as np
 
 # Load the checkpoint
 iter_num = 50000
-checkpoint_path = f'/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/checkpoint/{iter_num}.pkl'  # Replace with the actual path
+checkpoint_path = f'/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/checkpoint/{iter_num}.pkl'  # Replace with the actual path
 checkpoint = torch.load(checkpoint_path)
 
 # Initialize a list to store the weights from all blocks
@@ -34,7 +34,7 @@ ax.set_ylabel('Weights')
 ax.set_title('Weights of weighted_sum vs. Blocks')
 ax.legend(title='Weights', bbox_to_anchor=(1.05, 1), loc='upper left')
 plt.tight_layout()
-plt.savefig(f'/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/weights_vs_blocks_{iter_num}.png')
+plt.savefig(f'/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/weights_vs_blocks_{iter_num}.png')
 
 plt.close()
 plt.figure(figsize=(10, 8))
@@ -45,4 +45,4 @@ plt.yticks(ticks=range(13), labels=[f'Weight {i+1}' for i in range(13)])
 plt.xlabel('Block Number')
 plt.ylabel('Weight Index')
 plt.title('Heatmap of weighted_sum Weights across Blocks')
-plt.savefig(f'/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/weights_vs_blocks_heatmap_{iter_num}.png')
+plt.savefig(f'/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True/wnet_h512_d12_T400_betaT0.02/weights_vs_blocks_heatmap_{iter_num}.png')

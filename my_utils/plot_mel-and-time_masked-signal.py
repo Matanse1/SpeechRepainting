@@ -7,7 +7,7 @@ import soundfile as sf
 import matplotlib.image
 import torch
 
-path2audio = '/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=1120000_mel_text=True_phoneme-without-space/w1=-1_w2=0.5_asr_start=270_mask=True/sample_69/masked_audio_time.wav'
+path2audio = '/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/repeat_all_freq-length=100_skip=150_cp=1120000_mel_text=True_phoneme-without-space/w1=-1_w2=0.5_asr_start=270_mask=True/sample_69/masked_audio_time.wav'
 audio, sr = sf.read(path2audio)
 plt.figure(figsize=(8, 4))
 plt.plot(audio)

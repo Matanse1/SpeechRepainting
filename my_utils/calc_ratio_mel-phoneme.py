@@ -10,7 +10,7 @@ mode = 'Test'
 remove_space = True
 min_num = math.inf
 ratio_list = []
-base_data_dir = f'/dsi/gannot-lab1/datasets/Librispeech_mfa/'
+base_data_dir = f'/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/'
 for file in tqdm(glob(str(Path(base_data_dir) / f'mel_filter_length=640_hop_length=160/{mode}/**/*.npz'), recursive=True)):
     melspec = torch.load(file)
     T = melspec.shape[-1]

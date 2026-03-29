@@ -52,8 +52,8 @@
 #             pickle.dump(phoneme_sequence, file)
 # # Replace these with your actual input and output root directories
 # mode = 'Train'
-# input_directory = f"/dsi/gannot-lab1/datasets/Librispeech_mfa/mfa_text-grid/{mode}"
-# output_directory = f"/dsi/gannot-lab1/datasets/Librispeech_mfa/phoneme_seq/{mode}"
+# input_directory = f"/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/mfa_text-grid/{mode}"
+# output_directory = f"/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/phoneme_seq/{mode}"
 
 # process_nested_directory(input_directory, output_directory)
 
@@ -125,7 +125,7 @@ def process_nested_directory(input_root, output_root):
 
 # Replace these with your actual input and output root directories
 mode = 'Train'
-input_directory = f"/dsi/gannot-lab1/datasets/Librispeech_mfa/mfa_text-grid/{mode}"
-output_directory = f"/dsi/gannot-lab1/datasets/Librispeech_mfa/phoneme_seq2/{mode}"
+input_directory = f"/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/mfa_text-grid/{mode}"
+output_directory = f"/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/phoneme_seq2/{mode}"
 
 process_nested_directory(input_directory, output_directory)

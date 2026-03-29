@@ -67,7 +67,7 @@ from zipfile import ZipFile
 
 # repo_files = {"HiFi-GAN checkpoint": {
 #         "gdrive_id": "1h0gcgifwe5HVM76rlREHj1daBNItWh7e",
-#         "dir_path": "/dsi/gannot-lab1/users/mordehay/hifi_gan",
+#         "dir_path": "/dsi/gannot-lab/gannot-lab1/users/mordehay/hifi_gan",
 #         "filename": "g_02400000"
 #     }
 # }
@@ -75,27 +75,27 @@ from zipfile import ZipFile
 # repo_files = {
 #   "TransformerLM checkpoint": {
 #         "gdrive_id": "1PSo4ZQIZPWEI_S5LHkJBo0gYhQpWzRnh",
-#         "dir_path": "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
+#         "dir_path": "/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
 #         "filename": "checkpoints_epoch_10_step_2860.ckpt"
 #     },
 #   "Tokenizer model": {
 #         "gdrive_id": "1u3U3aHaTWvR_NTftkUGv1JXkxpX1pkOL",
-#         "dir_path": "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
+#         "dir_path": "/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
 #         "filename": "tokenizerbpe256.model"
 #     },
 #   "ASR LRS2 checkpoint": {
 #         "gdrive_id": "1adeCf4NzhshJVU-JndlKpC34rRwJOQ2B",
-#         "dir_path": "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
+#         "dir_path": "/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
 #         "filename": "checkpoints_ft_lrs2.ckpt"
 #     },
 #     "ASR LRS3 checkpoint": {
 #         "gdrive_id": "18F1xsk0A4cqoxlOE58LB5Rl6pBoCftCL",
-#         "dir_path": "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
+#         "dir_path": "/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
 #         "filename": "checkpoints_ft_lrs3.ckpt"
 #     },
 #     "6gramLM": {
 #         "gdrive_id": "1l71jUmRdQMFO2AVezxweENpZgdvL7TyD",
-#         "dir_path": "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
+#         "dir_path": "/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
 #         "filename": "6gram_lrs23.arpa"
 #     }
   
@@ -103,12 +103,12 @@ from zipfile import ZipFile
 repo_files = {
    "ASR Audio-only LRS3 checkpoint": {
         "gdrive_id": "1eIZifGTqpuubRaWiAfZKdf9eHoMsUvL4",
-        "dir_path": "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
+        "dir_path": "/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
         "filename": "LRS3_A_WER1.0.zip"
     },
    "LM Audio-only LRS3 checkpoint": {
         "gdrive_id": "1g31HGxJnnOwYl17b70ObFQZ1TSnPvRQv",
-        "dir_path": "/dsi/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
+        "dir_path": "/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer",
         "filename": "LRS3_LM.zip"
     }
 }

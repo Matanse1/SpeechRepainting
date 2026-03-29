@@ -52,7 +52,7 @@ def train_sentencepiece_model(training_file, model_prefix, vocab_size=46):
 
 
 # Paths and setup
-phoneme_files_dir = "/dsi/gannot-lab1/datasets/Librispeech_mfa/phoneme_seq/Test"  # Directory containing phoneme text files
+phoneme_files_dir = "/dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/phoneme_seq/Test"  # Directory containing phoneme text files
 training_file = "/home/dsi/moradim/SpeechRepainting/my_utils/phoneme_sequences.txt"       # File to hold all phoneme sentences
 model_prefix = "/home/dsi/moradim/SpeechRepainting/my_utils/phoneme_tokenizer"            # Prefix for the trained tokenizer
 

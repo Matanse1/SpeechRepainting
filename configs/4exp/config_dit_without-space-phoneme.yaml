@@ -114,8 +114,8 @@ dit:
     embed_dim: 768
     num_heads: 3
     positional_emd: InputEmbedding1 # none
-    style_speech_ch_path: /dsi/gannot-lab1/users/mordehay/style-speech_weights/stylespeech.pth.tar
-    style_speech_config_path: /dsi/gannot-lab1/users/mordehay/style-speech_weights/config.json
+    style_speech_ch_path: /dsi/gannot-lab/gannot-lab1/users/mordehay/style-speech_weights/stylespeech.pth.tar
+    style_speech_config_path: /dsi/gannot-lab/gannot-lab1/users/mordehay/style-speech_weights/config.json
     log: "log"
     norm: none # LayerNorm # none
     cross_attn_type: "CrossAttention_noise" # CrossAttention, CrossAttention_noise, CrossAttention_noise
@@ -136,7 +136,7 @@ diffusion:
 dataset:
   dataset_type: "speech_inpainting_anechoic" # explosion_speech_inpainting, speech_inpainting, speech_inpainting_anechoic
   speech_inpainting:
-    base_data_dir: /dsi/gannot-lab1/datasets/reverb_data/
+    base_data_dir: /dsi/gannot-lab/gannot-lab1/datasets/reverb_data/
     sampling_rate: ${audio.sampling_rate}
     # for train - relatively large masking
     # min_block_size: 30 # 35, 10
@@ -156,8 +156,8 @@ dataset:
     audio_stft_hop: ${audio.hop_length}
     num4empty_str: randn #or -12, 0, min, randn
   speech_inpainting_anechoic:
-    base_data_dir: /dsi/gannot-lab1/datasets/Librispeech_mfa
-    csv_loc: /dsi/gannot-lab1/datasets/Librispeech_mfa/
+    base_data_dir: /dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa
+    csv_loc: /dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/
     sampling_rate: ${audio.sampling_rate}
     # for train - relatively large masking
     min_block_size: 30 # 35, 10
@@ -179,12 +179,12 @@ dataset:
     use_input_text: phoneme # text (for byte), none, phoneme (for phoneme)
     remove_space: True
   explosion_speech_inpainting:
-    base_data_dir: /dsi/gannot-lab1/datasets/speech_with_explosions
+    base_data_dir: /dsi/gannot-lab/gannot-lab1/datasets/speech_with_explosions
     sampling_rate: ${audio.sampling_rate}
     audio_stft_hop: ${audio.hop_length}
   plc_task:
-    base_data_dir: /dsi/gannot-lab1/datasets/Librispeech_mfa
-    csv_loc: /dsi/gannot-lab1/datasets/Librispeech_mfa/
+    base_data_dir: /dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa
+    csv_loc: /dsi/gannot-lab/gannot-lab1/datasets/Librispeech_mfa/
     sampling_rate: ${audio.sampling_rate}
     # return_mask_properties: False #for train set this to False, for inference set to True
     audio_stft_hop: ${audio.hop_length}
@@ -208,7 +208,7 @@ audio:
 # Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=${train.w_masked_pix}_diffusion-name=${diffusion.name}
 train: # Not used in generate.py
   name: DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1 # DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1  # Wavenet_Anechoic_LibSp_unconditional #2delete_Anechoic_LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${wavenet.wavlm.two_branch}_specific_hidden_states_randn-filled #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
-  save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting # where checkpoints will be saved
+  save_dir: /dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting # where checkpoints will be saved
   ckpt_iter: max # continue training from a specific iteration
 
   # for testing the training phase
@@ -227,7 +227,7 @@ train: # Not used in generate.py
 
 generate:
   name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states
-  ckpt_path: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/checkpoint/112000.pkl #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/700000.pkl #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/64000.pkl
+  ckpt_path: /dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02/checkpoint/112000.pkl #/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/700000.pkl #/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/64000.pkl
   n_samples: 2 # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
   n_samples_test: 50 #1000 # used in full inference mel only
   video_path: null # generate audio for a given silent video file
@@ -235,7 +235,7 @@ generate:
   w_mel_cond: [1] #[-1, 0.5, 0.8, 1, 2]            # w1 in the paper
   w_asr: [0.5] #[0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
   asr_start: [320] #[320, 270] #270        # t_asr
-  save_dir: /dsi/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02 #/dsi/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
+  save_dir: /dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_T400_betaT0.02 #/dsi/gannot-lab/gannot-lab1/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
   inference_mel_only_name_dir: repeat_all_freq-length=50_skip=150_cp=112000_mel_text=True_phoneme-without-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
   without_condtion: False
   config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini

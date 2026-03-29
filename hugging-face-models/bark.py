@@ -1,7 +1,7 @@
 from transformers import AutoProcessor, BarkModel
 import soundfile as sf
 import time
-save_dir_hf_models = '/dsi/gannot-lab1/users/mordehay/hf_models'
+save_dir_hf_models = '/dsi/gannot-lab/gannot-lab1/users/mordehay/hf_models'
 processor = AutoProcessor.from_pretrained("suno/bark-small", cache_dir=save_dir_hf_models)
 model = BarkModel.from_pretrained("suno/bark-small", cache_dir=save_dir_hf_models)
 
