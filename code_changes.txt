@@ -1,0 +1,11 @@
+21.04.2026:
+
+file: train_melgen_Alon_Matan.py
+changes: 
+line 6: change gpu form 3 into 0.
+line 27: comment out import generate.
+line 269 - 289: comment out generate usage.
+
+file: config_dit_without-space-phoneme_on-masked-mel.yaml
+changes:
+line 241: change batch_size from 16 to 4.

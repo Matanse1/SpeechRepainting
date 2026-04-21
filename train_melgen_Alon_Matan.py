@@ -3,7 +3,7 @@
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '3' #'1,2,4,5,6,7'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0' #'1,2,4,5,6,7'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -24,7 +24,7 @@ from dataloaders import dataloader, CollateFn
 from utils import find_max_epoch, print_size, get_diffusion_hyperparams, local_directory, plot_melspec, fix_len_compatibility
 
 from distributed_util import init_distributed, apply_gradient_allreduce, reduce_tensor
-from inference_melgen import generate
+# from inference_melgen import generate
 
 from models.model_builder import ModelBuilder
 from models.audiovisual_model import AudioVisualModel
@@ -266,25 +266,27 @@ def train(
                            os.path.join(checkpoint_directory, checkpoint_name))
                 print('model at iteration %s is saved' % n_iter)
 
-                # Generate samples
-                generate_cfg["ckpt_iter"] = n_iter
-                samples = generate(
-                    rank, # n_iter,
-                    diffusion_cfg, model_cfg, g_model_cfg, dataset_cfg,
-                    name=name,
-                    save_dir=save_dir,
-                    ckpt_iter="max",
-                    n_samples=generate_cfg.n_samples,
-                    w_mel_cond=generate_cfg.w_mel_cond,
-                    on_noisy_masked_melspec=generate_cfg.on_noisy_masked_melspec
-                )
+                # generate removed for now to save time, can be added back in if we want to visualize generated samples during training
+
+                # # Generate samples
+                # generate_cfg["ckpt_iter"] = n_iter
+                # samples = generate(
+                #     rank, # n_iter,
+                #     diffusion_cfg, model_cfg, g_model_cfg, dataset_cfg,
+                #     name=name,
+                #     save_dir=save_dir,
+                #     ckpt_iter="max",
+                #     n_samples=generate_cfg.n_samples,
+                #     w_mel_cond=generate_cfg.w_mel_cond,
+                #     on_noisy_masked_melspec=generate_cfg.on_noisy_masked_melspec
+                # )
                 
-                # send images to log
-                for i, (mel, mel_gt, masked_cond) in enumerate(zip(*samples)):
-                    writer.add_figure(f'spec/{i+1}_gen', plot_melspec(mel[0].cpu().numpy()), n_iter)
-                    writer.add_figure(f'spec/{i+1}_gt', plot_melspec(mel_gt[0].cpu().numpy()), n_iter)
-                    writer.add_figure(f'spec/{i+1}_masked_melspec', plot_melspec(masked_cond[0][0].cpu().numpy()), n_iter) #this is the masked mel spectrogram
-                    writer.add_audio(f'audio/{i+1}_masked_audio_time', masked_cond[1].cpu().numpy(), n_iter, sample_rate=16000) # this is the masked audio in time domain
+                # # send images to log
+                # for i, (mel, mel_gt, masked_cond) in enumerate(zip(*samples)):
+                #     writer.add_figure(f'spec/{i+1}_gen', plot_melspec(mel[0].cpu().numpy()), n_iter)
+                #     writer.add_figure(f'spec/{i+1}_gt', plot_melspec(mel_gt[0].cpu().numpy()), n_iter)
+                #     writer.add_figure(f'spec/{i+1}_masked_melspec', plot_melspec(masked_cond[0][0].cpu().numpy()), n_iter) #this is the masked mel spectrogram
+                #     writer.add_audio(f'audio/{i+1}_masked_audio_time', masked_cond[1].cpu().numpy(), n_iter, sample_rate=16000) # this is the masked audio in time domain
 
             n_iter += 1
         if rank == 0:

@@ -238,7 +238,7 @@ train: # Not used in generate.py
   n_iters: 20000001 #200 #1000001
 
   learning_rate: 2e-04 #2e-4
-  batch_size_per_gpu: 16 #32 #8 #128 #32 # 240
+  batch_size_per_gpu: 4 #32 #8 #128 #32 # 240
   w_masked_pix: 1
   on_noisy_masked_melspec: True
 
