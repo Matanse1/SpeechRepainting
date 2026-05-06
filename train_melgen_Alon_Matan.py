@@ -3,7 +3,7 @@
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0' #'1,2,4,5,6,7'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3' #'1,2,4,5,6,7'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -107,7 +107,7 @@ def train(
                     diffusion_hyperparams["sigma_max"],
                     diffusion_hyperparams["N"])
     else:
-        sde = None  # DDPM path
+        raise ValueError(f"Unsupported diffusion/SDE name: {diffusion_hyperparams['name']}")  # DDPM is commented out for now since we are focusing on the continuous SDE path, but can be added back in if we want to do ablation comparing the two paths
 
     # load training data
         # load training data
@@ -333,7 +333,7 @@ def train(
                     masked_cond = [masked_melspec, masked_audio_time]
                     
                 loss = test_loss(net, criterion, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, text, input_text,
-                  masked_audio_time_mask, on_noisy_masked_melspec, w_masked_pix)
+                  masked_audio_time_mask, on_noisy_masked_melspec, w_masked_pix, sde=sde)
                 if num_gpus > 1:
                     reduced_loss = reduce_tensor(loss.data, num_gpus).item()
                 else:
@@ -392,23 +392,23 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask,
     # ── Continuous SDE (new path) ─────────────────────────────────────────
     eps = 1e-5
     t = torch.rand(B, device=device) * (sde.T - eps) + eps   # [B]
-    z = torch.randn_like(melspec)                              # [B, C, L]
+    z = torch.randn_like(melspec)                            # [B, C, L]
 
     mean, std = sde.marginal_prob(melspec, None, t)
-    std_expanded = std[:, None, None]                          # [B, 1, 1]
+    std_expanded = std[:, None, None]                        # [B, 1, 1]
     x_t = mean + std_expanded * z
 
     if on_noisy_masked_melspec:
         x_t = melspec * mask + x_t * (1 - mask)
-
-    target_score = -z / std_expanded                           # [B, C, L]
 
     cond_drop_prob = 0.2
     predicted_score = net(x_t, masked_cond, t.view(B, 1), cond_drop_prob,
                             text=text, input_text=input_text,
                             mask_padding_time=masked_audio_time_mask,
                             mask_padding_frames=mask_mask)
-    loss = loss_fn(predicted_score, target_score)
+    
+    # denoising score matching loss
+    loss = loss_fn(predicted_score * std_expanded, -z)
 
     # ── Shared loss weighting (identical for both paths) ──────────────────
     loss = loss * mask_mask
@@ -426,7 +426,7 @@ def test_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask,
                          masked_audio_time_mask, on_noisy_masked_melspec,
                          w_masked_pix, sde=sde)
 
-#small_my-tts-dit_with-space_without-sma_tts-output=mel
+# small_my-tts-dit_with-space_without-sma_tts-output=mel
 # small_my-tts-dit_with-space_without-sma_tts-output=phoneme
 # small_my-tts-dit_with-space_without-sma_tts-output=phoneme_with_energy_pitch
 # config_dit_without-space-phoneme_on-masked-mel

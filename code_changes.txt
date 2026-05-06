@@ -2,10 +2,39 @@
 
 file: train_melgen_Alon_Matan.py
 changes: 
-line 6: change gpu form 3 into 0.
-line 27: comment out import generate.
-line 269 - 289: comment out generate usage.
+    line 6: change gpu form 3 into 0.
+    line 27: comment out import generate.
+    line 269 - 289: comment out generate usage.
 
 file: config_dit_without-space-phoneme_on-masked-mel.yaml
 changes:
-line 241: change batch_size from 16 to 4.
+    line 241: change batch_size from 16 to 4.
+
+27.04.2026:
+
+file: train_melgen_Alon_Matan.py
+changes: 
+    line 6: change gpu form 0 into 3.
+
+file: config_dit_without-space-phoneme_on-masked-mel.yaml
+changes:
+    line 241: change batch_size from 4 to 16.
+
+28.04.2026:
+file: train_melgen_Alon_Matan.py
+changes: 
+    line 335: added sde=sde as an argument - it was missing.
+    line 110: changed the sde = NONE to raise ValueError because can save time in train - 
+              need to be changed at the DDPM run!!
+
+04.05.2026:
+file: train_melgen_Alon_Matan.py
+changes: 
+    line 411: changed target_score to denoising score matching.
+
+file: config_dit_without-space-phoneme_on-masked-mel.yaml
+    line 228 - save_dir: changed the target file to mel_spec2 for new checkpoints.
+
+file: config_dit_without-space-phoneme_on-masked-mel.yaml
+    line 241 - batch_sized_per_gpu: changed to 32.
+
