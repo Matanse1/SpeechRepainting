@@ -38,3 +38,6 @@ file: config_dit_without-space-phoneme_on-masked-mel.yaml
 file: config_dit_without-space-phoneme_on-masked-mel.yaml
     line 241 - batch_sized_per_gpu: changed to 32.
 
+04.05.2026:
+added file: train_melgen_Alon_Matan_with_inference.py
+added file: inference_melgen_continuous.py
