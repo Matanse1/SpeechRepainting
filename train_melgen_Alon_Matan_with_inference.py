@@ -3,7 +3,7 @@
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '3' #'1,2,4,5,6,7'
+os.environ['CUDA_VISIBLE_DEVICES'] = '4' #'1,2,4,5,6,7'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -283,10 +283,10 @@ def train(
                 
                 # # send images to log
                 for i, (mel, mel_gt, masked_cond) in enumerate(zip(*samples)):
-                    writer.add_figure(f'spec/{i+1}_gen', plot_melspec(mel[0].cpu().numpy()), n_iter)
-                    writer.add_figure(f'spec/{i+1}_gt', plot_melspec(mel_gt[0].cpu().numpy()), n_iter)
-                    writer.add_figure(f'spec/{i+1}_masked_melspec', plot_melspec(masked_cond[0][0].cpu().numpy()), n_iter) #this is the masked mel spectrogram
-                    writer.add_audio(f'audio/{i+1}_masked_audio_time', masked_cond[0][1].cpu().numpy(), n_iter, sample_rate=16000) # this is the masked audio in time domain
+                    writer.add_figure(f'spec/{i+1}_gen', plot_melspec(mel.squeeze().cpu().numpy()), n_iter)
+                    writer.add_figure(f'spec/{i+1}_gt', plot_melspec(mel_gt.squeeze().cpu().numpy()), n_iter)
+                    writer.add_figure(f'spec/{i+1}_masked_melspec', plot_melspec(masked_cond[0].squeeze().cpu().numpy()), n_iter)
+                    writer.add_audio(f'audio/{i+1}_masked_audio_time', masked_cond[1].squeeze().cpu().numpy(), n_iter, sample_rate=16000)
 
             n_iter += 1
         if rank == 0:
@@ -401,14 +401,14 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask,
     if on_noisy_masked_melspec:
         x_t = melspec * mask + x_t * (1 - mask)
 
-    target_score = -z / std_expanded                           # [B, C, L]
-
     cond_drop_prob = 0.2
     predicted_score = net(x_t, masked_cond, t.view(B, 1), cond_drop_prob,
                             text=text, input_text=input_text,
                             mask_padding_time=masked_audio_time_mask,
                             mask_padding_frames=mask_mask)
-    loss = loss_fn(predicted_score, target_score)
+    
+    # denoising score matching loss
+    loss = loss_fn(predicted_score * std_expanded, -z)
 
     # ── Shared loss weighting (identical for both paths) ──────────────────
     loss = loss * mask_mask
