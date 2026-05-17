@@ -44,4 +44,7 @@ added file: inference_melgen_continuous.py
 
 07.05.2026:
 file: train_melgen_Alon_Matan_with_inference.py
-    line 285 -289: change in the add_figures lines the dimensions by doing squeeze 
+    line 285 - 289: change in the add_figures lines the dimensions by doing squeeze 
+    line 335: added in the test_loss argument sde = sde
+
+   
