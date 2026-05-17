@@ -232,12 +232,12 @@ train: # Not used in generate.py
   # iters_per_logging: 1 #1 #100
   # n_iters: 200 #200 #1000001
   #for complete training
-  iters_per_ckpt: 2000 #4000 #1000 #4000 #250 #10000 #20 #10000 please change this number with dependence on batch size and number of gpu
+  iters_per_ckpt: 2 #4000 #1000 #4000 #250 #10000 #20 #10000 please change this number with dependence on batch size and number of gpu
   iters_per_logging: 10 #25 #10 #1 #100
   n_iters: 20000001 #200 #1000001
 
   learning_rate: 2e-04 #2e-4
-  batch_size_per_gpu: 16 #32 #8 #128 #32 # 240
+  batch_size_per_gpu: 4 #32 #8 #128 #32 # 240
   w_masked_pix: 1
   on_noisy_masked_melspec: True
 

@@ -42,9 +42,37 @@ file: config_dit_without-space-phoneme_on-masked-mel.yaml
 added file: train_melgen_Alon_Matan_with_inference.py
 added file: inference_melgen_continuous.py
 
+<<<<<<< HEAD
+16.05.2026:
+added directory: train_un_mess
+" contains oop files for conitnuous trainning "
+    added file: DiffusionTrainer.py
+    """ The trainer class for the continuous SDE path, which will handle the training loop, including logging, checkpointing, and sample generation.
+      It will use the train_class to calculate the training loss and test loss. """
+    added file: train_class.py
+     """ The training class for the continuous SDE path, which will be used to calculate the training loss and test loss.
+      It will be passed to the DiffusionTrainer, which will call the training_loss and test_loss methods during training and testing. """
+added file: train_continuous_oop_Alon_Matan.py
+""" The main training script for the continuous SDE path, which will be used to train the model on the continuous SDE path.
+     It will be called by the command line with the appropriate config file.
+     The config file will specify the hyperparameters for the training, including the diffusion hyperparameters, model hyperparameters, dataset hyperparameters, and training hyperparameters.
+     The main function will initialize the distributed training if necessary, create an instance of the DiffusionTrainer class,
+      and call the train and test methods of the DiffusionTrainer class in a loop until the specified number of iterations is reached.
+     The DiffusionTrainer class will handle the training loop, including logging, checkpointing, and sample generation. The train_class will be used to calculate the training loss and test loss. 
+    """
+file: config_dit_without-space-phoneme_on-masked-mel_for_inferencetrain_melgen_Alon_Matan.yaml
+changes: 
+    line 235: changed iters_per_ckpt: from 10 to 2
+    line 240: changed batch_sized_per_gpu: from 32 to 4
+file: utils.py
+changes:
+    line 317: added: if melspec.ndim == 3: 
+=======
 07.05.2026:
 file: train_melgen_Alon_Matan_with_inference.py
     line 285 - 289: change in the add_figures lines the dimensions by doing squeeze 
     line 335: added in the test_loss argument sde = sde
 
    
+    line 285 -289: change in the add_figures lines the dimensions by doing squeeze 
+>>>>>>> a0c8bce7cd36001db8a72bfda9d217b4fce183a4

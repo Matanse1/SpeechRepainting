@@ -314,6 +314,8 @@ def find_linear_t_given_cosine_t():
 
 def plot_melspec(melspec):
     fig = plt.figure()
+    if melspec.ndim == 3:
+        melspec = melspec[0]   # drop leading dim regardless of its size
     plt.imshow(melspec[::-1])
     return fig
 
