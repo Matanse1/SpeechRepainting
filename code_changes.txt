@@ -38,10 +38,11 @@ file: config_dit_without-space-phoneme_on-masked-mel.yaml
 file: config_dit_without-space-phoneme_on-masked-mel.yaml
     line 241 - batch_sized_per_gpu: changed to 32.
 
-04.05.2026:
+06.05.2026:
 added file: train_melgen_Alon_Matan_with_inference.py
 added file: inference_melgen_continuous.py
 
+<<<<<<< HEAD
 16.05.2026:
 added directory: train_un_mess
 " contains oop files for conitnuous trainning "
@@ -66,3 +67,8 @@ changes:
 file: utils.py
 changes:
     line 317: added: if melspec.ndim == 3: 
+=======
+07.05.2026:
+file: train_melgen_Alon_Matan_with_inference.py
+    line 285 -289: change in the add_figures lines the dimensions by doing squeeze 
+>>>>>>> a0c8bce7cd36001db8a72bfda9d217b4fce183a4
