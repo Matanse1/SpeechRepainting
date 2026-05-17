@@ -300,6 +300,8 @@ def train(
             for data in tqdm(trainloader_test, desc=f'Test Epoch {n_iter // len(trainloader_test)}') if rank==0 else trainloader_test:
             # for data in tqdm(trainloader, desc=f'Epoch {n_iter // len(trainloader)}'):
                 text = None
+
+                
                 input_text = None
                 if dataset_type == 'explosion_speech_inpainting':
                     speech_melspec, mix_melspec, mix_time, masked_speech, masked_speech_time, explosions_activity, start_explosions, explosions_length = data
@@ -401,14 +403,14 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask,
     if on_noisy_masked_melspec:
         x_t = melspec * mask + x_t * (1 - mask)
 
-    target_score = -z / std_expanded                           # [B, C, L]
 
     cond_drop_prob = 0.2
     predicted_score = net(x_t, masked_cond, t.view(B, 1), cond_drop_prob,
                             text=text, input_text=input_text,
                             mask_padding_time=masked_audio_time_mask,
                             mask_padding_frames=mask_mask)
-    loss = loss_fn(predicted_score, target_score)
+    # denoising score matching loss
+    loss = loss_fn(predicted_score * std_expanded, -z)
 
     # ── Shared loss weighting (identical for both paths) ──────────────────
     loss = loss * mask_mask

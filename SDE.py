@@ -915,7 +915,10 @@ class VPSDE(SDE):
         At t=T: std ~ 1
         """
         alpha_t = self.alpha(t)
-        return torch.sqrt(1 - alpha_t ** 2)
+        _std = torch.sqrt(1 - alpha_t ** 2)
+
+        return _std
+        # return _std[:, None, None]   # Broadcast over [B, C, L]
 
     def marginal_prob(self, x0, y, t):
         """
