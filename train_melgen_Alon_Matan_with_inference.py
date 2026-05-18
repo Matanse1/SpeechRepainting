@@ -335,7 +335,7 @@ def train(
                     masked_cond = [masked_melspec, masked_audio_time]
                     
                 loss = test_loss(net, criterion, melspec, masked_cond, mask, mask_mask, diffusion_hyperparams, text, input_text,
-                  masked_audio_time_mask, on_noisy_masked_melspec, w_masked_pix)
+                  masked_audio_time_mask, on_noisy_masked_melspec, w_masked_pix, sde=sde)
                 if num_gpus > 1:
                     reduced_loss = reduce_tensor(loss.data, num_gpus).item()
                 else:
