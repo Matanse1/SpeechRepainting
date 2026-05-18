@@ -123,7 +123,7 @@ def train(
     print("Data loaded")
 
     builder = ModelBuilder()
-    net_diffwave = builder.build_diffwave_model(model_cfg)
+    net_diffwave = builder(model_cfg)
     net = AudioVisualModel(net_diffwave).cuda()
     print_size(net, verbose=False)
 

@@ -20,7 +20,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from dataloaders import dataloader, custom_collate_fn, CollateFn
-from utils import find_max_epoch, print_size, calc_diffusion_hyperparams, local_directory, plot_melspec
+from utils import find_max_epoch, print_size, get_diffusion_hyperparams, local_directory, plot_melspec
 
 from distributed_util import init_distributed, apply_gradient_allreduce, reduce_tensor
 from inference_melgen import generate
@@ -85,7 +85,7 @@ def train(
     
 
     # map diffusion hyperparameters to gpu
-    diffusion_hyperparams = calc_diffusion_hyperparams(**diffusion_cfg, fast=False)  # dictionary of all diffusion hyperparameters
+    diffusion_hyperparams = get_diffusion_hyperparams(**diffusion_cfg, fast=False)  # dictionary of all diffusion hyperparameters
 
     # load training data
     collate_fn = CollateFn(inputs_params=[{"axis": 1, "end_number": 'min', 'max_length':1701}, {"axis": 2, "end_number": 'min', 'max_length':1701},

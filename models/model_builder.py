@@ -25,3 +25,6 @@ class ModelBuilder():
         model = cls_model(**model_cfg)
         model_cfg["_name_"] = name # restore
         return model
+
+    def build_diffwave_model(self, model_cfg):
+        return self.build_model(model_cfg)

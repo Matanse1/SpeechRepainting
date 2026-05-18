@@ -393,7 +393,7 @@ def training_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask,
 
     # ── Continuous SDE (new path) ─────────────────────────────────────────
     eps = 1e-5
-    t = torch.rand(B, device=device) * (sde.T - eps) + eps   # [B]
+    t = torch.rand(B, device=device) * (sde.T - eps) + eps     # [B]
     z = torch.randn_like(melspec)                              # [B, C, L]
 
     mean, std = sde.marginal_prob(melspec, None, t)
