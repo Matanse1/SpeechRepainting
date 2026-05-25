@@ -263,13 +263,25 @@ class WaveNet(nn.Module):
         super().__init__()
         representation_models = {}
         #### For WavLM representation model
-        self.text_embed_prop = kwargs.get("text_embed_prop")
-        self.wavlm_prop = kwargs.get("wavlm") #properties of wavlm
-        self.use_wavlm_rep = self.wavlm_prop["use_wavlm_rep"] # representation
-        self.use_weighted_sum_wavlm = self.wavlm_prop["use_weighted_sum_wavlm"]
-        self.use_all_hidden_states = self.wavlm_prop["use_all_hidden_states"]
-        self.text_embed_prop = text_embed_prop
-        self.use_text_embed_rep = self.text_embed_prop["use_text_embed_rep"]
+        
+        # self.text_embed_prop = kwargs.get("text_embed_prop")
+        # self.wavlm_prop = kwargs.get("wavlm") #properties of wavlm
+        # self.use_wavlm_rep = self.wavlm_prop["use_wavlm_rep"] # representation
+        # self.use_weighted_sum_wavlm = self.wavlm_prop["use_weighted_sum_wavlm"]
+        # self.use_all_hidden_states = self.wavlm_prop["use_all_hidden_states"]
+        # self.text_embed_prop = text_embed_prop
+        # self.use_text_embed_rep = self.text_embed_prop["use_text_embed_rep"]
+
+        self.text_embed_prop = kwargs.get("text_embed_prop") if text_embed_prop is None else text_embed_prop
+        self.wavlm_prop = kwargs.get("wavlm") or {}
+        self.use_wavlm_rep = self.wavlm_prop.get("use_wavlm_rep", False)
+        self.use_weighted_sum_wavlm = self.wavlm_prop.get("use_weighted_sum_wavlm", False)
+        self.use_all_hidden_states = self.wavlm_prop.get("use_all_hidden_states", False)
+        self.use_text_embed_rep = False
+        if self.text_embed_prop is not None:
+            self.use_text_embed_rep = self.text_embed_prop.get("use_text_embed_rep", False)
+
+       
         if self.use_text_embed_rep:
             vocab_char_map, vocab_size = get_tokenizer(tokenizer_path=self.text_embed_prop["tokenizer_path"], tokenizer=self.text_embed_prop["tokenizer"])
             self.vocab_char_map = vocab_char_map

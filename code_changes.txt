@@ -73,5 +73,11 @@ file: train_melgen_Alon_Matan_with_inference.py
     line 335: added in the test_loss argument sde = sde
 
    
-    line 285 -289: change in the add_figures lines the dimensions by doing squeeze 
->>>>>>> a0c8bce7cd36001db8a72bfda9d217b4fce183a4
+25.05.26
+file: train phoneme_classifier_continuous.py
+    changes: 
+        line 127 changed to     net_diffwave = builder.build_model(model_cfg)
+        line 128 changed to     net = AudioVisualModel(cfg.g_model, net_diffwave).cuda()
+file: 
+
+

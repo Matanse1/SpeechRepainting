@@ -4,7 +4,7 @@
 # continuous SDE noise injection path used by the mel generation models.
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -123,8 +123,9 @@ def train(
     print("Data loaded")
 
     builder = ModelBuilder()
-    net_diffwave = builder.build_diffwave_model(model_cfg)
-    net = AudioVisualModel(net_diffwave).cuda()
+    
+    net_diffwave = builder.build_model(model_cfg)
+    net = AudioVisualModel(cfg.g_model, net_diffwave).cuda()
     print_size(net, verbose=False)
 
     criterion = nn.CrossEntropyLoss(reduction="none")
@@ -332,7 +333,7 @@ def training_loss(
         x_t = mean + std_expanded * z
         if on_noisy_masked_melspec:
             x_t = melspec * torch.unsqueeze(mask, dim=1) + x_t * (1 - torch.unsqueeze(mask, dim=1))
-        phoneme_estimated = net(x_t, masked_cond, t.view(B, 1), cond_drop_prob=0, mask_padding=masked_audio_time_mask)
+        phoneme_estimated = net(x_t, masked_cond, t.view(B, 1), cond_drop_prob=0)
 
     loss = loss_fn(phoneme_estimated, phoneme_target)
     loss = loss * phoneme_target_mask
