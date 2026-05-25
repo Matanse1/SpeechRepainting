@@ -67,3 +67,12 @@ file: utils.py
 changes:
     line 317: added: if melspec.ndim == 3: 
 
+   
+25.05.26
+file: train phoneme_classifier_continuous.py
+    changes: 
+        line 127 changed to     net_diffwave = builder.build_model(model_cfg)
+        line 128 changed to     net = AudioVisualModel(cfg.g_model, net_diffwave).cuda()
+file: 
+
+
