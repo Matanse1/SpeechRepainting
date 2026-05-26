@@ -4,7 +4,7 @@
 # continuous SDE noise injection path used by the mel generation models.
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '4'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -321,7 +321,7 @@ def training_loss(
             transformed_X = melspec * torch.unsqueeze(mask, dim=1) + transformed_X * (1 - torch.unsqueeze(mask, dim=1))
         else:
             transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * melspec + torch.sqrt(1 - Alpha_bar[diffusion_steps]) * z
-        phoneme_estimated = net(transformed_X, masked_cond, diffusion_steps.view(B, 1), cond_drop_prob=0, mask_padding=masked_audio_time_mask)
+        phoneme_estimated = net(transformed_X, masked_cond, diffusion_steps.view(B, 1), cond_drop_prob=0)
     else:
         B = melspec.shape[0]
         device = melspec.device
