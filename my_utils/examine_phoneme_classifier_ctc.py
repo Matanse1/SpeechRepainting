@@ -1,5 +1,5 @@
 import sys
-sys.path.append('/home/dsi/moradim/SpeechRepainting')
+sys.path.append('/home/dsi/sellama/SpeechRepainting')
 from ASR.nnet import CTCLoss
 from pathlib import Path
 import pickle
@@ -49,7 +49,7 @@ diffusion_hyperparams = get_diffusion_hyperparams(diffusion_cfg, fast=False)
 Alpha_bar = diffusion_hyperparams['Alpha_bar'].to(device)
 
 B = 1
-t = 100
+t = 50
 diffusion_steps = (t * torch.ones((mel.shape[0], 1))).cuda()
 z = torch.normal(0, 1, size=mel.shape).cuda()
 mel = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * mel + torch.sqrt(1 - Alpha_bar[diffusion_steps.int()]) * z  # compute x_t from q(x_t|x_0)
@@ -57,7 +57,7 @@ mel = torch.sqrt(Alpha_bar[diffusion_steps.int()]) * mel + torch.sqrt(1 - Alpha_
 
 
 #tokenizer
-tokenizer_path = '/home/dsi/moradim/SpeechRepainting/phoneme_to_number.json'
+tokenizer_path = '/home/dsi/sellama/SpeechRepainting/phoneme_to_number.json'
 with open(tokenizer_path, 'r') as f:
     phoneme_to_number_loaded = json.load(f)
     for key in phoneme_to_number_loaded.keys():

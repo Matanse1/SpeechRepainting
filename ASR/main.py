@@ -15,7 +15,7 @@
 import sys
 sys.path.append(".")
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,5"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # PyTorch
 import torch
 
@@ -55,7 +55,8 @@ def main(rank, args):
         )
 
     # Load Config
-    args.config = importlib.import_module(args.config_file.replace(".py", "").replace("/", "."))
+    config_module_name = args.config_file.replace(".py", "").replace("/", ".").replace("-", "_")
+    args.config = importlib.import_module(config_module_name)
 
     # Load Model
     model = functions.load_model(args)
@@ -142,11 +143,9 @@ def main(rank, args):
 
 if __name__ == "__main__":
     # Args
-    # python ASR/main.py -c ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme.py -m training --checkpoint /dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_lrs3.ckpt -d"
+    # python ASR/main.py -c ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme_without-space.py -m training --checkpoint /dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_lrs3.ckpt -d"
     parser = argparse.ArgumentParser()
-    # 'ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme.py'
-     # "ASR/configs/LRS23/AO/EffConfCTC_noised.py"
-    parser.add_argument("-c", "--config_file", type=str, default="ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme.py", help="Python configuration file containing model hyperparameters")
+    parser.add_argument("-c", "--config_file", type=str, default="ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme_without-space.py", help="Python configuration file containing model hyperparameters")
     parser.add_argument("-m", "--mode", type=str, default="training", help="Mode : training, evaluation, swa, pass, eval_time")
     parser.add_argument("-i", "--checkpoint", type=str, default="/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_lrs3.ckpt", help="Load model from checkpoint name") #/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_lrs3.ckpt, checkpoints_before_finetuning.ckpt
     parser.add_argument("-j", "--num_workers", type=int, default=8, help="Number of data loading workers")

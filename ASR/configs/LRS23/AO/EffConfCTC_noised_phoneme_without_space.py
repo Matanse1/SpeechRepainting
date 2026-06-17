@@ -4,8 +4,10 @@ import ASR.nnet as nnet
 import torch
 import json
 
+from SDE import VPSDE
+
 #tokenizer
-tokenizer_path = '/home/dsi/moradim/SpeechRepainting/phoneme_to_number.json'
+tokenizer_path = '/home/dsi/sellama/SpeechRepainting/phoneme_to_number.json'
 with open(tokenizer_path, 'r') as f:
     phoneme_to_number_loaded = json.load(f)
     for key in phoneme_to_number_loaded.keys():
@@ -14,7 +16,7 @@ with open(tokenizer_path, 'r') as f:
 num_to_phoneme = {v: k for k, v in phoneme_to_number_loaded.items()}
 num_to_phoneme[0] = 'blank'
 vocab_char_map = phoneme_to_number_loaded
-vocab_size = len(phoneme_to_number_loaded)
+vocab_size = len(phoneme_to_number_loaded) + 1 # plus one for blank
 # Architecture
 
 interctc_blocks = []
@@ -29,7 +31,7 @@ grad_max_norm= None
 eval_training = False
 precision = torch.float32
 recompute_metrics = True
-callback_path = "/dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_without-space" # where to save logs and model checkpoints
+callback_path = "/dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space" # where to save logs and model checkpoints
 
 # Beam Search
 beam_search = False
@@ -48,6 +50,10 @@ neural_beta = 1.0
 custom_tokenizer = True
 # Model
 model = nnet.AudioEfficientConformerInterCTC(vocab_size=vocab_size, att_type=att_type, interctc_blocks=interctc_blocks, strides_subsampling=strides_subsampling)
+sde = VPSDE( beta_min=0.1, beta_max=20.0,  N=1000, sampler_type = "pc")
+model.sde = sde
+model.eval_sde_t = 0.5
+
 model.compile(
     losses=nnet.CTCLoss(zero_infinity=True, assert_shorter=False),
     metrics=nnet.PhonemeErrorRate(),

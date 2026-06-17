@@ -60,6 +60,7 @@ class Model(Module):
         self.ema_model = None
         self.ema_tau = 0.0
         self.grad_max_norm = None
+        self.sde = None
 
         # Diffusion params
         diffusion_hyperparams = calc_diffusion_hyperparams_linear(T, beta_0, beta_T, fast=False)
@@ -375,19 +376,23 @@ class Model(Module):
 
     def train_step(self, inputs, targets, precision, grad_scaler, accumulated_steps, acc_step, eval_training):
         """train_step method
-
         - forward_model (forward + compute losses/metrics)
         - backward
 
         """
         B = inputs[0].size(0)
         mel, lengths = inputs
-        mel = mel.permute(0,2,1)
+        mel = mel.permute(0, 2, 1)
+        device = mel.device
 
-        diffusion_steps = torch.randint(self.T, size=(B, 1, 1)).to(self.device)  # randomly sample diffusion steps from 1~T
-        z = torch.normal(0, 1, size=mel.shape).cuda()
-        mel = torch.sqrt(self.Alpha_bar[diffusion_steps]) * mel + torch.sqrt(1 - self.Alpha_bar[diffusion_steps]) * z  # compute x_t from q(x_t|x_0)
-        inputs = mel, lengths
+        eps = 1e-5
+        t = torch.rand(B, device=device) * (self.sde.T - eps) + eps
+        z = torch.randn_like(mel)
+        mean, std = self.sde.marginal_prob(mel, None, t)
+        x_t = mean + std[:, None, None] * z               # look on this later
+        inputs = x_t, lengths
+        sde_t = t / self.sde.T                            
+        diffusion_steps = (sde_t * (self.sde.N - 1)).view(B, 1, 1)
 
         # Automatic Mixed Precision Casting (model forward + loss computing)
         if "cuda" in str(self.device):
@@ -1150,15 +1155,34 @@ class Model(Module):
             inputs = self.transfer_to_device(inputs)
             targets = self.transfer_to_device(targets)
 
+            # B = inputs[0].size(0)
+            # mel, lengths = inputs
+            # mel = mel.permute(0,2,1)
+
+            # time_step = 20
+            # diffusion_steps = time_step*torch.ones(B, 1, 1).long().cuda()  # randomly sample diffusion steps from 1~T
+            # z = torch.normal(0, 1, size=mel.shape).cuda()
+            # mel = torch.sqrt(self.Alpha_bar[diffusion_steps]) * mel + torch.sqrt(1 - self.Alpha_bar[diffusion_steps]) * z  # compute x_t from q(x_t|x_0)
+            # inputs = mel, lengths 
             B = inputs[0].size(0)
             mel, lengths = inputs
-            mel = mel.permute(0,2,1)
+            mel = mel.permute(0, 2, 1)
+            device = mel.device
 
-            time_step = 20
-            diffusion_steps = time_step*torch.ones(B, 1, 1).long().cuda()  # randomly sample diffusion steps from 1~T
-            z = torch.normal(0, 1, size=mel.shape).cuda()
-            mel = torch.sqrt(self.Alpha_bar[diffusion_steps]) * mel + torch.sqrt(1 - self.Alpha_bar[diffusion_steps]) * z  # compute x_t from q(x_t|x_0)
-            inputs = mel, lengths        
+            eps = 1e-5
+            eval_t = getattr(self, "eval_sde_t", 0.5 * self.sde.T)
+            t = torch.full(
+                (B,),
+                float(eval_t),
+                device=device,
+                dtype=mel.dtype
+            )
+            z = torch.randn_like(mel)
+            mean, std = self.sde.marginal_prob(mel, None, t)
+            x_t = mean + std[:, None, None] * z
+            inputs = x_t, lengths
+            sde_t = t / self.sde.T
+            diffusion_steps = (sde_t * (self.sde.N - 1)).view(B, 1, 1)      
             
             # Eval Step
             batch_losses, batch_metrics, batch_truths, batch_preds = self.eval_step(inputs, diffusion_steps, targets, verbose)
