@@ -505,7 +505,7 @@ def generate(
                 g2p_model = G2p()
                 g2p = get_g2p_pipeline(g2p_model, with_space=with_space)
                 print(f'Apply {type_input_guidance} guidance with space={with_space}')    
-            asr_guidance_net, tokenizer, decoder = asr_models.get_models(ds_name, type_input_guidance=type_input_guidance, with_space=with_space)
+            asr_guidance_net, tokenizer, decoder = asr_models.get_models(ds_name, type_input_guidance=type_input_guidance, with_space=with_space, checkpoint_ao=kwargs.get("asr_checkpoint_ao", None))
             print('ASR, tokenizer and decoder loaded')
     else:
         asr_guidance_net, tokenizer, decoder, text = None, None, None, None

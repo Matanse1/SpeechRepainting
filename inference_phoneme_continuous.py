@@ -292,7 +292,7 @@ def main():
     parser.add_argument("--expected", default=None, help="Expected phoneme sequence or guidance text")
     parser.add_argument("--predicted", default=None, help="Predicted / real phoneme sequence for comparison")
     parser.add_argument("--output_html", default="phoneme_comparison.html", help="Path to write comparison HTML")
-    args = parser.parse_args()
+    args = parser.parse_args()  
 
     phoneme_to_number, num_to_phoneme, map_path = load_phoneme_map(args.phoneme_map)
     print("Loaded phoneme map:", map_path)

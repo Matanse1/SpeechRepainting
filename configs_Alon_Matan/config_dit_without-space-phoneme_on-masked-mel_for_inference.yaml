@@ -264,6 +264,7 @@ generate:
   on_noisy_masked_melspec: True # whether to input the model the masked noisy melspec or noisy melspec(in inference only)
   mel_text: True # or masked_text
   with_space: False
+  asr_checkpoint_ao: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space/checkpoints_epoch_4_step_16510.ckpt
   mask_info:
     mask_type: repeat_all_freq
     noise_type: 0 # randn

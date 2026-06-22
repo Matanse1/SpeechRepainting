@@ -3,14 +3,19 @@
 # and the sampling/SDE predictor-corrector logic of inference_full_mel_only_new.py.
 
 import os
+import json
 import time
 import warnings
 warnings.filterwarnings("ignore")
 import matplotlib.image
 import numpy as np
+import soundfile as sf
 import torch
 import torch.nn as nn
 import hydra
+from hifi_gan.generator import Generator as Vocoder
+from hifi_gan.env import AttrDict
+from hifi_gan import utils as vocoder_utils
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
@@ -24,6 +29,27 @@ from utils import (
 )
 from SDE import VPSDE, VESDE
 from sampling import get_pc_sampler
+
+
+# CHANGE 1: Add the same transcript-to-phoneme helper used by inference_full_mel_only_new.py,
+# but resolve the phoneme dictionary relative to this repo instead of a user-specific path.
+def get_g2p_pipeline(g2p_model, with_space=False):
+    phoneme_to_number_path = os.path.join(os.path.dirname(__file__), "phoneme_to_number.json")
+    with open(phoneme_to_number_path, "r") as f:
+        valid_chars = list(json.load(f).keys())
+
+    def g2p(text):
+        phonemes = g2p_model(text)
+        processed_list = []
+        for item in phonemes:
+            if item == " ":
+                if with_space:
+                    processed_list.append("space")
+            elif item in valid_chars:
+                processed_list.append(item)
+        return processed_list
+
+    return g2p
 
 
 def sampling(
@@ -68,7 +94,8 @@ def sampling(
 
     preds_ao = 'None'
 
-    # Handle ASR tokenization if guidance net is active
+    # CHANGE 2: Tokenize ASR/phoneme guidance targets and fail early if guidance was requested
+    # but no usable target was built.
     if asr_guidance_net is not None and tokens is None:
         if type_input_guidance == 'text' and guidance_text is not None:
             tokens = torch.LongTensor(tokenizer.encode(guidance_text))
@@ -77,6 +104,11 @@ def sampling(
             tokens = torch.tensor([tokenizer[t] for t in phoneme4guidance[0]]).unsqueeze(0).cuda()
         elif type_input_guidance == 'frame_level_phoneme' and per_frame_phoneme4guidance is not None:
             tokens = torch.tensor(per_frame_phoneme4guidance[0], dtype=torch.int64).unsqueeze(0).cuda()
+        if tokens is None:
+            raise ValueError(
+                f"ASR guidance is enabled, but no guidance tokens were built for "
+                f"type_input_guidance={type_input_guidance!r}."
+            )
 
     masked_melspec, masked_audio_time = condition
     if masked_melspec.ndim == 4 and masked_melspec.shape[1] == 1:
@@ -188,7 +220,11 @@ def sampling(
                     inputs = x.detach().requires_grad_(True), length_input
                     targets = tokens, torch.tensor([tokens.shape[1]]).cuda()
                     asr_guidance_net.device = torch.device("cuda")
-                    batch_losses = asr_guidance_net.forward_model(inputs, t.view(x.shape[0], 1), targets, compute_metrics=False, verbose=0)[0]
+                    # CHANGE 10: The ASR phoneme model was trained with continuous SDE time
+                    # converted to the diffusion-step embedding index: t / T * (N - 1).
+                    asr_sde = getattr(asr_guidance_net, "sde", sde)
+                    diffusion_steps_asr = (t / asr_sde.T * (asr_sde.N - 1)).view(x.shape[0], 1, 1)
+                    batch_losses = asr_guidance_net.forward_model(inputs, diffusion_steps_asr, targets, compute_metrics=False, verbose=0)[0]
                     asr_grad = torch.autograd.grad(batch_losses["loss"], inputs[0])[0]
                 elif type_input_guidance == 'frame_level_phoneme':
                     masked_melspec, audio_time_masked = condition
@@ -264,6 +300,9 @@ def generate(
         without_condtion=False,
         skip_step=1,
         with_space=False,
+        mel_text=True,
+        hifi_gan_config='hifi_gan/config.json',
+        hifi_gan_checkpoint='/dsi/gannot-lab/gannot-lab1/users/mordehay/hifi_gan/g_02400000',
         **kwargs
     ):
     """
@@ -311,14 +350,70 @@ def generate(
         print(e)
         raise Exception('No valid model found')
 
-    dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=False, return_true_text=True)
+    print('Load HiFi-GAN vocoder')
+    if not os.path.exists(hifi_gan_config):
+        raise FileNotFoundError(f'HiFi-GAN config not found: {hifi_gan_config}')
+    with open(hifi_gan_config) as f:
+        data = f.read()
+    json_config = json.loads(data)
+    hifi_cfg = AttrDict(json_config)
+    vocoder = Vocoder(hifi_cfg).cuda()
+    if not os.path.exists(hifi_gan_checkpoint):
+        raise FileNotFoundError(f'HiFi-GAN checkpoint not found: {hifi_gan_checkpoint}')
+    state_dict_g = vocoder_utils.load_checkpoint(hifi_gan_checkpoint, 'cuda')
+    vocoder.load_state_dict(state_dict_g['generator'])
+    vocoder.eval()
+    vocoder.remove_weight_norm()
+    print(f'Finish loading HiFi-GAN from {hifi_gan_checkpoint}')
+
     dataset_type = dataset_cfg.dataset_type
+
+    # CHANGE 3: For phoneme guidance, request phoneme targets from the dataset when the config
+    # does not already provide input_text. This avoids requiring g2p when phoneme files exist.
+    if apply_asr_guidance and type_input_guidance == 'phoneme':
+        dataset_section = dataset_cfg[dataset_type]
+        if str(dataset_section.get("use_input_text", "none")).lower() == "none":
+            dataset_section.use_input_text = "phoneme"
+
+    dataset = get_dataset(dataset_cfg, split='test', return_mask_properties=False, return_true_text=True)
     dataset_indices = list(range(n_samples))
 
+    # CHANGE 4: Load ASR guidance before building sample targets and fail loudly on errors.
+    # Silent fallback would make runs look guided while actually using only MelGen CFG.
+    asr_guidance_net, tokenizer, decoder = None, None, None
+    g2p = None
+    if apply_asr_guidance:
+        import ASR.asr_models as asr_models
+        ds_name = 'LRS3'
+        if type_input_guidance == 'phoneme':
+            try:
+                from g2p_en import G2p
+                g2p_model = G2p()
+                g2p = get_g2p_pipeline(g2p_model, with_space=with_space)
+            except ImportError:
+                g2p = None
+            print(f'Apply {type_input_guidance} guidance with space={with_space}')
+        elif type_input_guidance == 'text':
+            print(f'Apply {type_input_guidance} guidance')
+        elif type_input_guidance == 'frame_level_phoneme':
+            raise NotImplementedError("frame_level_phoneme guidance needs the phoneme classifier model path from inference_full_mel_only_new.py.")
+        asr_guidance_net, tokenizer, decoder = asr_models.get_models(
+            ds_name,
+            type_input_guidance=type_input_guidance,
+            with_space=with_space,
+            checkpoint_ao=kwargs.get("asr_checkpoint_ao", None),
+        )
+        print('ASR Guidance Network, Tokenizer and Decoder successfully loaded')
+
+    # CHANGE 5: Track guidance targets alongside each sample so phoneme ASR guidance can be
+    # passed into sampling(), matching inference_full_mel_only_new.py.
     groundtruth_melspec, masked_cond, masks, mask_frames_list, text_list, input_text_list, masked_audio_time_mask_list = [], [], [], [], [], [], []
+    phoneme4guidance_list, per_frame_phoneme4guidance_list = [], []
     for i in dataset_indices:
         text = None
         input_text = None
+        phoneme4guidance = ['None']
+        per_frame_phoneme4guidance = ['None']
         if dataset_type == 'explosion_speech_inpainting':
             speech_melspec, mix_melspec, mix_time, _, masked_speech_time, explosions_activity, start_explosions, explosions_length = dataset[i]
             mask = 1 - explosions_activity
@@ -336,11 +431,16 @@ def generate(
             _masked_cond = [masked_melspec.cuda(), masked_audio_time.cuda()]
             _masked_cond = [_masked_cond[j].unsqueeze(0).cuda() for j in range(len(_masked_cond))]
         elif dataset_cfg.dataset_type == 'speech_inpainting_anechoic':
-            if model_cfg.text_embed_prop.use_text_embed_rep or model_cfg.tts_kw.use_tts:
-                _gt_melspec, masked_melspec, masked_audio_time, _mask, text, input_text = dataset[i]
+            # CHANGE 6: Unpack anechoic samples according to what the dataset returns, not only
+            # according to model text flags. This keeps use_input_text: none usable with true text.
+            sample = dataset[i]
+            if len(sample) == 6:
+                _gt_melspec, masked_melspec, masked_audio_time, _mask, text, input_text = sample
                 input_text = [input_text]
+            elif len(sample) == 5:
+                _gt_melspec, masked_melspec, masked_audio_time, _mask, text = sample
             else:
-                _gt_melspec, masked_melspec, masked_audio_time, _mask, text = dataset[i]
+                raise ValueError(f"Unexpected speech_inpainting_anechoic sample length: {len(sample)}")
             _mask = _mask.unsqueeze(0).cuda()
             _masked_cond = [masked_melspec.cuda(), masked_audio_time.cuda()]
             _masked_cond = [_masked_cond[j].unsqueeze(0) for j in range(len(_masked_cond))]
@@ -363,6 +463,41 @@ def generate(
             mask_frames = None
             masked_audio_time_mask = None
 
+        # CHANGE 7: Build the per-sample ASR guidance condition. For phoneme guidance, prefer
+        # dataset phonemes when present; otherwise generate phonemes from the transcript with g2p.
+        if apply_asr_guidance:
+            if type_input_guidance == 'text':
+                if text is None:
+                    raise ValueError("Text ASR guidance requires return_true_text data, but text is None.")
+                if mel_text:
+                    text = preprocess_text(text)
+                else:
+                    raise NotImplementedError("mel_text=False ASR transcript prediction is not implemented in inference_melgen_continuous.py.")
+            elif type_input_guidance == 'phoneme':
+                if input_text is not None and input_text != ['None']:
+                    phoneme4guidance = [input_text[0]]
+                    if not with_space:
+                        phoneme4guidance[0] = [item for item in phoneme4guidance[0] if item != "space"]
+                else:
+                    if text is None:
+                        raise ValueError("Phoneme guidance requires either dataset input_text or true transcript text.")
+                    if g2p is None:
+                        raise ImportError(
+                            "Phoneme guidance needs dataset input_text='phoneme' or the g2p_en package. "
+                            "The script tried to enable dataset phonemes automatically; if this failed, "
+                            "check that phoneme_seq2 files exist for the selected dataset."
+                        )
+                    phoneme4guidance = [g2p(preprocess_text(text))]
+                if len(phoneme4guidance[0]) == 0:
+                    raise ValueError("Phoneme guidance target is empty after preprocessing.")
+                print(f"The Ground truth phoneme is: {' '.join(phoneme4guidance[0])}")
+            elif type_input_guidance == 'frame_level_phoneme':
+                if input_text is None:
+                    raise ValueError("Frame-level phoneme guidance requires dataset input_text.")
+                per_frame_phoneme4guidance = [input_text[0]]
+            else:
+                raise ValueError(f"Unsupported type_input_guidance: {type_input_guidance}")
+
         _gt_melspec = denormalise_mel(_gt_melspec)
         groundtruth_melspec.append(_gt_melspec.unsqueeze(0))
         masked_cond.append(_masked_cond)
@@ -371,17 +506,8 @@ def generate(
         text_list.append(text)
         input_text_list.append(input_text)
         masked_audio_time_mask_list.append(masked_audio_time_mask)
-
-    # Dynamic loading of ASR guidance models if requested
-    asr_guidance_net, tokenizer, decoder = None, None, None
-    if apply_asr_guidance:
-        try:
-            import ASR.asr_models as asr_models
-            ds_name = 'LRS3'
-            asr_guidance_net, tokenizer, decoder = asr_models.get_models(ds_name, type_input_guidance=type_input_guidance, with_space=with_space)
-            print('ASR Guidance Network, Tokenizer and Decoder successfully loaded')
-        except Exception as e:
-            print(f"Could not load ASR guidance library components: {e}")
+        phoneme4guidance_list.append(phoneme4guidance)
+        per_frame_phoneme4guidance_list.append(per_frame_phoneme4guidance)
 
     print(f'begin generating melspectrograms | {n_samples} samples')
 
@@ -412,6 +538,10 @@ def generate(
             tokenizer=tokenizer,
             decoder=decoder,
             without_condtion=without_condtion,
+            # CHANGE 8: Pass the prepared phoneme guidance targets into the sampler so the
+            # ASR/phoneme CTC loss can contribute gradients during SDE sampling.
+            phoneme4guidance=phoneme4guidance_list[i],
+            per_frame_phoneme4guidance=per_frame_phoneme4guidance_list[i],
             type_input_guidance=type_input_guidance,
             skip_step=skip_step,
         )
@@ -436,6 +566,20 @@ def generate(
             matplotlib.image.imsave(os.path.join(output_dir, f'sample_{idx}_spec_image.png'), mel_np[::-1])
         except Exception:
             pass
+
+        try:
+            melspec = mel.squeeze(0)
+            if melspec.ndim == 4:
+                melspec = melspec.squeeze(1)
+            if melspec.ndim == 2:
+                melspec = melspec.unsqueeze(0)
+            audio = vocoder(melspec.cuda())
+            audio = audio.squeeze()
+            audio = audio / 1.1 / audio.abs().max()
+            audio = audio.cpu().numpy()
+            sf.write(os.path.join(output_dir, f'sample_{idx}_generated_audio_hifi_gan.wav'), audio, 16000)
+        except Exception as e:
+            print(f'Warning: HiFi-GAN vocoding failed for sample {idx}: {e}')
 
     # Move all tensors to CPU for consistency with inference_melgen.py
     generated_melspec = [mel.cpu() for mel in generated_melspec]

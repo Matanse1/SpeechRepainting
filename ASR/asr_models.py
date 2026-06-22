@@ -2,15 +2,17 @@ from .nnet import AudioEfficientConformerInterCTC, PhonemeErrorRate
 from .nnet import CTCLoss, CTCBeamSearchDecoder, CTCGreedySearchDecoder
 import sentencepiece as spm
 import json
+import os
+from SDE import VPSDE
 
-def get_models(dataset, type_input_guidance='text', with_space=False):
+def get_models(dataset, type_input_guidance='text', with_space=False, checkpoint_ao=None):
 
         
     assert dataset.lower() in ['lrs3', 'lrs2'], 'Dataset must be LRS3 or LRS2'
     if type_input_guidance == 'text':
         print("The Guidance is ASR")
         asr_guidance_net = AudioEfficientConformerInterCTC(interctc_blocks=[], T=400, beta_0=0.0001, beta_T=0.02, strides_subsampling=2)
-        checkpoint_ao = f"/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_{dataset.lower()}.ckpt"
+        checkpoint_ao = checkpoint_ao or f"/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_{dataset.lower()}.ckpt"
         tokenizer_path = "/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/tokenizerbpe256.model" #thi is the tokenizer
         tokenizer = spm.SentencePieceProcessor(tokenizer_path)  # for converting text to tokens
         
@@ -29,7 +31,9 @@ def get_models(dataset, type_input_guidance='text', with_space=False):
     elif type_input_guidance == 'phoneme':
         print("The Guidance is Phoneme")
         #tokenizer
-        tokenizer_path = '/home/dsi/moradim/SpeechRepainting/phoneme_to_number.json'
+        # CHANGE 9: Resolve the phoneme tokenizer from this repo and allow inference configs
+        # to override the trained ASR/phoneme checkpoint path.
+        tokenizer_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "phoneme_to_number.json"))
         with open(tokenizer_path, 'r') as f:
             phoneme_to_number_loaded = json.load(f)
             for key in phoneme_to_number_loaded.keys():
@@ -39,11 +43,15 @@ def get_models(dataset, type_input_guidance='text', with_space=False):
         vocab_size = len(phoneme_to_number_loaded)
         tokenizer = phoneme_to_number_loaded
         asr_guidance_net = AudioEfficientConformerInterCTC(vocab_size=vocab_size, interctc_blocks=[], T=400, beta_0=0.0001, beta_T=0.02, strides_subsampling=1)
+        # CHANGE 11: Match the continuous SDE metadata used when this phoneme model was trained.
+        # Guidance inference converts sampler time with this SDE before calling forward_model().
+        asr_guidance_net.sde = VPSDE(beta_min=0.1, beta_max=20, N=1000, sampler_type="pc")
+        asr_guidance_net.eval_sde_t = 0.5
         # checkpoint_ao = "/dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_9_step_9285.ckpt" no-space
         if with_space:
-            checkpoint_ao = '/dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space-con/checkpoints_epoch_32_step_44024.ckpt' # with-space 
+            checkpoint_ao = checkpoint_ao or '/dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space-con/checkpoints_epoch_32_step_44024.ckpt' # with-space 
         else:
-            checkpoint_ao = '/dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_without-space/checkpoints_epoch_38_step_52278.ckpt'
+            checkpoint_ao = checkpoint_ao or '/dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_without-space/checkpoints_epoch_38_step_52278.ckpt'
 
         decoder = CTCGreedySearchDecoder(tokenizer_path=tokenizer_path, custom_tokenizer=True, num_to_phoneme=num_to_phoneme)
         metric = PhonemeErrorRate()

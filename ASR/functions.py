@@ -86,7 +86,11 @@ def load_model(args):
 
     # Load Checkpoint
     if args.checkpoint is not None:
-        model.load(os.path.join(args.config.callback_path, args.checkpoint), load_optimizer=False, strict=False)
+        model.load(
+            os.path.join(args.config.callback_path, args.checkpoint),
+            load_optimizer=getattr(args, "load_optimizer", False),
+            strict=False,
+        )
 
     # Barrier
     if args.distributed:
