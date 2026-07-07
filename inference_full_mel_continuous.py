@@ -63,6 +63,45 @@ from sampling import get_pc_sampler
 # This import is required for the trained phoneme classifier.
 import ASR.nnet as nnet
 
+DEFAULT_HIFIGAN_CONFIG = "hifi_gan/config.json"
+DEFAULT_HIFIGAN_CHECKPOINT = "/dsi/gannot-lab/gannot-lab1/users/mordehay/hifi_gan/g_02400000"
+
+
+def load_hifigan_vocoder(config_path, checkpoint_path, device):
+    with open(config_path) as f:
+        data = f.read()
+
+    json_config = json.loads(data)
+    h = AttrDict(json_config)
+
+    vocoder = Vocoder(h).to(device)
+    state_dict_g = vocoder_utils.load_checkpoint(checkpoint_path, str(device))
+    vocoder.load_state_dict(state_dict_g["generator"])
+
+    vocoder.eval()
+    vocoder.remove_weight_norm()
+    return vocoder
+
+
+def save_audio_from_mel(mel, vocoder, output_path, sample_rate=16000):
+    device = next(vocoder.parameters()).device
+
+    if mel.ndim == 2:
+        mel = mel.unsqueeze(0)
+
+    if mel.ndim == 4:
+        mel = mel.squeeze(1)
+
+    mel = mel.to(device)
+
+    with torch.no_grad():
+        audio = vocoder(mel)
+
+    audio = audio.squeeze()
+    audio = audio / 1.1 / (audio.abs().max() + 1e-8)
+    audio = audio.detach().cpu().numpy()
+
+    sf.write(output_path, audio, sample_rate)
 
 # Phoneme helpers are provided by a separate module to keep this file focused
 # on mel-generation and sampling. Import the helpers from the phoneme-only
@@ -417,8 +456,8 @@ def generate(
     phoneme_classifier_strides_subsampling=1,
     phoneme_guidance_debug=False,
     export_audio=False,
-    vocoder_config_path=DEFAULT_HIFIGAN_CONFIG,
-    vocoder_checkpoint_path=DEFAULT_HIFIGAN_CHECKPOINT,
+    vocoder_config_path=None,
+    vocoder_checkpoint_path=None,
     **kwargs,
 ):
     """Generate melspectrograms using continuous SDE inference and optional phoneme guidance."""
@@ -475,10 +514,35 @@ def generate(
     if apply_asr_guidance:
         phoneme_to_number, num_to_phoneme, resolved_map_path = load_phoneme_map(
             phoneme_map_path=phoneme_map_path,
-            remove_space=False,  # keep classifier vocab identical to training
+            remove_space=phoneme_remove_space,
         )
+
+        # Force without-space vocabulary and compact ids.
+        # blank remains 0, phonemes become 1..K.
+        if phoneme_remove_space:
+            phoneme_to_number.pop("space", None)
+            phoneme_to_number.pop(" ", None)
+
+        phoneme_to_number = {k: int(v) for k, v in phoneme_to_number.items()}
+
+        # Compact the ids after removing space.
+        # This removes gaps such as max_id=70 with only 69 entries.
+        sorted_phonemes = sorted(phoneme_to_number.items(), key=lambda kv: kv[1])
+        phoneme_to_number = {
+            phoneme: idx + 1
+            for idx, (phoneme, old_id) in enumerate(sorted_phonemes)
+        }
+
+        num_to_phoneme = {v: k for k, v in phoneme_to_number.items()}
+        num_to_phoneme[0] = "blank"
+
+        phoneme_vocab_size = len(phoneme_to_number) + 1
+
         print(f"Loaded phoneme map from: {resolved_map_path}")
-        print(f"Phoneme vocab size including blank: {len(phoneme_to_number) + 1}")
+        print("space in phoneme map:", "space" in phoneme_to_number)
+        print("num phoneme entries:", len(phoneme_to_number))
+        print("max phoneme id:", max(phoneme_to_number.values()))
+        print(f"Phoneme vocab size including blank: {phoneme_vocab_size}")
 
         if phoneme_classifier_ckpt is None:
             phoneme_classifier_dir = resolve_existing_path(
@@ -491,7 +555,7 @@ def generate(
         asr_guidance_net = load_trained_phoneme_classifier(
             checkpoint_path=phoneme_classifier_ckpt,
             device=device,
-            vocab_size=len(phoneme_to_number) + 1,
+            vocab_size=phoneme_vocab_size,
             beta_min=phoneme_classifier_beta_min,
             beta_max=phoneme_classifier_beta_max,
             sde_N=phoneme_classifier_N,
@@ -672,7 +736,9 @@ def generate(
     )
 
     # Save generated mels.
-    output_dir = os.path.join(save_dir, "generated_mels_continuous_phoneme_guidance")
+    run_id = time.strftime("%Y%m%d_%H%M%S")
+    run_id += f"_asr{asr_start}_w{w_asr}"
+    output_dir = os.path.join(save_dir, "generated_mels_continuous_phoneme_guidance", run_id)
     os.makedirs(output_dir, exist_ok=True)
 
     for idx, mel in enumerate(generated_melspec):
@@ -698,14 +764,44 @@ def generate(
             print(f"Could not save mel image for sample {idx}: {exc}")
 
         if vocoder is not None:
+             # 1. Generated audio
             try:
+                gen_audio_path = os.path.join(output_dir, f"{sample_name}_generated_audio_hifi_gan.wav")
                 save_audio_from_mel(
                     mel.squeeze(0),
                     vocoder,
-                    os.path.join(output_dir, f"{sample_name}_generated_audio_hifi_gan.wav"),
+                    gen_audio_path,
                 )
+                print(f"Saved generated audio to: {gen_audio_path}")
             except Exception as exc:
-                print(f"Could not save audio for sample {idx}: {exc}")
+                print(f"Could not save generated audio for sample {idx}: {exc}")
+
+            # 2. Ground-truth audio through the same vocoder
+            try:
+                gt_audio_path = os.path.join(output_dir, f"{sample_name}_gt_audio_hifi_gan.wav")
+                save_audio_from_mel(
+                    groundtruth_melspec[idx].squeeze(0),
+                    vocoder,
+                    gt_audio_path,
+                )
+                print(f"Saved GT audio to: {gt_audio_path}")
+            except Exception as exc:
+                print(f"Could not save GT audio for sample {idx}: {exc}")
+
+            # 3. Masked / condition audio through the same vocoder
+            try:
+                masked_mel = masked_cond[idx][0]  # masked melspec, still normalized
+                masked_mel = denormalise_mel(masked_mel)
+
+                masked_audio_path = os.path.join(output_dir, f"{sample_name}_masked_audio_hifi_gan.wav")
+                save_audio_from_mel(
+                    masked_mel.squeeze(0),
+                    vocoder,
+                    masked_audio_path,
+                )
+                print(f"Saved masked audio to: {masked_audio_path}")
+            except Exception as exc:
+                print(f"Could not save masked audio for sample {idx}: {exc}")
 
     generated_melspec = [mel.cpu() for mel in generated_melspec]
     groundtruth_melspec = [gt.cpu() for gt in groundtruth_melspec]

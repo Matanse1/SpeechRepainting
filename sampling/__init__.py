@@ -64,42 +64,117 @@ def get_pc_sampler(
     predictor = predictor_cls(sde, score_fn, probability_flow=probability_flow)
     corrector = corrector_cls(sde, score_fn, snr=snr, n_steps=corrector_steps)
 
+    # def _apply_masking(x, y, t):
+    #     """Apply masking / inpainting constraints to the current state."""
+    #     if mask is None:
+    #         return x
+
+    #     if mask_noise:
+    #         # For inpainting with noise injection, replace observed entries with a noisy version at time t.
+    #         mean, std = sde.marginal_prob(y, y, t)
+    #         noisy_y = mean + std[:, None, None] * torch.randn_like(y)
+    #         return noisy_y * mask + x * (1 - mask)
+
     def _apply_masking(x, y, t):
-        """Apply masking / inpainting constraints to the current state."""
         if mask is None:
             return x
 
-        if mask_noise:
-            # For inpainting with noise injection, replace observed entries with a noisy version at time t.
-            mean, std = sde.marginal_prob(y, y, t)
-            noisy_y = mean + std[:, None, None] * torch.randn_like(y)
-            return noisy_y * mask + x * (1 - mask)
+        _mask = mask.to(x.device)
+        _y = y.to(x.device)
 
+        # Match shapes:
+        # x may be [B, 1, 80, T], while y/mask may be [B, 80, T]
+        if x.ndim == 4 and _y.ndim == 3:
+            _y = _y.unsqueeze(1)
+        if x.ndim == 3 and _y.ndim == 4 and _y.shape[1] == 1:
+            _y = _y.squeeze(1)
+
+        if x.ndim == 4 and _mask.ndim == 3:
+            _mask = _mask.unsqueeze(1)
+        if x.ndim == 3 and _mask.ndim == 4 and _mask.shape[1] == 1:
+            _mask = _mask.squeeze(1)
+
+        if mask_noise:
+            z = torch.randn_like(_y)
+            mean, std = sde.marginal_prob(_y, None, t)
+
+            while std.ndim < _y.ndim:
+                std = std.unsqueeze(-1)
+
+            _y_t = mean + std * z
+        else:
+            _y_t = _y
+
+        # mask == 1: known/unmasked region
+        # mask == 0: missing/masked region
+        return _y_t * _mask + x * (1 - _mask)
 
     def pc_sampler():
         """The PC sampler function."""
         with torch.no_grad():
             xt = sde.prior_sampling(y.shape, y).to(y.device)
             timesteps = torch.linspace(sde.T, eps, sde.N, device=y.device)
+
             for i in range(sde.N):
                 t = timesteps[i]
+
                 if i != len(timesteps) - 1:
                     stepsize = t - timesteps[i + 1]
                 else:
                     stepsize = timesteps[-1]  # from eps to 0
+
                 vec_t = torch.ones(y.shape[0], device=y.device) * t
 
-                # Apply masking / inpainting constraints
+                # Enforce inpainting constraint before corrector
                 xt = _apply_masking(xt, y, vec_t)
-                
+
+                # Corrector, e.g. Langevin
                 xt, xt_mean = corrector.update_fn(xt, y, vec_t)
+
+                # Enforce again before predictor
+                xt = _apply_masking(xt, y, vec_t)
+
+                # Predictor
                 xt, xt_mean = predictor.update_fn(xt, y, vec_t, stepsize)
 
+                # Enforce again after predictor
+                xt = _apply_masking(xt, y, vec_t)
+
             x_result = xt_mean if denoise else xt
+
+            # Final constraint at final small time
+            final_t = torch.ones(y.shape[0], device=y.device) * eps
+            x_result = _apply_masking(x_result, y, final_t)
+
             ns = sde.N * (corrector.n_steps + 1)
             return x_result, ns
-
+        
     return pc_sampler
+
+    # def pc_sampler():
+    #     """The PC sampler function."""
+    #     with torch.no_grad():
+    #         xt = sde.prior_sampling(y.shape, y).to(y.device)
+    #         timesteps = torch.linspace(sde.T, eps, sde.N, device=y.device)
+    #         for i in range(sde.N):
+    #             t = timesteps[i]
+    #             if i != len(timesteps) - 1:
+    #                 stepsize = t - timesteps[i + 1]
+    #             else:
+    #                 stepsize = timesteps[-1]  # from eps to 0
+    #             vec_t = torch.ones(y.shape[0], device=y.device) * t
+
+    #             # Apply masking / inpainting constraints
+    #             xt = _apply_masking(xt, y, vec_t)
+                
+    #             xt, xt_mean = corrector.update_fn(xt, y, vec_t)
+    #             xt, xt_mean = predictor.update_fn(xt, y, vec_t, stepsize)
+
+    #         x_result = xt_mean if denoise else xt
+    #         ns = sde.N * (corrector.n_steps + 1)
+    #         return x_result, ns
+
+    # return pc_sampler
 
 
 def get_ode_sampler(

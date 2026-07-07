@@ -25,13 +25,15 @@ att_type = "patch"
 strides_subsampling = 1 # we need the input length to be greater than the output length we set stide to 1
 print(f"strides_subsampling: {strides_subsampling}")
 # Training
-batch_size = 8 #32
+batch_size = 8
 accumulated_steps = 4
 grad_max_norm= None
 eval_training = False
 precision = torch.float32
 recompute_metrics = True
-callback_path = "/dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space" # where to save logs and model checkpoints
+saving_period_step = 4000
+# callback_path = "/dsi/gannot-lab/gannot-lab1/users/sellama/phoneme_classifier" # where to save logs and model checkpoints
+callback_path = "/home/dsi/sellama/outputs/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space__beta_min_0.04_beta_max_8.0" # where to save logs and model checkpoints
 
 # Beam Search
 beam_search = False
@@ -50,7 +52,7 @@ neural_beta = 1.0
 custom_tokenizer = True
 # Model
 model = nnet.AudioEfficientConformerInterCTC(vocab_size=vocab_size, att_type=att_type, interctc_blocks=interctc_blocks, strides_subsampling=strides_subsampling)
-sde = VPSDE( beta_min=0.1, beta_max=20,  N=1000, sampler_type = "pc")
+sde = VPSDE(beta_min=0.04, beta_max=8.0,  N=1000, sampler_type = "pc")
 model.sde = sde
 model.eval_sde_t = 0.5
 

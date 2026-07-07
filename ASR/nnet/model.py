@@ -25,6 +25,7 @@ import copy
 import matplotlib.pyplot as plt
 import glob
 import math
+import inspect
 
 # Dictionaries
 from ASR.nnet.optimizers import optim_dict
@@ -184,24 +185,25 @@ class Model(Module):
         self.built = True
 
         # Print
-        # if self.rank == 0:
-        #     print("Built", self.name)
-        #     print(
-        #         "losses:",
-        #         {key: type(value).__name__ for key, value in self.losses.items()},
-        #     )
-        #     print(
-        #         "loss weights:",
-        #         {key: type(value).__name__ for key, value in self.loss_weights.items()},
-        #     )
-        #     print(
-        #         "metrics:",
-        #         {key: type(value).__name__ for key, value in self.metrics.items()},
-        #     )
-        #     print(
-        #         "decoders:",
-        #         {key: type(value).__name__ for key, value in self.decoders.items()},
-        #     )
+        if self.rank == 0:
+            print("Built", self.name)
+            print(
+                "losses:",
+                {key: type(value).__name__ for key, value in self.losses.items()},
+            )
+            print(
+                "loss weights:",
+                {key: type(value).__name__ for key, value in self.loss_weights.items()},
+            )
+            print(
+                "metrics:",
+                {key: type(value).__name__ for key, value in self.metrics.items()},
+            )
+            print(
+                "decoders:",
+                {key: type(value).__name__ for key, value in self.decoders.items()},
+            )
+            
 
     def map_to_outputs(self, outputs, struct):
         """Convenience method to conform `struct` to `outputs` structure.
@@ -263,6 +265,10 @@ class Model(Module):
         - compute metrics
 
         """
+        # print("=== FILE DEBUG ===", flush=True)
+        # print("Model class file:", inspect.getfile(type(self)), flush=True)
+        # print("forward_model file:", inspect.getfile(self.forward_model), flush=True)
+        # print("==================", flush=True)
 
         # Init Batch Dict
         batch_losses = {}
@@ -292,6 +298,10 @@ class Model(Module):
 
         # Map Targets to Outputs
         targets = self.map_to_outputs(outputs, targets)
+
+        if self.rank == 0 and self.model_step.item() < 5:
+            out_logits, out_lengths = outputs["outputs"]
+            tgt_tokens, tgt_lengths = targets["outputs"]
 
         # Append Additional Targets
         for key in self.additional_targets:
@@ -385,14 +395,102 @@ class Model(Module):
         mel = mel.permute(0, 2, 1)
         device = mel.device
 
+        # # === DEBUG: compare fixed t values on same batch ===
+        # if self.rank == 0 and not hasattr(self, "_debug_compare_t_once"):
+        #     debug_ts = [0.001, 0.1, 0.3, 0.6]
+
+        #     z_debug = torch.randn_like(mel)
+
+        #     was_training = self.training
+        #     self.eval()
+
+        #     with torch.no_grad():
+        #         for t_val in debug_ts:
+        #             t_debug = torch.full(
+        #                 (B,),
+        #                 t_val * self.sde.T,
+        #                 device=device,
+        #                 dtype=mel.dtype
+        #             )
+
+        #             mean_debug, std_debug = self.sde.marginal_prob(mel, None, t_debug)
+        #             x_debug = mean_debug + std_debug[:, None, None] * z_debug
+
+        #             noise_debug = x_debug - mean_debug
+        #             noise_signal = (
+        #                 noise_debug.std() / (mean_debug.std() + 1e-8)
+        #             ).item()
+
+        #             sde_t_debug = t_debug / self.sde.T
+        #             diffusion_steps_debug = (
+        #                 sde_t_debug * (self.sde.N - 1)
+        #             ).view(B, 1, 1)
+
+        #             batch_losses_debug, _, _, _ = self.forward_model(
+        #                 inputs=(x_debug, lengths),
+        #                 diffusion_steps=diffusion_steps_debug,
+        #                 targets=targets,
+        #                 compute_metrics=False
+        #             )
+
+        #             print(
+        #                 f"DEBUG t={t_val}: "
+        #                 f"loss={batch_losses_debug['loss'].item():.4f}, "
+        #                 f"std={std_debug.mean().item():.4f}, "
+        #                 f"noise/signal={noise_signal:.4f}",
+        #                 flush=True
+        #             )
+
+        #     if was_training:
+        #         self.train()
+
+        #     self._debug_compare_t_once = True
+        #     breakpoint()
+        # # === END DEBUG ===
+
         eps = 1e-5
-        t = torch.rand(B, device=device) * (self.sde.T - eps) + eps
+        # t = torch.rand(B, device=device) * (self.sde.T - eps) + eps
+        t_max = 0.3 * self.sde.T
+        t = torch.rand(B, device=device) * (t_max - eps) + eps
         z = torch.randn_like(mel)
         mean, std = self.sde.marginal_prob(mel, None, t)
         x_t = mean + std[:, None, None] * z               # look on this later
+
+        # -------------------- Debugging Information --------------------
+        # print("mel shape:", mel.shape, flush=True)
+        # print("x_t shape:", x_t.shape, flush=True)
+        # print("mel mean/std/min/max:", mel.mean().item(), mel.std().item(), mel.min().item(), mel.max().item(), flush=True)
+        # print("x_t mean/std/min/max:", x_t.mean().item(), x_t.std().item(), x_t.min().item(), x_t.max().item(), flush=True)
+        # print("std min/max:", std.min().item(), std.max().item(), flush=True)
+        # print("t min/max:", t.min().item(), t.max().item(), flush=True)
+
+        # noise = x_t - mean
+        # print("noise std:", noise.std().item(), flush=True)
+        # print("signal std:", mean.std().item(), flush=True)
+        # print("noise/signal:", (noise.std() / (mean.std() + 1e-8)).item(), flush=True)        
+        
+        # for i in range(B):
+        #     signal_i = mean[i]
+        #     noise_i = x_t[i] - mean[i]
+        #     ratio_i = noise_i.std() / (signal_i.std() + 1e-8)
+
+        #     print(
+        #         f"sample {i}: "
+        #         f"t={t[i].item():.4f}, "
+        #         f"std={std[i].item():.4f}, "
+        #         f"signal_std={signal_i.std().item():.4f}, "
+        #         f"noise_std={noise_i.std().item():.4f}, "
+        #         f"noise/signal={ratio_i.item():.4f}",
+        #         flush=True
+        #     )
+
+        # breakpoint()
+        # -------------------- End Debugging Information --------------------
+
         inputs = x_t, lengths
         sde_t = t / self.sde.T                            
         diffusion_steps = (sde_t * (self.sde.N - 1)).view(B, 1, 1)
+        
 
         # Automatic Mixed Precision Casting (model forward + loss computing)
         if "cuda" in str(self.device):
@@ -638,6 +736,38 @@ class Model(Module):
                     print(f"Skipping parameter {key} due to shape mismatch: "
                         f"checkpoint shape {checkpoint_param.shape} vs "
                         f"current shape {current_param.shape}")
+                    
+
+        # ------------------- Debugging Information -------------------            
+        # if self.rank == 0:
+        #     print("\n=== LOAD DEBUG ===", flush=True)
+        #     print("checkpoint path:", path, flush=True)
+        #     print("checkpoint keys:", list(checkpoint.keys()), flush=True)
+        #     print("checkpoint model_step:", checkpoint.get("model_step", None), flush=True)
+        #     print("checkpoint params:", len(checkpoint_state_dict), flush=True)
+        #     print("current params:", len(current_state_dict), flush=True)
+        #     print("loaded compatible params:", len(new_state_dict), flush=True)
+
+        #     missing_from_ckpt = [
+        #         k for k in current_state_dict.keys()
+        #         if k not in checkpoint_state_dict
+        #     ]
+
+        #     skipped_by_shape = [
+        #         k for k in checkpoint_state_dict.keys()
+        #         if k in current_state_dict
+        #         and current_state_dict[k].shape != checkpoint_state_dict[k].shape
+        #     ]
+
+        #     print("missing from checkpoint:", len(missing_from_ckpt), flush=True)
+        #     print("skipped by shape:", len(skipped_by_shape), flush=True)
+        #     print("first missing:", missing_from_ckpt[:10], flush=True)
+        #     print("first skipped:", skipped_by_shape[:10], flush=True)
+        #     print("==================\n", flush=True)
+
+        #     breakpoint()
+        # ------------------------------------------------------------------------------
+        
         self.load_state_dict({key: value for key, value in new_state_dict.items()}, strict=strict)
         # # Load the compatible parameters
         # self.load_state_dict(new_state_dict, strict=False)
@@ -870,6 +1000,7 @@ class Model(Module):
         detect_anomaly=False,
         recompute_metrics=False,
     ):
+
         # Is Compiled
         if not self.compiled:
             if self.is_distributed:
@@ -907,7 +1038,7 @@ class Model(Module):
 
         # Try Catch
         try:
-            self._evaluate(dataset_eval, None, 0, eval_steps, 0, recompute_metrics)
+            # self._evaluate(dataset_eval, None, 0, eval_steps, 0, recompute_metrics)
 
             # Training Loop
             for epoch in range(initial_epoch, epochs):

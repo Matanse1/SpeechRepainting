@@ -15,7 +15,7 @@
 import sys
 sys.path.append(".")
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # PyTorch
 import torch
 
@@ -145,9 +145,10 @@ if __name__ == "__main__":
     # Args
     # python ASR/main.py -c ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme_without-space.py -m training --checkpoint /dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_lrs3.ckpt -d"
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config_file", type=str, default="ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme_without_space.py", help="Python configuration file containing model hyperparameters")
+    parser.add_argument("-c", "--config_file", type=str, default="ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme_without_space_timos_betas.py", help="Python configuration file containing model hyperparameters")
+    # parser.add_argument("-c", "--config_file", type=str, default="ASR/configs/LRS23/AO/EffConfCTC_noised_phoneme_without_space.py", help="Python configuration file containing model hyperparameters")
     parser.add_argument("-m", "--mode", type=str, default="training", help="Mode : training, evaluation, swa, pass, eval_time")
-    parser.add_argument("-i", "--checkpoint", type=str, default="/dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space/checkpoints_epoch_4_step_16510.ckpt", help="Load model from checkpoint name") #/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_lrs3.ckpt, change to None if not loading from checkpoin # chnged to None for training from scratch
+    parser.add_argument("-i", "--checkpoint", type=str, default=None, help="Load model from checkpoint name") #/dsi/gannot-lab/gannot-lab1/users/mordehay/asr_yochai_lipvoicer/checkpoints_ft_lrs3.ckpt, change to None if not loading from checkpoin # chnged to None for training from scratch
     parser.add_argument("-j", "--num_workers", type=int, default=8, help="Number of data loading workers")
     parser.add_argument("--cpu", action="store_true", help="Load model on cpu")
     parser.add_argument("--load_last", action="store_true", help="Load last model checkpoint")

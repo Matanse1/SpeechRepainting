@@ -192,7 +192,7 @@ dataset:
     # return_mask_properties: False #for train set this to False, for inference set to True
     audio_stft_hop: ${audio.hop_length}
     num4empty_str: 0 #or -12, 0, min, randn
-    use_input_text: none # text (for byte), none, phoneme (for phoneme)
+    use_input_text: phoneme # text (for byte), none, phoneme (for phoneme)
     remove_space: True
   explosion_speech_inpainting:
     base_data_dir: /dsi/gannot-lab/gannot-lab1/datasets/speech_with_explosions
@@ -243,28 +243,38 @@ train: # Not used in generate.py
 
 generate:
   name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states
-  ckpt_path: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/outputs/mel_spec/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1_on_masked_melspec/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_VPSDE_N1000/checkpoint/18000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/700000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/64000.pkl
+  ckpt_path: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/outputs/mel_spec2/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1_on_masked_melspec/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_VPSDE_N1000/checkpoint/132000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/700000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/64000.pkl
   n_samples: 1 # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
-  n_samples_test: 50 #1000 # used in full inference mel only
+  n_samples_test: 1 #1000 # used in full inference mel only
   video_path: null # generate audio for a given silent video file
   skip_step: 1
 
-  export_audio: true # added recently, not tested yet
+  export_audio: True # added recently, not tested yet
+  vocoder_config_path: hifi_gan/config.json
+  vocoder_checkpoint_path: /dsi/gannot-lab/gannot-lab1/users/mordehay/hifi_gan/g_02400000
   
+  # for us - change after the w_asr and asr_start
+  # לבדוק שמה שנכנס לפונים קלסיפייר באמת נכון
+
+  phoneme_map_path: /home/dsi/sellama/SpeechRepainting/phoneme_to_number.json
+  phoneme_remove_space: True
+  phoneme_guidance_debug: True
+
   w_mel_cond: 1 #[-1, 0.5, 0.8, 1, 2]            # w1 in the paper
-  w_asr: 1.5 #[0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
-  asr_start: 0.05 #[320, 270] #270        # t_asr        ################# for SDE - 0.25 ###################
-  save_dir: /home/dsi/sellama/SpeechRepainting/speech_repainting/exp/inference_full_mel_with_phoneme_output #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
+  w_asr: 3 #[0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
+  asr_start: 0.2 #[320, 270] #270        # t_asr        ################# for SDE - 0.25 ###################
+  save_dir: /home/dsi/sellama/outputs/phoneme_classifier #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
   inference_mel_only_name_dir: repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_phoneme-without-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
-  without_condtion: False
-  config_filename_asr_cond: /home/dsi/moradim/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
+  without_condition: False
+  config_filename_asr_cond: /home/dsi/sellama/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
   apply_asr_guidance: True                                                                                                #############  recently added, not tested yet #################
   type_input_guidance: "phoneme" # text , phoneme
   lipread_text_dir: null # directory with predicted text for generating test samples of benchmark dataset
   on_noisy_masked_melspec: True # whether to input the model the masked noisy melspec or noisy melspec(in inference only)
   mel_text: True # or masked_text
   with_space: False
-  asr_checkpoint_ao: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space/checkpoints_epoch_4_step_16510.ckpt
+  phoneme_classifier_ckpt: /home/dsi/sellama/outputs/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space_original_beta/checkpoints_epoch_13_step_53628.ckpt
+  asr_checkpoint_ao: /home/dsi/sellama/outputs/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space_original_beta/checkpoints_epoch_13_step_53628.ckpt
   mask_info:
     mask_type: repeat_all_freq
     noise_type: 0 # randn

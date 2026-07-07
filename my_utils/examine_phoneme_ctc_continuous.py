@@ -68,7 +68,7 @@ else:
     raise ValueError(f"Unsupported SDE type: {diffusion_hyperparams['name']}")
 
 B = 1
-t = 50
+t = 200
 diffusion_steps = (t * torch.ones((mel.shape[0], 1, 1))).cuda()
 continuous_t = (diffusion_steps.view(B) / (sde.N - 1)) * sde.T
 z = torch.normal(0, 1, size=mel.shape).cuda()
@@ -105,7 +105,8 @@ asr_guidance_net = nnet.AudioEfficientConformerInterCTC(vocab_size=vocab_size, a
 asr_guidance_net.sde = sde
 # checkpoint_ao = '/dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_4_step_4127.ckpt'
 # checkpoint_ao = '/dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC/checkpoints_epoch_9_step_9285.ckpt'
-checkpoint_ao = '/dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space/checkpoints_epoch_1_step_4127.ckpt'
+# checkpoint_ao = '/dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space/checkpoints_epoch_1_step_4127.ckpt'
+checkpoint_ao = '/home/dsi/sellama/outputs/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space_original_beta/checkpoints_epoch_13_step_53628.ckpt'
 # checkpoint_ao = "/dsi/gannot-lab/gannot-lab1/users/mordehay/phoneme_guidance_EffConfCTC_with-space/checkpoints_epoch_3_step_4127.ckpt"
 asr_guidance_net.compile(losses=CTCLoss(zero_infinity=True, assert_shorter=False), loss_weights=None, decoders=decoder)
 asr_guidance_net = asr_guidance_net.cuda()

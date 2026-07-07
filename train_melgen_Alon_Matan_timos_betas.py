@@ -21,6 +21,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from dataloaders import dataloader, CollateFn
+from dataloaders import dataloader, CollateFn
 from utils import find_max_epoch, print_size, get_diffusion_hyperparams, local_directory, plot_melspec, fix_len_compatibility
 
 from distributed_util import init_distributed, apply_gradient_allreduce, reduce_tensor
@@ -433,7 +434,7 @@ def test_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask,
 # small_my-tts-dit_with-space_without-sma_tts-output=phoneme_with_energy_pitch
 # config_dit_without-space-phoneme_on-masked-mel
 # small_my-tts-dit_with-space_without-sma_tts-output=phoneme_with_energy_pitch_nnter_attention
-@hydra.main(version_base=None, config_path="configs_Alon_Matan", config_name="config_dit_without-space-phoneme_on-masked-mel")
+@hydra.main(version_base=None, config_path="configs_Alon_Matan", config_name="config_dit_without-space-phoneme_on-masked-mel_timos_betas")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     OmegaConf.set_struct(cfg, False)  # Allow writing keys

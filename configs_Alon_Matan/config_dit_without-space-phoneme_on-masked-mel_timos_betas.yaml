@@ -133,8 +133,8 @@ diffusion:
     beta_T: 0.02
     beta: null
   VPSDE:
-    beta_min: 0.04
-    beta_max: 8.0
+    beta_min: 0.01
+    beta_max: 0.5
     N: 1000
   VESDE:
     sigma_min: 0.01
@@ -221,8 +221,8 @@ audio:
 # Unet_Anechoic_LibSp_conditional-masked-melspec-text_w-masked-pix=${train.w_masked_pix}_tokenizer=${unet.text_embed_prop.tokenizer}_num4empty_str=${dataset.speech_inpainting_anechoic.num4empty_str}
 # Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=${train.w_masked_pix}_diffusion-name=${diffusion.name}
 train: # Not used in generate.py
-  name: DiT_Anechoic_LibSp_SDE_beta0.04_8_from_zero_on_masked_mel # DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1  # Wavenet_Anechoic_LibSp_unconditional #2delete_Anechoic_LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${wavenet.wavlm.two_branch}_specific_hidden_states_randn-filled #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
-  save_dir: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/outputs/mel_spec # where checkpoints will be saved
+  name: DiT_Anechoic_LibSp_SDE_beta0.01_0.5_from_zero_on_masked_mel # DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1  # Wavenet_Anechoic_LibSp_unconditional #2delete_Anechoic_LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${wavenet.wavlm.two_branch}_specific_hidden_states_randn-filled #LibSp_wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}_two_branch=${melgen.wavlm.two_branch}   # LibSp_only-wavlm-base-plus-rep_w_masked_pix=${train.w_masked_pix}     # Name of experiment (prefix of experiment name)
+  save_dir: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/outputs/mel_spec_timo's_betas # where checkpoints will be saved
   ckpt_iter: max # continue training from a specific iteration
 
   # for testing the training phase
