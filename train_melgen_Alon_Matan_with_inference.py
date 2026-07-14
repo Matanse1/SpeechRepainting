@@ -3,7 +3,7 @@
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-os.environ['CUDA_VISIBLE_DEVICES'] = '4' #'1,2,4,5,6,7'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0' #'1,2,4,5,6,7'
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -434,7 +434,7 @@ def test_loss(net, loss_fn, melspec, masked_cond, mask, mask_mask,
 # small_my-tts-dit_with-space_without-sma_tts-output=phoneme_with_energy_pitch
 # config_dit_without-space-phoneme_on-masked-mel
 # small_my-tts-dit_with-space_without-sma_tts-output=phoneme_with_energy_pitch_nnter_attention
-@hydra.main(version_base=None, config_path="configs_Alon_Matan", config_name="config_dit_without-space-phoneme_on-masked-mel")
+@hydra.main(version_base=None, config_path="configs_Alon_Matan", config_name="config_dit_without-space-phoneme_on-masked-mel_timos_betas")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     OmegaConf.set_struct(cfg, False)  # Allow writing keys

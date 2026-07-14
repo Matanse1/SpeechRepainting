@@ -99,7 +99,7 @@ dit:
     conv_layers: 4
     text_num_embeds: 256
     tokenizer: phoneme #'byte' #phoneme
-    tokenizer_path: /home/dsi/kenanal/SpeechRepainting/phoneme_to_number.json #none #  /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json
+    tokenizer_path: /home/dsi/sellama/SpeechRepainting/phoneme_to_number.json #none #  /home/dsi/moradim/SpeechRepainting/phoneme_to_number.json
   tts_kw:
     use_tts: False
     tts_output: "phoneme_with_energy_pitch" # phoneme, mel, phoneme_with_energy_pitch
@@ -114,8 +114,8 @@ dit:
     embed_dim: 768
     num_heads: 3
     positional_emd: InputEmbedding1 # none
-    style_speech_ch_path: /home/dsi/kenanal/SpeechRepainting/style-speech_weights/stylespeech.pth.tar
-    style_speech_config_path: /home/dsi/kenanal/SpeechRepainting/style-speech_weights/config.json
+    style_speech_ch_path: /home/dsi/sellama/SpeechRepainting/style-speech_weights/stylespeech.pth.tar
+    style_speech_config_path: /home/dsi/sellama/SpeechRepainting/style-speech_weights/config.json
     log: "log"
     norm: none # LayerNorm # none
     cross_attn_type: "CrossAttention_noise" # CrossAttention, CrossAttention_noise, CrossAttention_noise
@@ -133,8 +133,8 @@ diffusion:
     beta_T: 0.02
     beta: null
   VPSDE:
-    beta_min: 0.1
-    beta_max: 20.0
+    beta_min: 0.04
+    beta_max: 8.0
     N: 1000
   VESDE:
     sigma_min: 0.01
@@ -243,7 +243,7 @@ train: # Not used in generate.py
 
 generate:
   name: LibSp_wavlm-base-plus-rep_w_masked_pix=0.8_two_branch=True_specific_hidden_states
-  ckpt_path: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/outputs/mel_spec2/exp/DiT_Anechoic_LibSp_conditional-masked-melspec_w-masked-pix=1_on_masked_melspec/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_VPSDE_N1000/checkpoint/132000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/700000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/64000.pkl
+  ckpt_path: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/outputs/mel_spec_with_inference_beta_0.04_to_8/exp/DiT_Anechoic_LibSp_SDE_beta0.04_8_from_zero_on_masked_mel/dit-net_dim768_depth18_heads12_dim-head64_dropout0.1_ff_mult2_VPSDE_N1000/checkpoint/56000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_unconditional/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/700000.pkl #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02/checkpoint/64000.pkl
   n_samples: 1 # Number of utterances from test dataset to be generated, used in train every iters_per_ckpt iters
   n_samples_test: 1 #1000 # used in full inference mel only
   video_path: null # generate audio for a given silent video file
@@ -262,8 +262,8 @@ generate:
 
   w_mel_cond: 1 #[-1, 0.5, 0.8, 1, 2]            # w1 in the paper
   w_asr: 3 #[0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
-  asr_start: 0.2 #[320, 270] #270        # t_asr        ################# for SDE - 0.25 ###################
-  save_dir: /home/dsi/sellama/outputs/phoneme_classifier #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
+  asr_start: 0.5 #[320, 270] #270        # t_asr        ################# for SDE - 0.25 ###################
+  save_dir: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/outputs/generated_mels_continuous_phoneme_guidance_(phoneme+mels)/generated_after_debug_batch_size_model_to_32 #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
   inference_mel_only_name_dir: repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_phoneme-without-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
   without_condition: False
   config_filename_asr_cond: /home/dsi/sellama/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
@@ -273,8 +273,8 @@ generate:
   on_noisy_masked_melspec: True # whether to input the model the masked noisy melspec or noisy melspec(in inference only)
   mel_text: True # or masked_text
   with_space: False
-  phoneme_classifier_ckpt: /home/dsi/sellama/outputs/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space_original_beta/checkpoints_epoch_13_step_53628.ckpt
-  asr_checkpoint_ao: /home/dsi/sellama/outputs/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space_original_beta/checkpoints_epoch_13_step_53628.ckpt
+  phoneme_classifier_ckpt: /home/dsi/sellama/outputs/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space__beta_min_0.04_beta_max_8.0/checkpoints_epoch_25_step_103187.ckpt
+  asr_checkpoint_ao: /home/dsi/sellama/outputs/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space__beta_min_0.04_beta_max_8.0/checkpoints_epoch_25_step_103187.ckpt
   mask_info:
     mask_type: repeat_all_freq
     noise_type: 0 # randn
