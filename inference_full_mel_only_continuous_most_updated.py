@@ -4,7 +4,7 @@
 # this is the full test without asr: mel condition, free-classifier and vocoder(mel2audio)
 import json
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '6'
 import subprocess
 import time
 import warnings
@@ -456,6 +456,31 @@ def sampling(net, diffusion_cfg, diffusion_hyperparams,
         x = masked_melspec * mask + x * (1 - mask)
         if mask_frames is not None:
             x = x[..., :int(torch.sum(mask_frames, dim=-1).item())]
+
+        # Decode the final, clean generated mel for logging in asr_text.txt.
+        # This is separate from the CTC loss used above to guide sampling.
+        if (
+            asr_guidance_net is not None
+            and decoder is not None
+            and type_input_guidance in ['text', 'phoneme']
+        ):
+            length_input = torch.full(
+                (x.shape[0],),
+                x.shape[-1],
+                dtype=torch.long,
+                device=x.device,
+            )
+            diffusion_steps_asr = torch.zeros(
+                (x.shape[0], 1),
+                dtype=x.dtype,
+                device=x.device,
+            )
+            outputs_ao = asr_guidance_net(
+                (x, length_input),
+                diffusion_steps_asr,
+            )["outputs"]
+            preds_ao = decoder(outputs_ao)[0]
+
         return x, preds_ao
 
     # ---------------------------------------------------------------------
