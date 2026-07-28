@@ -4,7 +4,7 @@
 # this is the full test without asr: mel condition, free-classifier and vocoder(mel2audio)
 import json
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '6'
+os.environ['CUDA_VISIBLE_DEVICES'] = '5'
 import subprocess
 import time
 import warnings
@@ -265,7 +265,9 @@ def sampling(net, diffusion_cfg, diffusion_hyperparams,
     # ---------------------------------------------------------------------
     if _dh["name"] in ["VPSDE", "VESDE"]:
         from SDE import VPSDE, VESDE
-        from sampling import get_pc_sampler
+        # from sampling import get_pc_sampler
+        #### debug #####
+        from sampling.__init_debug_broadcast_different import get_pc_sampler
 
         if _dh["name"] == "VPSDE":
             sde = VPSDE(_dh["beta_min"], _dh["beta_max"], _dh["N"])
@@ -394,29 +396,29 @@ def sampling(net, diffusion_cfg, diffusion_hyperparams,
             # ====================== ASR DEBUG BLOCK - DELETE LATER ======================
             normalised_guidance = (grad_normaliser * guidance_grad).detach()
 
-            normalised_guidance_norm = torch.norm(
-                normalised_guidance.reshape(normalised_guidance.shape[0], -1),
-                dim=-1
-            ).mean()
+            # normalised_guidance_norm = torch.norm(
+            #     normalised_guidance.reshape(normalised_guidance.shape[0], -1),
+            #     dim=-1
+            # ).mean()
 
-            asr_weight = 0.0 if w_asr is None else float(w_asr)
+            # asr_weight = 0.0 if w_asr is None else float(w_asr)
 
-            weighted_ratio = (
-                asr_weight * normalised_guidance_norm / (score_norm + 1e-8)
-            ).detach()
+            # weighted_ratio = (
+            #     asr_weight * normalised_guidance_norm / (score_norm + 1e-8)
+            # ).detach()
 
-            print(
-                "[ASR DEBUG ACTIVE]",
-                "t=", float(t.detach().mean().cpu()),
-                "asr_start_t=", float(asr_start_t) if asr_start_t is not None else None,
-                "ctc_loss=", float(loss.detach().mean().cpu()),
-                "raw_asr_grad_norm=", float(guidance_norm.detach().cpu()),
-                "score_norm=", float(score_norm.detach().cpu()),
-                "grad_normaliser=", float(grad_normaliser.detach().cpu()),
-                "normalised_guidance_norm=", float(normalised_guidance_norm.detach().cpu()),
-                "w_asr=", asr_weight,
-                "weighted_asr_to_score_ratio=", float(weighted_ratio.cpu()),
-            )
+            # print(
+            #     "[ASR DEBUG ACTIVE]",
+            #     "t=", float(t.detach().mean().cpu()),
+            #     "asr_start_t=", float(asr_start_t) if asr_start_t is not None else None,
+            #     "ctc_loss=", float(loss.detach().mean().cpu()),
+            #     "raw_asr_grad_norm=", float(guidance_norm.detach().cpu()),
+            #     "score_norm=", float(score_norm.detach().cpu()),
+            #     "grad_normaliser=", float(grad_normaliser.detach().cpu()),
+            #     "normalised_guidance_norm=", float(normalised_guidance_norm.detach().cpu()),
+            #     "w_asr=", asr_weight,
+            #     "weighted_asr_to_score_ratio=", float(weighted_ratio.cpu()),
+            # )
             # ==================== END ASR DEBUG BLOCK - DELETE LATER ====================
 
             return normalised_guidance
@@ -440,6 +442,8 @@ def sampling(net, diffusion_cfg, diffusion_hyperparams,
             mask_noise=on_noisy_masked_melspec,
         )
 
+        print("PC input mel:", masked_melspec.shape)
+        print("PC input mask:", mask.shape)
         x, nfe = pc_sampler()
         print(f"PC sampler finished in {nfe} function evaluations")
 

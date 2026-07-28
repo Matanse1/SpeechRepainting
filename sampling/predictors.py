@@ -43,10 +43,10 @@ class EulerMaruyamaPredictor(Predictor):
     def __init__(self, sde, score_fn, probability_flow=False):
         super().__init__(sde, score_fn, probability_flow=probability_flow)
 
-    def update_fn(self, x, y, t, *args):
+    def update_fn(self, x, y, t, stepsize=None):
         dt = -1. / self.rsde.N
         z = torch.randn_like(x)
-        f, g = self.rsde.sde(x, y, t, *args)
+        f, g = self.rsde.sde(x, y, t)
         x_mean = x + f * dt
         x = x_mean + g[:, None, None, None] * np.sqrt(-dt) * z
         return x, x_mean
