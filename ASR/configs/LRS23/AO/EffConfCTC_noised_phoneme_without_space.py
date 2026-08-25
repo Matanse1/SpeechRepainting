@@ -16,7 +16,7 @@ with open(tokenizer_path, 'r') as f:
 num_to_phoneme = {v: k for k, v in phoneme_to_number_loaded.items()}
 num_to_phoneme[0] = 'blank'
 vocab_char_map = phoneme_to_number_loaded
-vocab_size = len(phoneme_to_number_loaded)
+vocab_size = max(phoneme_to_number_loaded.values()) + 1 
 # Architecture
 
 interctc_blocks = []
@@ -33,7 +33,7 @@ precision = torch.float32
 recompute_metrics = True
 saving_period_step = 4000
 # callback_path = "/dsi/gannot-lab/gannot-lab1/users/sellama/phoneme_classifier" # where to save logs and model checkpoints
-callback_path = "/home/dsi/sellama/outputs/phoneme_classifier/phoneme_guidance_EffConfCTC_without-space__beta_min_0.04_beta_max_8.0" # where to save logs and model checkpoints
+callback_path = "/dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_classifier_weights_for_different_betas/phoneme_guidance_EffConfCTC_without-space__beta_min_0.04_beta_max_8.0_tmax=0.8" # where to save logs and model checkpoints
 
 # Beam Search
 beam_search = False
@@ -54,7 +54,7 @@ custom_tokenizer = True
 model = nnet.AudioEfficientConformerInterCTC(vocab_size=vocab_size, att_type=att_type, interctc_blocks=interctc_blocks, strides_subsampling=strides_subsampling)
 sde = VPSDE(beta_min=0.04, beta_max=8.0,  N=1000, sampler_type = "pc")
 model.sde = sde
-model.eval_sde_t = 0.5
+model.eval_sde_t = 0.8
 
 model.compile(
     losses=nnet.CTCLoss(zero_infinity=True, assert_shorter=False),

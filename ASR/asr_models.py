@@ -5,6 +5,28 @@ import json
 import os
 from SDE import VPSDE
 
+
+def phonemes_to_ctc_ids(phonemes, tokenizer, asr_model):
+    """Encode phonemes and verify that every target fits the loaded CTC head."""
+    unknown = [phoneme for phoneme in phonemes if phoneme not in tokenizer]
+    if unknown:
+        raise ValueError(f"Phonemes missing from the tokenizer: {unknown}")
+
+    token_ids = [int(tokenizer[phoneme]) for phoneme in phonemes]
+    vocab_size = int(asr_model.encoder.head.out_features)
+    invalid = [
+        (phoneme, token_id)
+        for phoneme, token_id in zip(phonemes, token_ids)
+        if token_id < 1 or token_id >= vocab_size
+    ]
+    if invalid:
+        raise ValueError(
+            "CTC target IDs must satisfy 1 <= id < vocab_size. "
+            f"Invalid targets: {invalid}; vocab_size={vocab_size}. "
+            "This checkpoint uses the legacy 70-output phoneme head."
+        )
+    return token_ids
+
 def get_models(dataset, type_input_guidance='text', with_space=False, checkpoint_ao=None):
 
         
@@ -40,6 +62,10 @@ def get_models(dataset, type_input_guidance='text', with_space=False, checkpoint
                 phoneme_to_number_loaded[key] = phoneme_to_number_loaded[key] + 1 #blank is zero so we need to add one
         num_to_phoneme = {v: k for k, v in phoneme_to_number_loaded.items()}
         num_to_phoneme[0] = 'blank'
+        # The existing phoneme checkpoints were trained with a 70-output head.
+        # The JSON already contains 70 entries (including ``space``), while
+        # CTC blank occupies output 0. Using ``len(...) + 1`` constructs 71
+        # outputs and makes Model.load skip the learned head weights.
         vocab_size = len(phoneme_to_number_loaded)
         tokenizer = phoneme_to_number_loaded
         asr_guidance_net = AudioEfficientConformerInterCTC(vocab_size=vocab_size, interctc_blocks=[], T=400, beta_0=0.0001, beta_T=0.02, strides_subsampling=1)
@@ -58,7 +84,22 @@ def get_models(dataset, type_input_guidance='text', with_space=False, checkpoint
     
     asr_guidance_net.compile(losses=CTCLoss(zero_infinity=True, assert_shorter=False), loss_weights=None, metrics=metric, decoders=decoder)
     asr_guidance_net = asr_guidance_net.cuda()
-    asr_guidance_net.load(checkpoint_ao)
+    load_report = asr_guidance_net.load(checkpoint_ao)
+    required_head_keys = {"encoder.head.weight", "encoder.head.bias"}
+    loaded_keys = set(load_report["loaded_keys"])
+    missing_head_keys = sorted(required_head_keys - loaded_keys)
+    if missing_head_keys:
+        raise RuntimeError(
+            "The trained CTC output head was not loaded from the checkpoint. "
+            f"Missing keys: {missing_head_keys}; "
+            f"shape mismatches: {load_report['skipped_shape_keys']}"
+        )
+    if type_input_guidance == 'phoneme':
+        print(
+            "Loaded phoneme CTC vocabulary: "
+            f"{asr_guidance_net.encoder.head.out_features} outputs "
+            "(blank id 0)"
+        )
     asr_guidance_net.eval()
 
 

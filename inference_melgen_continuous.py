@@ -28,7 +28,7 @@ from utils import (
     local_directory, fix_len_compatibility, pad_last_dim, preprocess_text
 )
 from SDE import VPSDE, VESDE
-from sampling import get_pc_sampler
+from sampling import get_ode_sampler, get_pc_sampler
 
 
 # CHANGE 1: Add the same transcript-to-phoneme helper used by inference_full_mel_only_new.py,
@@ -101,7 +101,12 @@ def sampling(
             tokens = torch.LongTensor(tokenizer.encode(guidance_text))
             tokens = tokens.unsqueeze(0).cuda()
         elif type_input_guidance == 'phoneme' and phoneme4guidance is not None:
-            tokens = torch.tensor([tokenizer[t] for t in phoneme4guidance[0]]).unsqueeze(0).cuda()
+            token_ids = asr_models.phonemes_to_ctc_ids(
+                phoneme4guidance[0],
+                tokenizer,
+                asr_guidance_net,
+            )
+            tokens = torch.tensor(token_ids, dtype=torch.long).unsqueeze(0).cuda()
         elif type_input_guidance == 'frame_level_phoneme' and per_frame_phoneme4guidance is not None:
             tokens = torch.tensor(per_frame_phoneme4guidance[0], dtype=torch.int64).unsqueeze(0).cuda()
         if tokens is None:
@@ -250,27 +255,44 @@ def sampling(
             asr_scale = 0.0 if w_asr is None else w_asr
             return score + asr_scale * guidance
 
-        # ── call PC sampler ──
-        predictor_opt = diffusion_cfg.get('predictor', "reverse_diffusion") if hasattr(diffusion_cfg, 'get') else "reverse_diffusion"
-        corrector_opt = diffusion_cfg.get('corrector', "langevin") if hasattr(diffusion_cfg, 'get') else "langevin"
-        snr_opt = diffusion_cfg.get('snr', 0.1) if hasattr(diffusion_cfg, 'get') else 0.1
-        corr_steps_opt = diffusion_cfg.get('corrector_steps', 1) if hasattr(diffusion_cfg, 'get') else 1
+        sampler_type = str(diffusion_cfg.get('sampler_type', 'sde')).lower()
+        if sampler_type == 'sde':
+            sampler = get_pc_sampler(
+                predictor_name=diffusion_cfg.get('predictor', "reverse_diffusion"),
+                corrector_name=diffusion_cfg.get('corrector', "langevin"),
+                sde=sde,
+                score_fn=score_fn,
+                y=masked_melspec,
+                snr=diffusion_cfg.get('snr', 0.1),
+                corrector_steps=diffusion_cfg.get('corrector_steps', 1),
+                eps=diffusion_cfg.get('eps', 3e-2),
+                w_mel_cond=w_mel_cond,
+                mask=mask,
+                mask_noise=on_noisy_masked_melspec,
+            )
+        elif sampler_type == 'ode':
+            sampler = get_ode_sampler(
+                sde=sde,
+                score_fn=score_fn,
+                y=masked_melspec,
+                mask=mask,
+                on_noisy_masked_melspec=on_noisy_masked_melspec,
+                method=diffusion_cfg.get('ode_method', 'heun'),
+                steps=diffusion_cfg.get('ode_steps', 50),
+                denoise=diffusion_cfg.get('ode_denoise', True),
+                eps=diffusion_cfg.get('eps', 3e-2),
+            )
+        else:
+            raise ValueError(
+                "diffusion.sampler_type must be 'sde' or 'ode', "
+                f"got {sampler_type!r}."
+            )
 
-        pc_sampler = get_pc_sampler(
-            predictor_name=predictor_opt,
-            corrector_name=corrector_opt,
-            sde=sde,
-            score_fn=score_fn,
-            y=masked_melspec,
-            snr=snr_opt,
-            corrector_steps=corr_steps_opt,
-            w_mel_cond=w_mel_cond,
-            mask=mask,
-            mask_noise=on_noisy_masked_melspec
+        x, nfe = sampler()
+        print(
+            f"{sampler_type.upper()} sampler finished in "
+            f"{nfe} function evaluations"
         )
-
-        x, nfe = pc_sampler()
-        print(f"PC sampler finished in {nfe} function evaluations")
 
         # ── final masking ──
         x = masked_melspec * mask + x * (1 - mask)

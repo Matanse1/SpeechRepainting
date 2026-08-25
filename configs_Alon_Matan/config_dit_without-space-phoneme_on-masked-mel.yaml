@@ -246,7 +246,7 @@ generate:
   n_samples_test: 50 #1000 # used in full inference mel only
   video_path: null # generate audio for a given silent video file
   skip_step: 1
-  w_mel_cond: 1 #[-1, 0.5, 0.8, 1, 2]            # w1 in the paper
+  w_mel_cond: 1.5 #[-1, 0.5, 0.8, 1, 2]            # w1 in the paper
   w_asr: 1.5 #[0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
   asr_start: [320] #[320, 270] #270        # t_asr
   save_dir: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/outputs/mel_spec_with_inference_beta_0.01_to_20_on_noisy_masked_mel=False/inference-generate #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio

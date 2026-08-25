@@ -4,7 +4,7 @@
 # this is the full test without asr: mel condition, free-classifier and vocoder(mel2audio)
 import json
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '5'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 import subprocess
 import time
 import warnings
@@ -227,6 +227,7 @@ def sampling(net, diffusion_cfg, diffusion_hyperparams,
             per_frame_phoneme4guidance=None,
             type_input_guidance='text',
             skip_step=1,
+            phoneme_guidance_debug=False,
             ):
     """
     Minimal continuous-SDE replacement for the original DDPM sampling().
@@ -255,7 +256,12 @@ def sampling(net, diffusion_cfg, diffusion_hyperparams,
         if type_input_guidance == 'text':
             tokens = torch.LongTensor(tokenizer.encode(guidance_text)).unsqueeze(0).cuda()
         elif type_input_guidance == 'phoneme':
-            tokens = torch.tensor([tokenizer[t] for t in phoneme4guidance[0]]).unsqueeze(0).cuda()
+            token_ids = asr_models.phonemes_to_ctc_ids(
+                phoneme4guidance[0],
+                tokenizer,
+                asr_guidance_net,
+            )
+            tokens = torch.tensor(token_ids, dtype=torch.long).unsqueeze(0).cuda()
         elif type_input_guidance == 'frame_level_phoneme':
             tokens = torch.tensor(per_frame_phoneme4guidance[0], dtype=torch.int64).unsqueeze(0).cuda()
             loss_ce = nn.CrossEntropyLoss(reduction='none')
@@ -265,14 +271,14 @@ def sampling(net, diffusion_cfg, diffusion_hyperparams,
     # ---------------------------------------------------------------------
     if _dh["name"] in ["VPSDE", "VESDE"]:
         from SDE import VPSDE, VESDE
-        # from sampling import get_pc_sampler
-        #### debug #####
-        from sampling.__init_debug_broadcast_different import get_pc_sampler
+        from sampling import get_ode_sampler, get_pc_sampler
 
         if _dh["name"] == "VPSDE":
             sde = VPSDE(_dh["beta_min"], _dh["beta_max"], _dh["N"])
         else:
             sde = VESDE(_dh["sigma_min"], _dh["sigma_max"], _dh["N"])
+
+        sampler_type = str(diffusion_cfg.get('sampler_type', 'sde')).lower()
 
         def score_fn_without_asr(x, t):
             if x.ndim == 4 and x.shape[1] == 1:
@@ -329,9 +335,19 @@ def sampling(net, diffusion_cfg, diffusion_hyperparams,
         def _continuous_t_to_asr_step(t):
             # The diffusion model receives continuous t, but the ASR/phoneme
             # classifier was trained with a diffusion-step embedding scale.
-            return (t / float(sde.T) * float(sde.N - 1)).view(t.shape[0], 1)
+            classifier_sde = asr_guidance_net.sde
+            return (t / float(classifier_sde.T) * float(classifier_sde.N - 1)).view(t.shape[0], 1)
 
-        def asr_guidance_fn(x, y, t):
+        ode_guidance_calls = 0
+
+        def asr_guidance_fn(x, y, t, mask_aware=False, ode_debug=False):
+            """Return ASR guidance with independently controlled ODE logging.
+
+            ``mask_aware`` controls whether normalization uses only the gap.
+            The current SDE and ODE paths both use complete-mel normalization.
+            """
+            nonlocal ode_guidance_calls
+
             if x.ndim == 4 and x.shape[1] == 1:
                 x = x.squeeze(1)
 
@@ -344,7 +360,28 @@ def sampling(net, diffusion_cfg, diffusion_hyperparams,
 
             with torch.no_grad():
                 score = score_fn_without_asr(x, t)
-                score_norm = torch.norm(score.reshape(score.shape[0], -1), dim=-1).mean()
+
+                if mask_aware:
+                    unknown = (1.0 - mask.to(device=x.device, dtype=x.dtype)).clamp(0.0, 1.0)
+                    if unknown.ndim == 4 and unknown.shape[1] == 1:
+                        unknown = unknown.squeeze(1)
+                    if mask_frames is not None:
+                        valid_frames = mask_frames.to(device=x.device, dtype=x.dtype)
+                        if valid_frames.ndim == 4 and valid_frames.shape[1] == 1:
+                            valid_frames = valid_frames.squeeze(1)
+                        unknown = unknown * valid_frames
+                    score_for_norm = score * unknown
+                else:
+                    unknown = None
+                    score_for_norm = score
+
+                score_norm = torch.norm(
+                    score_for_norm.reshape(score_for_norm.shape[0], -1),
+                    dim=-1,
+                )
+                if not mask_aware:
+                    # Preserve the original PC/SDE batch normalization exactly.
+                    score_norm = score_norm.mean()
 
             with torch.enable_grad():
                 if type_input_guidance in ['text', 'phoneme']:
@@ -387,14 +424,56 @@ def sampling(net, diffusion_cfg, diffusion_hyperparams,
                 # grad_normaliser = score_norm / (guidance_norm + 1e-8)
 
             # return (grad_normaliser * guidance_grad).detach()
+                if mask_aware:
+                    # The ODE projects every update onto the missing region. Do
+                    # the same before normalization, otherwise gradients on the
+                    # observed region inflate the norm and are then discarded.
+                    guidance_grad = guidance_grad * unknown
+
                 guidance_norm = torch.norm(
                     guidance_grad.reshape(guidance_grad.shape[0], -1),
                     dim=-1
-                ).mean()
-                grad_normaliser = score_norm / (guidance_norm + 1e-8)
+                )
+                if not mask_aware:
+                    # Preserve the original PC/SDE batch normalization exactly.
+                    guidance_norm = guidance_norm.mean()
+                grad_normaliser = score_norm / guidance_norm.clamp_min(1e-8)
 
-            # ====================== ASR DEBUG BLOCK - DELETE LATER ======================
-            normalised_guidance = (grad_normaliser * guidance_grad).detach()
+            if mask_aware:
+                normaliser_shape = (
+                    guidance_grad.shape[0],
+                    *([1] * (guidance_grad.ndim - 1)),
+                )
+                normalised_guidance = (
+                    grad_normaliser.reshape(normaliser_shape) * guidance_grad
+                ).detach()
+            else:
+                normalised_guidance = (grad_normaliser * guidance_grad).detach()
+
+            # # ====================== ASR DEBUG BLOCK - DELETE LATER ======================
+            # if ode_debug:
+            #     ode_guidance_calls += 1
+            #     if phoneme_guidance_debug and (
+            #         ode_guidance_calls == 1 or ode_guidance_calls % 10 == 0
+            #     ):
+            #         weighted_guidance_norm = torch.norm(
+            #             (
+            #                 (0.0 if w_asr is None else float(w_asr))
+            #                 * normalised_guidance
+            #             ).reshape(normalised_guidance.shape[0], -1),
+            #             dim=-1,
+            #         )
+            #         effective_ratio = weighted_guidance_norm / score_norm.clamp_min(1e-8)
+            #         print(
+            #             "[ODE PHONEME GUIDANCE]",
+            #             f"call={ode_guidance_calls}",
+            #             f"t={float(t.detach().mean().cpu()):.4f}",
+            #             f"ctc_loss={float(loss.detach().mean().cpu()):.5f}",
+            #             f"score_full_norm={float(score_norm.mean().detach().cpu()):.5f}",
+            #             f"raw_guidance_full_norm={float(guidance_norm.mean().detach().cpu()):.5f}",
+            #             f"normaliser={float(grad_normaliser.mean().detach().cpu()):.5f}",
+            #             f"weighted_ratio={float(effective_ratio.mean().detach().cpu()):.5f}",
+            #         )
 
             # normalised_guidance_norm = torch.norm(
             #     normalised_guidance.reshape(normalised_guidance.shape[0], -1),
@@ -429,25 +508,63 @@ def sampling(net, diffusion_cfg, diffusion_hyperparams,
             asr_weight = 0.0 if w_asr is None else float(w_asr)
             return score + asr_weight * guidance
 
-        pc_sampler = get_pc_sampler(
-            predictor_name=diffusion_cfg.get('predictor', "reverse_diffusion"),
-            corrector_name=diffusion_cfg.get('corrector', "langevin"),
-            sde=sde,
-            score_fn=score_fn,
-            y=masked_melspec,
-            snr=diffusion_cfg.get('snr', 0.1),
-            corrector_steps=diffusion_cfg.get('corrector_steps', 1),
-            w_mel_cond=w_mel_cond,
-            mask=mask,
-            mask_noise=on_noisy_masked_melspec,
+        def score_fn_ode(x, y, t):
+            score = score_fn_without_asr(x, t)
+            # Match the SDE guidance calculation: estimate and normalize both
+            # the diffusion score and the ASR gradient over the complete mel.
+            # The ODE sampler masks the resulting drift afterwards, so only
+            # the generated/missing region is actually updated.
+            guidance = asr_guidance_fn(
+                x,
+                y,
+                t,
+                mask_aware=False,
+                ode_debug=True,
+            )
+            asr_weight = 0.0 if w_asr is None else float(w_asr)
+            return score + asr_weight * guidance
+
+        if sampler_type == 'sde':
+            sampler = get_pc_sampler(
+                predictor_name=diffusion_cfg.get('predictor', "reverse_diffusion"),
+                corrector_name=diffusion_cfg.get('corrector', "langevin"),
+                sde=sde,
+                score_fn=score_fn,
+                y=masked_melspec,
+                snr=diffusion_cfg.get('snr', 0.1),
+                corrector_steps=diffusion_cfg.get('corrector_steps', 1),
+                eps=diffusion_cfg.get('eps', 3e-2),
+                w_mel_cond=w_mel_cond,
+                mask=mask,
+                mask_noise=on_noisy_masked_melspec,
+            )
+        elif sampler_type == 'ode':
+            sampler = get_ode_sampler(
+                sde=sde,
+                score_fn=score_fn_ode,
+                y=masked_melspec,
+                mask=mask,
+                on_noisy_masked_melspec=on_noisy_masked_melspec,
+                method=diffusion_cfg.get('ode_method', 'heun'),
+                steps=diffusion_cfg.get('ode_steps', 50),
+                denoise=diffusion_cfg.get('ode_denoise', True),
+                eps=diffusion_cfg.get('eps', 3e-2),
+            )
+        else:
+            raise ValueError(
+                "diffusion.sampler_type must be 'sde' or 'ode', "
+                f"got {sampler_type!r}."
+            )
+
+        print(f"{sampler_type.upper()} input mel:", masked_melspec.shape)
+        print(f"{sampler_type.upper()} input mask:", mask.shape)
+        x, nfe = sampler()
+        print(
+            f"{sampler_type.upper()} sampler finished in "
+            f"{nfe} function evaluations"
         )
 
-        print("PC input mel:", masked_melspec.shape)
-        print("PC input mask:", mask.shape)
-        x, nfe = pc_sampler()
-        print(f"PC sampler finished in {nfe} function evaluations")
-
-                # PC sampler may return [B, 1, 80, T]. HiFi-GAN expects [B, 80, T].
+        # A sampler may return [B, 1, 80, T]. HiFi-GAN expects [B, 80, T].
         if x.ndim == 4 and x.shape[1] == 1:
             x = x.squeeze(1)
 
@@ -887,6 +1004,43 @@ def generate(
             transformed_X = transformed_X.squeeze(0).cpu().numpy()
             matplotlib.image.imsave(os.path.join(_output_directory, f'sample_{indx_data}', 'noisy_melspec_image.png'), transformed_X[::-1])
             
+            # ODE-only classifier baseline: decode the clean GT mel with the
+            # same t=0 phoneme model used to decode the generated mel. This
+            # separates generator errors from the classifier's own PER floor.
+            preds_gt_mel = 'None'
+            if (
+                str(diffusion_cfg.get('sampler_type', 'sde')).lower() == 'ode'
+                and asr_guidance_net is not None
+                and decoder is not None
+                and type_input_guidance in ['text', 'phoneme']
+            ):
+                gt_for_asr = gt_melspec.cuda()
+                if gt_for_asr.ndim == 4 and gt_for_asr.shape[1] == 1:
+                    gt_for_asr = gt_for_asr.squeeze(1)
+                if mask_frames is None:
+                    gt_length = gt_for_asr.shape[-1]
+                else:
+                    valid_time = mask_frames[0].reshape(
+                        -1, mask_frames.shape[-1]
+                    ).amax(dim=0)
+                    gt_length = int((valid_time > 0).sum().item())
+                gt_lengths = torch.full(
+                    (gt_for_asr.shape[0],),
+                    gt_length,
+                    dtype=torch.long,
+                    device=gt_for_asr.device,
+                )
+                gt_diffusion_steps = torch.zeros(
+                    (gt_for_asr.shape[0], 1),
+                    dtype=gt_for_asr.dtype,
+                    device=gt_for_asr.device,
+                )
+                gt_outputs = asr_guidance_net(
+                    (gt_for_asr, gt_lengths),
+                    gt_diffusion_steps,
+                )["outputs"]
+                preds_gt_mel = decoder(gt_outputs)[0]
+
             # inference
             start = torch.cuda.Event(enable_timing=True)
             end = torch.cuda.Event(enable_timing=True)
@@ -913,7 +1067,10 @@ def generate(
                             phoneme4guidance=phoneme4guidance,
                             per_frame_phoneme4guidance=per_frame_phoneme4guidance,
                             type_input_guidance=type_input_guidance,
-                            skip_step=skip_step
+                            skip_step=skip_step,
+                            phoneme_guidance_debug=bool(
+                                kwargs.get("phoneme_guidance_debug", False)
+                            ),
                             )
             
             # -------------------------------------------------------------------------
@@ -955,12 +1112,16 @@ def generate(
                 if type_input_guidance == 'text':
                     f.write("True text:  " + true_text_str + "\n")
                     f.write("asr_condition       :  " +text+"\n")
-                    f.write("asr_generated_signal:  " + preds_ao)
+                    f.write("asr_generated_signal:  " + preds_ao + "\n")
+                    if preds_gt_mel != 'None':
+                        f.write("asr_ground_truth_mel:  " + preds_gt_mel)
                 elif type_input_guidance == 'phoneme':
                     f.write("True text:  " + true_text_str + "\n")
                     f.write("text4phoneme:  " + text + "\n")
                     f.write("asr_condition       :  " +" ".join(phoneme4guidance[0])+"\n")
-                    f.write("asr_generated_signal:  " + " ".join(preds_ao))
+                    f.write("asr_generated_signal:  " + " ".join(preds_ao) + "\n")
+                    if preds_gt_mel != 'None':
+                        f.write("asr_ground_truth_mel:  " + " ".join(preds_gt_mel))
                 elif type_input_guidance == 'frame_level_phoneme':
                     f.write("True text:  " + true_text_str + "\n")
                     f.write("text4phoneme:  " + text + "\n")

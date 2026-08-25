@@ -133,20 +133,28 @@ diffusion:
     beta_T: 0.02
     beta: null
   VPSDE:
-    beta_min: 0.01
-    beta_max: 20.0
+    beta_min: 0.04
+    beta_max: 8.0
     N: 1000
   VESDE:
     sigma_min: 0.01
     sigma_max: 50.0
     N: 1000
 
-  # Diffusion-based sampling hyperparameters
+  # Sampling dynamics: reverse SDE or probability-flow ODE.
+  sampler_type: "ode"               # Choices: sde, ode
+  eps: 0.03
+
+  # Reverse-SDE predictor-corrector settings (used only for sampler_type: sde).
   predictor: "euler_maruyama"  # Choices: reverse_diffusion, euler_maruyama, none
   corrector: "langevin"           # Choices: langevin, ald, none
-  snr: 0.1                        # Step-size scale for the Langevin/ALD gradient
+  snr: 0.075                        # Step-size scale for the Langevin/ALD gradient
   corrector_steps: 1              # Number of inner-loop correction steps
 
+  # Probability-flow ODE settings (used only for sampler_type: ode).
+  ode_method: "heun"               # Heun is the only implemented ODE method
+  ode_steps: 1000
+  ode_denoise: True
 
 
 dataset:
@@ -260,20 +268,25 @@ generate:
   phoneme_remove_space: True
   phoneme_guidance_debug: True
 
-  w_mel_cond: 1 #[-1, 0.5, 0.8, 1, 2]            # w1 in the paper
-  w_asr: 0.7 #[0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
+  w_mel_cond: 0.9
+   #[-1, 0.5, 0.8, 1, 2]            # w1 in the paper
+  w_asr: 1 #[0.5, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2, 3] #1.5            # w2 in the paper
   asr_start: 0.8 #[320, 270] #270        # t_asr        ################# for SDE - 0.25 ###################
-  save_dir: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/outputs/generated_mels_continuous_phoneme_guidance_(phoneme+mels)/generated_after_debug_batch_size_model_to_32/generated_for_euler_maryuma #/dsi/gannot-lab/gannot-lab11/users/mordehay/speech_repainting/exp/Unet_Anechoic_LibSp_wavlm-conditional_w-masked-pix=0.8/unet_dim64_dim_mults1_2_4_T400_betaT0.02  # where to save the generated audio
-  inference_mel_only_name_dir: repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_phoneme-without-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
+  save_dir: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/outputs/generated_mels_continuous_phoneme_guidance_(phoneme+mels)/generated_after_debug_batch_size_model_to_32/generated_for_${diffusion.sampler_type} # where to save the generated audio
+  # inference_mel_only_name_dir: repeat_all_freq-length=100_skip=150_cp=112000_mel_text=True_phoneme-without-space #gap-as-train_cp=44000_phoneme-guidance #gap-as-train_cp=44000_mel_text=True_withoutLM #as-train-gap_cp=132000 #as-train-gap_cp=72000 #lossy_audio #small_gap_mask #as-train-gap_asr_guidance_80cp_filled-with-randn #middle_gap_mask_2cp # generated_mels, small_gap_mask, as-train-gap, mask is present in sampling process - x_t * mask + (1 - mask) * masked_x
+  inference_mel_only_name_dir: "${diffusion.name}_N${diffusion.VPSDE.N}_sampler-${diffusion.sampler_type}_ode-${diffusion.ode_method}-${diffusion.ode_steps}steps_pred-${diffusion.predictor}_corr-${diffusion.corrector}_snr-${diffusion.snr}_csteps-${diffusion.corrector_steps}_mask-${generate.mask_info.mask_type}_len-${generate.mask_info.repeat_all_freq.length}_skip-${generate.mask_info.repeat_all_freq.skip}_${now:%Y%m%d_%H%M%S}_num_samples-${generate.n_samples_test}"
   without_condition: False
   config_filename_asr_cond: /home/dsi/sellama/SpeechRepainting/mouthroi_processing/configs/LRS3_A_WER1.0.ini
+  # normally true
   apply_asr_guidance: True                                                                                                #############  recently added, not tested yet #################
   type_input_guidance: "phoneme" # text , phoneme
   lipread_text_dir: null # directory with predicted text for generating test samples of benchmark dataset
-  on_noisy_masked_melspec: True # whether to input the model the masked noisy melspec or noisy melspec(in inference only)
+  on_noisy_masked_melspec: False # whether to input the model the masked noisy melspec or noisy melspec(in inference only)
   mel_text: True # or masked_text
   with_space: False
   phoneme_classifier_ckpt: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_classifier_weights_for_different_betas/phoneme_guidance_EffConfCTC_without-space__beta_min_0.04_beta_max_8.0/checkpoints_epoch_25_step_103187.ckpt
+  # model 0.8 : /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_classifier_weights_for_different_betas/phoneme_guidance_EffConfCTC_without-space__beta_min_0.04_beta_max_8.0_tmax=0.8/checkpoints_epoch_20_step_80000.ckpt
+  # model 0.3 : /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_classifier_weights_for_different_betas/phoneme_guidance_EffConfCTC_without-space__beta_min_0.04_beta_max_8.0/checkpoints_epoch_25_step_103187.ckpt
   asr_checkpoint_ao: /dsi/gannot-lab/gannot-lab1/users/Alon_Matan/phoneme_classifier/phoneme_classifier_weights_for_different_betas/phoneme_guidance_EffConfCTC_without-space__beta_min_0.04_beta_max_8.0/checkpoints_epoch_25_step_103187.ckpt
   mask_info:
     mask_type: repeat_all_freq

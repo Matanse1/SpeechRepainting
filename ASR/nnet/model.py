@@ -450,7 +450,7 @@ class Model(Module):
 
         eps = 1e-5
         # t = torch.rand(B, device=device) * (self.sde.T - eps) + eps
-        t_max = 0.3 * self.sde.T
+        t_max = 0.8 * self.sde.T
         t = torch.rand(B, device=device) * (t_max - eps) + eps
         z = torch.randn_like(mel)
         mean, std = self.sde.marginal_prob(mel, None, t)
@@ -727,12 +727,14 @@ class Model(Module):
         
         # Create new state dict with only compatible parameters
         new_state_dict = {}
+        skipped_shape_keys = []
         for key, checkpoint_param in checkpoint_state_dict.items():
             if key in current_state_dict:
                 current_param = current_state_dict[key]
                 if current_param.shape == checkpoint_param.shape:
                     new_state_dict[key] = checkpoint_param
                 else:
+                    skipped_shape_keys.append(key)
                     print(f"Skipping parameter {key} due to shape mismatch: "
                         f"checkpoint shape {checkpoint_param.shape} vs "
                         f"current shape {current_param.shape}")
@@ -801,6 +803,11 @@ class Model(Module):
         # Print Model state
         if self.rank == 0 and verbose:
             print("Rank {}: Model loaded at step {}".format(self.rank, self.model_step))
+
+        return {
+            "loaded_keys": tuple(new_state_dict.keys()),
+            "skipped_shape_keys": tuple(skipped_shape_keys),
+        }
 
     def on_epoch_end(
         self,

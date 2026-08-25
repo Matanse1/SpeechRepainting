@@ -1,25 +1,14 @@
 # Adapted from https://github.com/yang-song/score_sde_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/sampling.py
 """Various sampling methods."""
-from scipy import integrate
 import torch
 
-from .predictors import Predictor, PredictorRegistry, ReverseDiffusionPredictor
+from .predictors import Predictor, PredictorRegistry
 from .correctors import Corrector, CorrectorRegistry
 
 __all__ = [
     'PredictorRegistry', 'CorrectorRegistry', 'Predictor', 'Corrector',
     'get_pc_sampler', 'get_ode_sampler', 'get_sb_sampler'
 ]
-
-def to_flattened_numpy(x):
-    """Flatten a torch tensor `x` and convert it to numpy."""
-    return x.detach().cpu().numpy().reshape((-1,))
-
-
-def from_flattened_numpy(x, shape):
-    """Form a torch tensor with the given `shape` from a flattened numpy array `x`."""
-    return torch.from_numpy(x.reshape(shape))
-
 
 def get_pc_sampler(
     predictor_name,
@@ -62,7 +51,13 @@ def get_pc_sampler(
     predictor_cls = PredictorRegistry.get_by_name(predictor_name)
     corrector_cls = CorrectorRegistry.get_by_name(corrector_name)
     predictor = predictor_cls(sde, score_fn, probability_flow=probability_flow)
-    corrector = corrector_cls(sde, score_fn, snr=snr, n_steps=corrector_steps)
+    corrector = corrector_cls(
+        sde,
+        score_fn,
+        snr=snr,
+        n_steps=corrector_steps,
+        mask=mask,
+    )
 
     # def _apply_masking(x, y, t):
     #     """Apply masking / inpainting constraints to the current state."""
@@ -110,45 +105,62 @@ def get_pc_sampler(
         return _y_t * _mask + x * (1 - _mask)
 
     def pc_sampler():
-        """The PC sampler function."""
+        """Predictor-corrector sampler with one projection per transition."""
         with torch.no_grad():
-            xt = sde.prior_sampling(y.shape, y).to(y.device)
-            timesteps = torch.linspace(sde.T, eps, sde.N, device=y.device)
+            batch_size = y.shape[0]
+            device = y.device
 
-            for i in range(sde.N):
-                t = timesteps[i]
+            xt = sde.prior_sampling(y.shape, y).to(device)
+            timesteps = torch.linspace(sde.T, eps, sde.N, device=device)
 
-                if i != len(timesteps) - 1:
-                    stepsize = t - timesteps[i + 1]
+            # Initialize the known region at time T.
+            initial_t = torch.full((batch_size,), float(sde.T), device=device)
+
+            xt = _apply_masking(xt, y, initial_t)
+
+            for i, t in enumerate(timesteps):
+                is_last_step = i == len(timesteps) - 1
+
+                if is_last_step:
+                    # Final transition: eps -> 0.
+                    next_t = torch.zeros_like(t)
                 else:
-                    stepsize = timesteps[-1]  # from eps to 0
+                    next_t = timesteps[i + 1]
 
-                vec_t = torch.ones(y.shape[0], device=y.device) * t
+                stepsize = t - next_t
 
-                # Enforce inpainting constraint before corrector
-                xt = _apply_masking(xt, y, vec_t)
+                vec_t = torch.full((batch_size,), t, device=device)
 
-                # Corrector, e.g. Langevin
+                # xt was already projected at time t by the previous iteration.
+                # The corrector is mask-aware and preserves the known region.
                 xt, xt_mean = corrector.update_fn(xt, y, vec_t)
 
-                # Enforce again before predictor
-                xt = _apply_masking(xt, y, vec_t)
-
-                # Predictor
+                # Predictor moves the state from t to next_t.
                 xt, xt_mean = predictor.update_fn(xt, y, vec_t, stepsize)
 
-                # Enforce again after predictor
-                xt = _apply_masking(xt, y, vec_t)
+                # Preserve the original denoising behavior on the final step.
+                if denoise and is_last_step:
+                    state_for_next_time = xt_mean
+                else:
+                    state_for_next_time = xt
 
-            x_result = xt_mean if denoise else xt
+                vec_next_t = torch.full(
+                    (batch_size,),
+                    next_t,
+                    device=device,
+                )
 
-            # Final constraint at final small time
-            final_t = torch.ones(y.shape[0], device=y.device) * eps
-            x_result = _apply_masking(x_result, y, final_t)
+                # The only projection in this iteration.
+                # This prepares the state for the next corrector timestep.
+                xt = _apply_masking(
+                    state_for_next_time,
+                    y,
+                    vec_next_t,
+                )
 
             ns = sde.N * (corrector.n_steps + 1)
-            return x_result, ns
-        
+            return xt, ns
+
     return pc_sampler
 
     # def pc_sampler():
@@ -178,73 +190,236 @@ def get_pc_sampler(
 
 
 def get_ode_sampler(
-    sde, score_fn, y, inverse_scaler=None,
-    denoise=True, rtol=1e-5, atol=1e-5,
-    method='RK45', eps=3e-2, device='cuda', **kwargs
+    sde,
+    score_fn,
+    y,
+    mask=None,
+    on_noisy_masked_melspec=True,
+    method="heun",
+    steps=None,
+    denoise=True,
+    eps=3e-2,
 ):
-    """Probability flow ODE sampler with the black-box ODE solver.
+    """Create a fixed-step probability-flow ODE sampler using Heun's method.
 
     Args:
         sde: An `sdes.SDE` object representing the forward SDE.
         score_fn: A function (typically learned model) that predicts the score.
-        y: A `torch.Tensor`, representing the (non-white-)noisy starting point(s) to condition the prior on.
-        inverse_scaler: The inverse data normalizer.
-        denoise: If `True`, add one-step denoising to final samples.
-        rtol: A `float` number. The relative tolerance level of the ODE solver.
-        atol: A `float` number. The absolute tolerance level of the ODE solver.
-        method: A `str`. The algorithm used for the black-box ODE solver.
-            See the documentation of `scipy.integrate.solve_ivp`.
-        eps: A `float` number. The reverse-time SDE/ODE will be integrated to `eps` for numerical stability.
-        device: PyTorch device.
+        y: Conditioning mel spectrogram and shape reference.
+        mask: Optional inpainting mask (1 observed, 0 generated).
+        on_noisy_masked_melspec: Match the training-time input convention. If
+            ``True``, the observed part of ``x_t`` is kept clean. If ``False``,
+            it follows its forward marginal using one fixed noise realization
+            for the complete ODE trajectory.
+        method: Must be ``"heun"``. It is explicit in the configuration so
+            experiment logs describe the numerical solver being used.
+        steps: Number of fixed ODE steps. Defaults to ``sde.N``.
+        denoise: If ``True``, estimate the clean sample at the final time.
+        eps: Small positive final time used for numerical stability.
 
     Returns:
-        A sampling function that returns samples and the number of function evaluations during sampling.
+        A function that returns ``(sample, number_of_score_evaluations)``.
+
+    Notes:
+        This is a deterministic ODE after the initial latent ``x_T`` and the
+        optional fixed observed-region noise are chosen. Heun's
+        predictor/corrector stages are numerical integration stages; no
+        Langevin correction or fresh per-step noise is used.
     """
-    predictor = ReverseDiffusionPredictor(sde, score_fn, probability_flow=False)
+    method = str(method).lower()
+    if method != "heun":
+        raise ValueError(
+            f"Only the 'heun' ODE method is implemented, got {method!r}."
+        )
+
+    steps = sde.N if steps is None else int(steps)
+    if steps <= 0:
+        raise ValueError(f"ODE steps must be positive, got {steps}.")
+    if not 0.0 < float(eps) < float(sde.T):
+        raise ValueError(
+            f"ODE eps must satisfy 0 < eps < {sde.T}, got {eps}."
+        )
+
     rsde = sde.reverse(score_fn, probability_flow=True)
 
-    def denoise_update_fn(x):
-        vec_eps = torch.ones(x.shape[0], device=x.device) * eps
-        _, x = predictor.update_fn(x, y, vec_eps)
-        return x
+    def _match_layout(value, reference, name):
+        if value is None:
+            return None
 
-    def drift_fn(x, y, t):
-        """Get the drift function of the reverse-time SDE."""
-        return rsde.sde(x, y, t)[0]
+        value = value.to(device=reference.device, dtype=reference.dtype)
+        if reference.ndim == 4 and value.ndim == 3:
+            value = value.unsqueeze(1)
+        elif (
+            reference.ndim == 3
+            and value.ndim == 4
+            and value.shape[1] == 1
+        ):
+            value = value.squeeze(1)
 
-    def ode_sampler(z=None, **kwargs):
-        """The probability flow ODE sampler with black-box ODE solver.
+        if tuple(value.shape) != tuple(reference.shape):
+            raise ValueError(
+                f"ODE {name} shape must match the sampled state: "
+                f"{name}={tuple(value.shape)}, state={tuple(reference.shape)}"
+            )
+        return value
+
+    reference = y
+    observed = _match_layout(y, reference, "conditioning")
+    observed_mask = _match_layout(mask, reference, "mask")
+    if observed_mask is not None:
+        observed_mask = observed_mask.clamp(0.0, 1.0)
+        unknown_mask = 1.0 - observed_mask
+    else:
+        unknown_mask = None
+
+    def _expand_batch_coefficient(value, reference):
+        """Broadcast a scalar or per-example value over a sampled state."""
+        value = value.to(device=reference.device, dtype=reference.dtype)
+        if value.ndim == 0:
+            value = value.expand(reference.shape[0])
+        else:
+            value = value.reshape(reference.shape[0])
+        return value.reshape(
+            reference.shape[0],
+            *([1] * (reference.ndim - 1)),
+        )
+
+    def observed_at(t, observed_noise):
+        """Return the known region with the training-time noise convention."""
+        if on_noisy_masked_melspec:
+            return observed
+
+        mean, std = sde.marginal_prob(observed, None, t)
+        std = _expand_batch_coefficient(std, observed)
+        return mean + std * observed_noise
+
+    def project_observed(x, t, observed_noise):
+        """Apply the known-region boundary condition at continuous time t."""
+        if observed_mask is None:
+            return x
+        observed_t = observed_at(t, observed_noise)
+        return observed_mask * observed_t + unknown_mask * x
+
+    def project_clean_observed(x):
+        """Restore exact known values after reaching the clean endpoint."""
+        if observed_mask is None:
+            return x
+        return observed_mask * observed + unknown_mask * x
+
+    def drift_fn(x, t, observed_noise):
+        """Evaluate the probability-flow velocity on the complete mel."""
+        x_full = project_observed(x, t, observed_noise)
+        drift = rsde.sde(x_full, observed, t)[0]
+        if unknown_mask is not None:
+            # The checkpoint can be trained with loss only on the missing
+            # region. Its score in the known region must not drive the state.
+            drift = unknown_mask * drift
+        return drift
+
+    def denoise_update_fn(x, t, observed_noise):
+        """Use Tweedie's formula to estimate x_0 from the state at eps."""
+        x_full = project_observed(x, t, observed_noise)
+        score = score_fn(x_full, observed, t)
+        std = sde.marginal_prob(x_full, None, t)[1]
+
+        # VP has mean alpha(t) * x_0; VE has mean x_0 (alpha == 1).
+        if hasattr(sde, "alpha"):
+            alpha = sde.alpha(t)
+        else:
+            alpha = torch.ones_like(std)
+
+        coefficient_shape = (
+            x.shape[0],
+            *([1] * (x.ndim - 1)),
+        )
+        alpha = alpha.to(x).reshape(coefficient_shape)
+        std = std.to(x).reshape(coefficient_shape)
+        x0 = (x_full + std.square() * score) / alpha
+        return project_clean_observed(x0)
+
+    def ode_sampler(z=None, observed_noise=None):
+        """Integrate the probability-flow ODE from ``sde.T`` to ``eps``.
 
         Args:
-            model: A score model.
-            z: If present, generate samples from latent code `z`.
+            z: Optional initial latent. Supplying it makes comparisons and
+                deterministic regression tests straightforward.
+            observed_noise: Optional fixed noise for the observed-region
+                forward marginal. It is sampled once when omitted and reused
+                at every Heun stage; no fresh stochastic noise is injected
+                during integration.
+
         Returns:
-            samples, number of function evaluations.
+            The generated sample and the number of score evaluations.
         """
         with torch.no_grad():
-            # If not represent, sample the latent code from the prior distibution of the SDE.
-            x = sde.prior_sampling(y.shape, y).to(device)
+            if z is None:
+                x = sde.prior_sampling(y.shape, y)
+            else:
+                if tuple(z.shape) != tuple(y.shape):
+                    raise ValueError(
+                        "ODE latent shape must match the conditioning mel: "
+                        f"z={tuple(z.shape)}, y={tuple(y.shape)}"
+                    )
+                x = z
 
-            def ode_func(t, x):
-                x = from_flattened_numpy(x, y.shape).to(device).type(torch.complex64)
-                vec_t = torch.ones(y.shape[0], device=x.device) * t
-                drift = drift_fn(x, y, vec_t)
-                return to_flattened_numpy(drift)
-
-            # Black-box ODE solver for the probability flow ODE
-            solution = integrate.solve_ivp(
-                ode_func, (sde.T, eps), to_flattened_numpy(x),
-                rtol=rtol, atol=atol, method=method, **kwargs
+            x = x.to(device=y.device, dtype=y.dtype)
+            batch_size = x.shape[0]
+            initial_t = torch.full(
+                (batch_size,),
+                float(sde.T),
+                device=x.device,
+                dtype=x.dtype,
             )
-            nfe = solution.nfev
-            x = torch.tensor(solution.y[:, -1]).reshape(y.shape).to(device).type(torch.complex64)
 
-            # Denoising is equivalent to running one predictor step without adding noise
+            if observed_mask is not None and not on_noisy_masked_melspec:
+                if observed_noise is None:
+                    observed_noise = torch.randn_like(observed)
+                else:
+                    observed_noise = _match_layout(
+                        observed_noise,
+                        observed,
+                        "observed noise",
+                    )
+            else:
+                observed_noise = None
+
+            x = project_observed(x, initial_t, observed_noise)
+
+            timesteps = torch.linspace(
+                float(sde.T),
+                float(eps),
+                steps + 1,
+                device=x.device,
+                dtype=x.dtype,
+            )
+
+            for current_t, next_t in zip(timesteps[:-1], timesteps[1:]):
+                dt = next_t - current_t  # Negative: generation runs T -> eps.
+                vec_t = current_t.expand(batch_size)
+                vec_next_t = next_t.expand(batch_size)
+
+                # Heun predictor: an Euler proposal at the destination time.
+                k1 = drift_fn(x, vec_t, observed_noise)
+                x_euler = project_observed(
+                    x + dt * k1,
+                    vec_next_t,
+                    observed_noise,
+                )
+
+                # Heun corrector: average the velocities at both endpoints.
+                k2 = drift_fn(x_euler, vec_next_t, observed_noise)
+                x = project_observed(
+                    x + 0.5 * dt * (k1 + k2),
+                    vec_next_t,
+                    observed_noise,
+                )
+
+            nfe = 2 * steps
             if denoise:
-                x = denoise_update_fn(x)
+                vec_eps = timesteps[-1].expand(batch_size)
+                x = denoise_update_fn(x, vec_eps, observed_noise)
+                nfe += 1
 
-            if inverse_scaler is not None:
-                x = inverse_scaler(x)
             return x, nfe
 
     return ode_sampler

@@ -58,7 +58,7 @@ from utils import (
     preprocess_text,
 )
 from SDE import VPSDE, VESDE
-from sampling import get_pc_sampler
+from sampling import get_ode_sampler, get_pc_sampler
 
 # This import is required for the trained phoneme classifier.
 import ASR.nnet as nnet
@@ -391,26 +391,44 @@ def sampling(
         asr_scale = 0.0 if w_asr is None else float(w_asr)
         return score + asr_scale * guidance
 
-    predictor_opt = diffusion_cfg.get("predictor", "reverse_diffusion") if hasattr(diffusion_cfg, "get") else "reverse_diffusion"
-    corrector_opt = diffusion_cfg.get("corrector", "langevin") if hasattr(diffusion_cfg, "get") else "langevin"
-    snr_opt = diffusion_cfg.get("snr", 0.1) if hasattr(diffusion_cfg, "get") else 0.1
-    corr_steps_opt = diffusion_cfg.get("corrector_steps", 1) if hasattr(diffusion_cfg, "get") else 1
+    sampler_type = str(diffusion_cfg.get("sampler_type", "sde")).lower()
+    if sampler_type == "sde":
+        sampler = get_pc_sampler(
+            predictor_name=diffusion_cfg.get("predictor", "reverse_diffusion"),
+            corrector_name=diffusion_cfg.get("corrector", "langevin"),
+            sde=sde,
+            score_fn=score_fn,
+            y=masked_melspec,
+            snr=diffusion_cfg.get("snr", 0.1),
+            corrector_steps=diffusion_cfg.get("corrector_steps", 1),
+            eps=diffusion_cfg.get("eps", 3e-2),
+            w_mel_cond=w_mel_cond,
+            mask=mask,
+            mask_noise=on_noisy_masked_melspec,
+        )
+    elif sampler_type == "ode":
+        sampler = get_ode_sampler(
+            sde=sde,
+            score_fn=score_fn,
+            y=masked_melspec,
+            mask=mask,
+            on_noisy_masked_melspec=on_noisy_masked_melspec,
+            method=diffusion_cfg.get("ode_method", "heun"),
+            steps=diffusion_cfg.get("ode_steps", 50),
+            denoise=diffusion_cfg.get("ode_denoise", True),
+            eps=diffusion_cfg.get("eps", 3e-2),
+        )
+    else:
+        raise ValueError(
+            "diffusion.sampler_type must be 'sde' or 'ode', "
+            f"got {sampler_type!r}."
+        )
 
-    pc_sampler = get_pc_sampler(
-        predictor_name=predictor_opt,
-        corrector_name=corrector_opt,
-        sde=sde,
-        score_fn=score_fn,
-        y=masked_melspec,
-        snr=snr_opt,
-        corrector_steps=corr_steps_opt,
-        w_mel_cond=w_mel_cond,
-        mask=mask,
-        mask_noise=on_noisy_masked_melspec,
+    x, nfe = sampler()
+    print(
+        f"{sampler_type.upper()} sampler finished in "
+        f"{nfe} function evaluations"
     )
-
-    x, nfe = pc_sampler()
-    print(f"PC sampler finished in {nfe} function evaluations")
 
     # Final masking.
     x = masked_melspec * mask + x * (1 - mask)
